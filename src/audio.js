@@ -72,6 +72,10 @@ export const sfx = {
     o.connect(f); f.connect(g); g.connect(master);
     o.start(t); o.stop(t + 1.4);
   },
+  hammer() { for (let i = 0; i < 3; i++) setTimeout(() => { noise(0.08, 1800, 2, 0.5, 'bandpass', 0.08); tone(300, 0.05, 0.2, 'square'); }, i * 160); },
+  bash() { noise(0.25, 250, 1, 0.7, 'lowpass', 0.25); tone(60, 0.2, 0.4); },
+  door() { tone(180, 0.15, 0.15, 'triangle', -60); noise(0.1, 600, 1, 0.15); },
+  chop() { noise(0.12, 700, 2, 0.6, 'bandpass', 0.12); tone(120, 0.08, 0.3); },
   heartbeat() { tone(55, 0.15, 0.4); setTimeout(() => tone(50, 0.15, 0.3), 220); },
   extract() { tone(440, 0.3, 0.2, 'triangle'); setTimeout(() => tone(660, 0.4, 0.2, 'triangle'), 250); },
 };

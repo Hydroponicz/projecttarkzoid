@@ -1,41 +1,19 @@
-import { makeItem } from './items.js';
-import { makeGrid, addItem } from './inventory.js';
+// Persistent sandbox save: the world seed plus everything that changed in it
+// (loot, doors, structures, zombies, time) and the current character.
+const KEY = 'tarkzoid-save-v2';
 
-const KEY = 'tarkzoid-profile-v1';
-
-export function newProfile() {
-  const p = {
-    money: 60000,
-    stash: makeGrid(10, 14),
-    pockets: makeGrid(4, 2),
-    secure: makeGrid(2, 2),
-    equip: { weapon: null, melee: null, armor: null, helmet: null, backpack: null },
-    stats: { raids: 0, survived: 0, kills: 0, deaths: 0 },
-  };
-  p.equip.weapon = makeItem('pm', { loaded: 8 });
-  p.equip.melee = makeItem('knife');
-  p.equip.backpack = makeItem('bp_scav');
-  addItem(p.pockets, makeItem('ammo_9x18', { count: 30 }));
-  addItem(p.pockets, makeItem('bandage'));
-  addItem(p.pockets, makeItem('water'));
-  for (const k of ['beans', 'ai2', 'bandage', 'crackers']) addItem(p.stash, makeItem(k));
-  addItem(p.stash, makeItem('ammo_9x18', { count: 50 }));
-  return p;
-}
-
-export function loadProfile() {
+export function loadSave() {
   try {
     const raw = localStorage.getItem(KEY);
     if (raw) return JSON.parse(raw);
   } catch (e) { /* storage unavailable or corrupt */ }
-  return newProfile();
+  return null;
 }
 
-export function saveProfile(p) {
-  try { localStorage.setItem(KEY, JSON.stringify(p)); } catch (e) { /* ignore */ }
+export function writeSave(data) {
+  try { localStorage.setItem(KEY, JSON.stringify(data)); return true; } catch (e) { return false; }
 }
 
-export function wipeProfile() {
+export function deleteSave() {
   try { localStorage.removeItem(KEY); } catch (e) { /* ignore */ }
-  return newProfile();
 }

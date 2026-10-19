@@ -21,6 +21,14 @@ export const ITEMS = {
   crowbar: { name: 'Crowbar', short: 'Crowbar', type: 'melee', w: 1, h: 3, color: '#7a2a2a', value: 4000, damage: 62, range: 1.8, rate: 0.75 },
   axe: { name: 'Fire Axe', short: 'Axe', type: 'melee', w: 1, h: 3, color: '#a33', value: 9000, damage: 110, range: 1.9, rate: 1.0 },
 
+  hammer: { name: 'Hammer', short: 'Hammer', type: 'melee', w: 1, h: 2, color: '#8a6a4a', value: 3000, damage: 28, range: 1.4, rate: 0.5, tool: 'hammer' },
+
+  // --- carpentry ---
+  planks: { name: 'Planks', short: 'Planks', type: 'material', w: 3, h: 1, color: '#a8834a', value: 600, stack: 10 },
+  nails: { name: 'Nails', short: 'Nails', type: 'material', w: 1, h: 1, color: '#9a9aa0', value: 40, stack: 100 },
+  log: { name: 'Log', short: 'Log', type: 'material', w: 4, h: 1, color: '#6a4a2a', value: 1500 },
+  saw: { name: 'Saw', short: 'Saw', type: 'tool', w: 1, h: 2, color: '#aab', value: 2500, tool: 'saw' },
+
   // --- gear ---
   armor_paca: { name: 'PACA Body Armor', short: 'PACA', type: 'armor', w: 3, h: 3, color: '#3a4a5a', value: 15000, protection: 0.45, durability: 60 },
   armor_6b13: { name: '6B13 Assault Armor', short: '6B13', type: 'armor', w: 3, h: 3, color: '#4a5a3a', value: 48000, protection: 0.7, durability: 90 },
@@ -57,7 +65,8 @@ export function makeItem(key, opts = {}) {
   const def = ITEMS[key];
   if (!def) throw new Error('unknown item ' + key);
   const it = { uid: uid(), key, x: 0, y: 0 };
-  if (def.type === 'ammo') it.count = opts.count ?? Math.ceil(def.stack * (0.3 + Math.random() * 0.5));
+  const rng = opts.rng || Math.random;
+  if (def.stack) it.count = opts.count ?? Math.ceil(def.stack * (0.3 + rng() * 0.5));
   if (def.type === 'weapon') it.loaded = opts.loaded ?? 0;
   if (def.uses) it.uses = def.uses;
   if (def.durability) it.dur = def.durability;
@@ -68,7 +77,7 @@ export function makeItem(key, opts = {}) {
 export function itemValue(it) {
   const def = ITEMS[it.key];
   let v = def.value;
-  if (def.type === 'ammo') v *= it.count;
+  if (def.stack) v *= it.count;
   if (def.uses) v *= it.uses / def.uses;
   if (def.durability) v *= 0.3 + 0.7 * it.dur / def.durability;
   if (it.grid) v += it.grid.items.reduce((s, c) => s + itemValue(c), 0);
@@ -78,7 +87,9 @@ export function itemValue(it) {
 // Weighted loot tables per container type
 export const LOOT_TABLES = {
   fridge: [['beans', 5], ['water', 6], ['soda', 6], ['crackers', 4]],
-  cabinet: [['bandage', 5], ['ai2', 3], ['painkillers', 3], ['bolts', 4], ['tape', 4], ['wires', 3], ['knife', 2], ['ammo_9x18', 3], ['chain', 1], ['roler', 0.4]],
+  cabinet: [['bandage', 5], ['ai2', 3], ['painkillers', 3], ['bolts', 4], ['tape', 4], ['wires', 3], ['knife', 2], ['ammo_9x18', 3], ['chain', 1], ['roler', 0.4], ['nails', 2], ['hammer', 0.8], ['bp_scav', 0.8], ['beans', 2]],
+  toolbox: [['hammer', 4], ['saw', 3], ['nails', 6], ['tape', 3], ['bolts', 3], ['crowbar', 1], ['wires', 2]],
+  lumber: [['planks', 8], ['log', 2], ['nails', 3]],
   crate: [['ammo_545', 4], ['ammo_12g', 4], ['ammo_9x18', 4], ['ammo_762', 3], ['pm', 2], ['mp133', 1.2], ['sks', 0.6], ['ak74', 0.35], ['crowbar', 1.5], ['axe', 0.6], ['bp_scav', 1], ['helmet_ssh', 0.8], ['armor_paca', 0.6], ['bandage', 2]],
   medbox: [['bandage', 5], ['ai2', 5], ['salewa', 2], ['painkillers', 3], ['antiviral', 0.8], ['ledx', 0.25]],
   pc: [['gpu', 0.8], ['wires', 4], ['battery', 0.5], ['chain', 0.8]],
@@ -86,13 +97,13 @@ export const LOOT_TABLES = {
   body: [['ammo_9x18', 3], ['ammo_545', 2], ['bandage', 3], ['beans', 2], ['pm', 1], ['chain', 1], ['roler', 0.5], ['antiviral', 0.3]],
 };
 
-export function rollLoot(table, count) {
+export function rollLoot(table, count, rng = Math.random) {
   const t = LOOT_TABLES[table];
   const total = t.reduce((s, e) => s + e[1], 0);
   const out = [];
   for (let i = 0; i < count; i++) {
-    let r = Math.random() * total;
-    for (const [k, wgt] of t) { r -= wgt; if (r <= 0) { out.push(makeItem(k)); break; } }
+    let r = rng() * total;
+    for (const [k, wgt] of t) { r -= wgt; if (r <= 0) { out.push(makeItem(k, { rng })); break; } }
   }
   return out;
 }
@@ -103,6 +114,8 @@ export const CONTAINER_TYPES = {
   crate: { name: 'Weapon Crate', w: 6, h: 3, rolls: [1, 3], color: 0x4a5a2a, size: [1.4, 0.6, 0.7] },
   medbox: { name: 'Medcase', w: 4, h: 3, rolls: [1, 3], color: 0xcc3333, size: [0.6, 0.4, 0.4] },
   pc: { name: 'PC', w: 4, h: 3, rolls: [0, 2], color: 0x222222, size: [0.5, 0.9, 0.9] },
+  toolbox: { name: 'Toolbox', w: 4, h: 3, rolls: [1, 3], color: 0xaa3322, size: [0.7, 0.35, 0.35] },
+  lumber: { name: 'Lumber Pile', w: 6, h: 4, rolls: [2, 4], color: 0x9a7a4a, size: [1.6, 0.5, 0.8] },
   trunk: { name: 'Car Trunk', w: 6, h: 4, rolls: [0, 3], color: 0x000000, size: [0, 0, 0] },
   body: { name: 'Corpse', w: 5, h: 4, rolls: [1, 3], color: 0x000000, size: [0, 0, 0] },
 };

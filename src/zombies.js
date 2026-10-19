@@ -42,19 +42,30 @@ export class Zombies {
   }
 
   buildNav() {
-    const blocked = new Uint8Array(NAV_N * NAV_N);
+    this.blocked = new Uint8Array(NAV_N * NAV_N);
+    this.updateNavRegion(-HALF, -HALF, HALF, HALF);
+  }
+
+  // Recompute walkable cells in a region, e.g. after a door opens or a wall
+  // is built or destroyed.
+  updateNavRegion(minX, minZ, maxX, maxZ) {
     const tmp = [];
     const r = 0.32;
-    for (let i = 0; i < NAV_N; i++) {
-      for (let j = 0; j < NAV_N; j++) {
+    const i0 = Math.max(0, Math.floor((minX - 1 + HALF) / NAV_CELL)), i1 = Math.min(NAV_N - 1, Math.floor((maxX + 1 + HALF) / NAV_CELL));
+    const j0 = Math.max(0, Math.floor((minZ - 1 + HALF) / NAV_CELL)), j1 = Math.min(NAV_N - 1, Math.floor((maxZ + 1 + HALF) / NAV_CELL));
+    for (let i = i0; i <= i1; i++) {
+      for (let j = j0; j <= j1; j++) {
         const x = -HALF + (i + 0.5) * NAV_CELL, z = -HALF + (j + 0.5) * NAV_CELL;
         const boxes = this.world.hash.query(x - r, z - r, x + r, z + r, tmp);
-        for (const b of boxes) {
-          if (x > b.minX - r && x < b.maxX + r && z > b.minZ - r && z < b.maxZ + r) { blocked[i * NAV_N + j] = 1; break; }
+        let b = 0;
+        for (const box of boxes) {
+          if (box.noCollide) continue;
+          if (x > box.minX - r && x < box.maxX + r && z > box.minZ - r && z < box.maxZ + r) { b = 1; break; }
         }
+        this.blocked[i * NAV_N + j] = b;
       }
     }
-    this.blocked = blocked;
+    this.fieldTimer = 0;
   }
 
   // BFS distance field over a window centered on the target.
@@ -113,12 +124,14 @@ export class Zombies {
     return [dx / l, dz / l];
   }
 
-  randomOpenPoint(awayFrom, minDist) {
+  randomOpenPoint(awayFrom, minDist, avoid) {
     for (let i = 0; i < 50; i++) {
       const x = (Math.random() * 2 - 1) * (HALF - 4), z = (Math.random() * 2 - 1) * (HALF - 4);
       const gi = Math.floor((x + HALF) / NAV_CELL), gj = Math.floor((z + HALF) / NAV_CELL);
       if (this.blocked[gi * NAV_N + gj]) continue;
       if (awayFrom && Math.hypot(x - awayFrom.x, z - awayFrom.z) < minDist) continue;
+      // Never spawn in or right next to the player's safehouse.
+      if (avoid && x > avoid.x0 - 15 && x < avoid.x1 + 15 && z > avoid.z0 - 15 && z < avoid.z1 + 15) continue;
       return { x, z };
     }
     return null;
@@ -151,10 +164,18 @@ export class Zombies {
       pos: g.position, hp: t.hp, maxHp: t.hp, state: 'wander', target: null, lastSeen: 0,
       phase: Math.random() * 10, attackCd: 0, losTimer: Math.random() * 0.3, canSee: false,
       groanTimer: 3 + Math.random() * 10, wanderTimer: 0, dir: Math.random() * Math.PI * 2,
-      radius: 0.32 * t.scale, height: 1.85 * t.scale, stagger: 0, dead: false,
+      radius: 0.32 * t.scale, height: 1.85 * t.scale, stagger: 0, dead: false, stuck: 0,
     };
     this.list.push(zb);
     return zb;
+  }
+
+  serialize() {
+    return this.list.map((z) => ({ x: +z.pos.x.toFixed(2), z: +z.pos.z.toFixed(2), type: z.type, hp: Math.round(z.hp) }));
+  }
+
+  restore(saved) {
+    for (const s of saved) { const z = this.spawn(s.x, s.z, s.type); z.hp = s.hp; }
   }
 
   populate(count, player) {
@@ -213,11 +234,11 @@ export class Zombies {
 
     // Trickle spawns keep the town alive; more over time.
     this.spawnTimer -= dt;
-    const cap = 90 + Math.floor(game.raidElapsed / 60) * 6;
+    const cap = 90 + Math.min(80, game.day * 8);
     if (this.spawnTimer <= 0) {
-      this.spawnTimer = 6;
+      this.spawnTimer = game.isNight ? 5 : 10;
       if (this.list.length < cap) {
-        const p = this.randomOpenPoint(player.pos, 45);
+        const p = this.randomOpenPoint(player.pos, 45, game.safehouse);
         if (p) { const z = this.spawn(p.x, p.z); if (Math.random() < 0.5) { z.state = 'investigate'; z.target = { x: px, z: pz }; } }
       }
     }
@@ -235,8 +256,8 @@ export class Zombies {
       zb.losTimer -= dt;
       if (zb.losTimer <= 0) {
         zb.losTimer = 0.25;
-        const sightRange = player.flashlight ? 30 : 18;
-        const range = player.crouch ? sightRange * 0.6 : sightRange;
+        let range = (player.flashlight ? 30 : 18) * (game.isNight ? 0.8 : 1.3) * player.stealthMul;
+        if (player.crouch) range *= 0.6;
         zb.canSee = dist < range && hasLOS(hash, zb.pos.x, zb.pos.z, px, pz);
         if (zb.canSee) {
           // Zombies need roughly to face you unless you're very close.
@@ -250,7 +271,7 @@ export class Zombies {
       if (zb.state === 'chase') {
         zb.lastSeen -= dt;
         if (zb.lastSeen <= 0 && !zb.canSee) { zb.state = 'investigate'; zb.target = { x: px, z: pz }; }
-        speed = zb.def.chase;
+        speed = zb.def.chase * (game.isNight ? 1.15 : 1);
         const flow = (!zb.canSee || dist > 6) ? this.flowDir(zb.pos.x, zb.pos.z) : null;
         if (flow) { mx = flow[0]; mz = flow[1]; }
         else { mx = dx / (dist || 1); mz = dz / (dist || 1); }
@@ -298,6 +319,14 @@ export class Zombies {
         const minD = zb.radius + player.radius;
         if (pd < minD && pd > 1e-4) { zb.pos.x = px + (pdx / pd) * minD; zb.pos.z = pz + (pdz / pd) * minD; }
         const moved = Math.hypot(zb.pos.x - before.x, zb.pos.z - before.z);
+        // Blocked while chasing → bash whatever player-made obstacle is in the way.
+        if (zb.state === 'chase' && moved < speed * dt * 0.3) {
+          zb.stuck += dt;
+          if (zb.stuck > 0.6 && zb.attackCd <= 0) {
+            const s = this.structureNear(zb);
+            if (s) { zb.attackCd = 1.5; game.damageStructure(s, zb.def.dmg[1] * (zb.type === 'brute' ? 3 : 1)); }
+          }
+        } else zb.stuck = 0;
         // stuck while wandering → turn around
         if (zb.state === 'wander' && moved < speed * dt * 0.3) zb.dir += Math.PI * (0.5 + Math.random());
         const targetDir = Math.atan2(mx, mz);
@@ -329,6 +358,16 @@ export class Zombies {
       }
     }
     this.nearest = nearest;
+  }
+
+  structureNear(zb) {
+    const r = zb.radius + 0.5;
+    for (const b of this.world.hash.query(zb.pos.x - r, zb.pos.z - r, zb.pos.x + r, zb.pos.z + r, [])) {
+      if (!b.structure || b.noCollide) continue;
+      const cx = Math.max(b.minX, Math.min(zb.pos.x, b.maxX)), cz = Math.max(b.minZ, Math.min(zb.pos.z, b.maxZ));
+      if (Math.hypot(zb.pos.x - cx, zb.pos.z - cz) < r) return b.structure;
+    }
+    return null;
   }
 
   // 3D ray test against zombies. Returns { zb, t, head } for the closest hit.

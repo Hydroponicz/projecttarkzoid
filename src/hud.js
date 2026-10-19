@@ -1,5 +1,5 @@
-// In-raid HUD: health doll, stamina, hunger/thirst, ammo, compass,
-// extracts, messages, hitmarker and a fold-out map.
+// HUD: health doll, stamina, hunger/thirst/fatigue, ammo, compass, clock,
+// interaction prompts, build bar, messages, hitmarker and a fold-out map.
 import { PARTS } from './player.js';
 import { ITEMS } from './items.js';
 import { countAmmo } from './inventory.js';
@@ -68,7 +68,6 @@ export class HUD {
     if ((p.hp.legL <= 0 || p.hp.legR <= 0) && p.painkiller <= 0) status.push('<b class="red">LEG DESTROYED</b>');
     if (p.food <= 10) status.push('<b class="red">STARVING</b>');
     if (p.water <= 10) status.push('<b class="red">DEHYDRATED</b>');
-    $('status').innerHTML = status.join(' ');
 
     // Weapon
     const w = p.active === 'gun' ? p.weapon : p.melee;
@@ -91,23 +90,34 @@ export class HUD {
     }
     strip.innerHTML = html + `<span class="deg">${Math.round(deg)}°</span>`;
 
-    // Timer + extracts
-    const left = Math.max(0, game.raidTime - game.raidElapsed);
-    $('timer').textContent = `${String(Math.floor(left / 60)).padStart(2, '0')}:${String(Math.floor(left % 60)).padStart(2, '0')}`;
-    $('extracts').innerHTML = game.world.extracts.map((e) => {
-      const dx = e.x - p.pos.x, dz = e.z - p.pos.z;
-      const bearing = ((Math.atan2(dx, -dz) * 180 / Math.PI) + 360) % 360;
-      const dir = DIRS[Math.round(bearing / 45) % 8];
-      return `<div>EXFIL ${e.name} <span class="dim">— ${dir}, ~${Math.round(Math.hypot(dx, dz) / 10) * 10}m</span></div>`;
-    }).join('');
-
-    const ex = $('extracting');
-    if (game.extractTimer != null) { ex.style.display = 'block'; ex.textContent = `EXTRACTING IN ${game.extractTimer.toFixed(1)}`; }
-    else ex.style.display = 'none';
+    // Clock + character info
+    $('clock').textContent = `Day ${game.day} · ${game.clockText()}${game.isNight ? ' · NIGHT' : ''}`;
+    const ch = game.profile;
+    const inSafe = game.inSafehouse(p.pos.x, p.pos.z);
+    $('info').innerHTML = `${ch.name} <span class="dim">— ${ch.professionName}</span>` +
+      (inSafe ? '<br><span class="safe">SAFEHOUSE</span>' : '') +
+      (game.builder.active ? '<br><span class="dim">BUILD MODE</span>' : '');
+    $('rest').style.width = (100 - p.fatigue) + '%';
+    if (p.fatigue > 80) status.push('<b class="red">EXHAUSTED</b>');
+    else if (p.fatigue > 60) status.push('<b>TIRED</b>');
+    $('status').innerHTML = status.join(' ');
 
     const prompt = $('prompt');
-    if (game.lookTarget) { prompt.style.display = 'block'; prompt.textContent = `[F] Search ${game.lookTarget.name}`; }
-    else prompt.style.display = 'none';
+    const b = game.builder;
+    let text = '';
+    if (b.active) {
+      text = b.valid ? '[LMB] Build · [R] Rotate' : b.reason;
+      if (b.target) text += ` · [X] Dismantle ${b.target.name} (${Math.ceil(b.target.hp)}/${b.target.maxHp})`;
+    } else if (game.lookTarget) {
+      const t = game.lookTarget;
+      const hp = t.hp != null && t.hp < t.maxHp ? ` (${Math.ceil(t.hp)}/${t.maxHp})` : '';
+      if (t.door || t.kind === 'door') text = `[F] ${t.open ? 'Close' : 'Open'} ${t.name}${hp}`;
+      else if (t.kind === 'bed' || t.type === 'bed') text = '[F] Sleep';
+      else text = `[F] Search ${t.name}`;
+    }
+    prompt.style.display = text ? 'block' : 'none';
+    prompt.textContent = text;
+    this.updateBuildBar(game);
 
     $('vignette').style.opacity = Math.max(p.hurtFlash, (1 - Math.min(p.hp.thorax / 85, p.hp.head / 35)) * 0.6);
     $('crosshair').style.opacity = p.ads > 0.5 || p.active !== 'gun' ? 0 : 0.7;
@@ -116,6 +126,21 @@ export class HUD {
     if (this.hitTimer <= 0) $('hitmarker').className = '';
 
     if (this.mapOpen) this.drawMap(game);
+  }
+
+  updateBuildBar(game) {
+    const bar = $('buildbar');
+    const b = game.builder;
+    bar.style.display = b.active ? 'flex' : 'none';
+    if (!b.active) return;
+    // Refresh a few times a second; affordability changes as you loot.
+    if (this.barSel === b.sel && (this.barT = (this.barT || 0) - 1) > 0) return;
+    this.barSel = b.sel;
+    this.barT = 15;
+    bar.innerHTML = game.buildables.map((d, i) => {
+      const na = d.skill > game.player.skill.carpentry || !b.canAfford(d);
+      return `<div class="b ${i === b.sel ? 'sel' : ''} ${na ? 'na' : ''}">${i + 1}. ${d.name}<small>${game.buildCost(d)}${d.skill ? ` · Carp ${d.skill}` : ''}</small></div>`;
+    }).join('');
   }
 
   toggleMap(v) {
@@ -138,11 +163,10 @@ export class HUD {
       ctx.fillStyle = colors[b.kind];
       ctx.fillRect(tx(b.x0), tx(b.z0), (b.x1 - b.x0) * S, (b.z1 - b.z0) * S);
     }
-    ctx.font = '12px monospace';
-    for (const e of game.world.extracts) {
-      ctx.fillStyle = '#4f4'; ctx.beginPath(); ctx.arc(tx(e.x), tx(e.z), 6, 0, 7); ctx.fill();
-      ctx.fillStyle = '#cfc'; ctx.fillText(e.name, Math.min(c.width - 120, Math.max(4, tx(e.x) - 40)), tx(e.z) + (e.z > 0 ? -10 : 20));
-    }
+    ctx.fillStyle = '#a8834a';
+    for (const st of game.builder.structures) ctx.fillRect(tx(st.box.minX), tx(st.box.minZ), Math.max(2, (st.box.maxX - st.box.minX) * S), Math.max(2, (st.box.maxZ - st.box.minZ) * S));
+    const sh = game.safehouse;
+    if (sh) { ctx.strokeStyle = '#e5c84a'; ctx.lineWidth = 2; ctx.strokeRect(tx(sh.x0), tx(sh.z0), (sh.x1 - sh.x0) * S, (sh.z1 - sh.z0) * S); }
     const p = game.player;
     ctx.save();
     ctx.translate(tx(p.pos.x), tx(p.pos.z));

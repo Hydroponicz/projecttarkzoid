@@ -9,72 +9,101 @@
 <body>
   <canvas id="game"></canvas>
 
-  <!-- In-raid HUD -->
+  <!-- In-game HUD -->
   <div id="hud">
     <div id="compass"></div>
-    <div id="timer">00:00</div>
-    <div id="extracts"></div>
+    <div id="clock"></div>
+    <div id="info"></div>
     <div id="crosshair"></div>
     <div id="hitmarker"></div>
     <div id="vignette"></div>
+    <div id="sleepfade"></div>
     <div id="prompt"></div>
-    <div id="extracting"></div>
     <div id="messages"></div>
+    <div id="buildbar"></div>
     <div id="bottomleft">
       <div id="doll"></div>
       <div class="meter"><span>STA</span><div class="bar"><i id="stam"></i></div></div>
       <div class="meter"><span>FOOD</span><div class="bar"><i id="food"></i></div></div>
       <div class="meter"><span>H2O</span><div class="bar"><i id="water"></i></div></div>
+      <div class="meter"><span>REST</span><div class="bar"><i id="rest"></i></div></div>
       <div id="status"></div>
     </div>
     <div id="weapon"></div>
   </div>
 
-  <div id="map"><canvas id="mapcanvas" width="640" height="640"></canvas><div class="hint">M to close</div></div>
+  <div id="map"><canvas id="mapcanvas" width="640" height="640"></canvas><div class="hint">M to close · yellow = safehouse</div></div>
 
-  <!-- Inventory overlay (raid + hideout) -->
+  <!-- Inventory overlay -->
   <div id="invwrap">
     <div id="invhead"><span id="invtitle">Inventory</span><span class="hint">Drag to move · R rotates while dragging · Shift+click quick-move · Right-click for actions · Tab/Esc to close</span></div>
     <div id="inv"></div>
   </div>
 
-  <!-- Pause / pointer-lock prompt -->
+  <!-- Pause -->
   <div id="pause" class="overlay">
     <div class="panel">
       <h2>PAUSED</h2>
       <p>Click to resume</p>
-      <button id="btn-abandon" class="danger">Abandon raid (lose gear)</button>
+      <button id="btn-save-quit">Save &amp; quit to menu</button>
     </div>
   </div>
 
-  <!-- Hideout -->
-  <div id="hideout" class="screen">
-    <header>
+  <!-- Title menu -->
+  <div id="menu" class="screen">
+    <div class="panel title-panel">
       <h1>TARKZOID</h1>
-      <div id="money"></div>
-      <div id="stats"></div>
+      <p class="dim">This is how you died.</p>
+      <div id="menu-save"></div>
+      <div class="menu-buttons">
+        <button id="btn-continue" class="go">CONTINUE</button>
+        <button id="btn-newchar" class="go">NEW CHARACTER</button>
+        <button id="btn-newworld" class="danger small">Start a fresh world</button>
+      </div>
+      <div id="graveyard"></div>
+    </div>
+  </div>
+
+  <!-- Character creation -->
+  <div id="create" class="screen">
+    <header>
+      <h1>NEW SURVIVOR</h1>
       <div class="spacer"></div>
-      <button id="btn-wipe" class="danger small">Wipe profile</button>
-      <button id="btn-raid" class="go">START RAID ▶</button>
+      <button id="btn-create-back" class="small">Back</button>
     </header>
-    <div id="hideout-inv"></div>
+    <div class="create-grid">
+      <section>
+        <h3>Name</h3>
+        <div class="row"><input id="cc-name" maxlength="24" /><button id="cc-random" class="small">Random</button></div>
+        <h3>Profession</h3>
+        <div id="cc-profs"></div>
+      </section>
+      <section>
+        <h3>Skills <span id="cc-points"></span></h3>
+        <div id="cc-stats"></div>
+        <h3>Starting kit</h3>
+        <div id="cc-kit" class="dim"></div>
+        <button id="cc-start" class="go">SPAWN ▶</button>
+      </section>
+    </div>
     <footer>
-      WASD move · Shift sprint · C crouch · Mouse look · LMB fire · RMB aim · R reload · Q/1/2 gun/melee · F search · Tab inventory · H quick-heal · L flashlight · M map · Esc pause
-      <br>Everything you take into a raid is lost if you die. Your 2×2 secure container is always kept. Find an extraction point before the timer runs out.
+      WASD move · Shift sprint · C crouch · Mouse look · LMB fire/swing · RMB aim · R reload · Q/1/2 gun/melee · F interact (doors, loot, beds) · Tab inventory · H quick-heal · L flashlight · M map
+      <br>B build mode (1–6 select, R rotate, LMB place, X dismantle) · V claim safehouse · Chop trees with an axe, saw logs into planks · Esc pause
     </footer>
   </div>
 
-  <!-- Raid result -->
-  <div id="result" class="screen">
+  <!-- Death -->
+  <div id="death" class="screen">
     <div class="panel">
-      <h1 id="res-title"></h1>
-      <p id="res-reason"></p>
-      <div id="res-stats"></div>
-      <button id="btn-back" class="go">Return to hideout</button>
+      <h1 class="red" id="death-title">YOU DIED</h1>
+      <p id="death-reason"></p>
+      <div id="death-stats"></div>
+      <p class="dim">Your corpse and everything you carried stays in the world. Your base is still standing.</p>
+      <button id="btn-death-next" class="go">NEW CHARACTER</button>
     </div>
   </div>
 
-  <div id="loading" class="overlay"><div class="panel"><h2>Generating town…</h2></div></div>
+  <div id="loading" class="overlay"><div class="panel"><h2>Loading the world…</h2></div></div>
 
   <script type="module" src="/src/main.js"></script>
 </body>

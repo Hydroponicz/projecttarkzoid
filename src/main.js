@@ -1,26 +1,24 @@
 import * as THREE from 'three';
-import { buildWorld, HALF } from './world.js';
+import { buildWorld, corpseMesh, setDoor } from './world.js';
 import { Zombies } from './zombies.js';
 import { Player } from './player.js';
 import { Input } from './input.js';
 import { HUD } from './hud.js';
 import { FX } from './fx.js';
 import { InventoryUI } from './invui.js';
-import { ITEMS, makeItem, itemValue } from './items.js';
-import { makeGrid, addItem } from './inventory.js';
-import { loadProfile, saveProfile, wipeProfile } from './save.js';
+import { ITEMS, makeItem } from './items.js';
+import { makeGrid, addItem, removeItem } from './inventory.js';
+import { loadSave, writeSave, deleteSave } from './save.js';
 import { initAudio, sfx } from './audio.js';
+import { Builder, BUILDABLES, buildCostText } from './build.js';
+import { setupCreation } from './character.js';
 
 const $ = (id) => document.getElementById(id);
-
-const TRADER = [
-  ['pm', 9000], ['mp133', 26000], ['sks', 42000], ['ak74', 68000],
-  ['ammo_9x18', 1200], ['ammo_12g', 2400], ['ammo_762', 4200], ['ammo_545', 5000],
-  ['knife', 2500], ['crowbar', 6500], ['axe', 15000],
-  ['bp_scav', 9000], ['bp_tri', 34000], ['helmet_ssh', 14000], ['armor_paca', 24000], ['armor_6b13', 72000],
-  ['bandage', 2500], ['ai2', 6000], ['salewa', 21000], ['painkillers', 5000], ['antiviral', 90000],
-  ['water', 5000], ['beans', 4500],
-];
+const SCREENS = ['menu', 'create', 'death'];
+const START_TIME = 9 * 60;      // day 1, 09:00
+const AUTOSAVE = 30;            // seconds
+const NIGHT = new THREE.Color(0x10141c), DAY = new THREE.Color(0x7d8a96);
+const smooth = (a, b, x) => { const t = Math.max(0, Math.min(1, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
 
 class Game {
   constructor() {
@@ -32,44 +30,56 @@ class Game {
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.1;
     this.scene = new THREE.Scene();
-    this.scene.background = new THREE.Color(0x10141c);
-    this.scene.fog = new THREE.FogExp2(0x10141c, 0.026);
+    this.scene.background = NIGHT.clone();
+    this.scene.fog = new THREE.FogExp2(NIGHT.getHex(), 0.026);
     this.camera = new THREE.PerspectiveCamera(75, 1, 0.03, 300);
     this.scene.add(this.camera);
 
-    this.scene.add(new THREE.HemisphereLight(0x7a8aaa, 0x2a2a1a, 1.1));
-    this.moon = new THREE.DirectionalLight(0x9aaad8, 0.9);
-    this.moon.castShadow = true;
-    this.moon.shadow.mapSize.set(2048, 2048);
-    Object.assign(this.moon.shadow.camera, { left: -40, right: 40, top: 40, bottom: -40, near: 1, far: 120 });
-    this.scene.add(this.moon, this.moon.target);
+    this.hemi = new THREE.HemisphereLight(0x7a8aaa, 0x2a2a1a, 1.1);
+    this.scene.add(this.hemi);
+    this.sun = new THREE.DirectionalLight(0x9aaad8, 0.9);
+    this.sun.castShadow = true;
+    this.sun.shadow.mapSize.set(2048, 2048);
+    Object.assign(this.sun.shadow.camera, { left: -40, right: 40, top: 40, bottom: -40, near: 1, far: 120 });
+    this.scene.add(this.sun, this.sun.target);
 
     this.input = new Input(this.canvas);
     this.hud = new HUD();
     this.fx = new FX(this.scene);
-    this.raidInv = new InventoryUI($('inv'));
-    this.hideoutInv = new InventoryUI($('hideout-inv'));
-    this.profile = loadProfile();
-    if (!this.profile.secure) this.profile.secure = makeGrid(2, 2);
-    this.state = 'hideout';
+    this.inv = new InventoryUI($('inv'));
+    this.builder = new Builder(this);
+    this.buildables = BUILDABLES;
+    this.buildCost = buildCostText;
+    this.creation = setupCreation((ch) => this.spawnCharacter(ch));
+    this.state = 'menu';
     this.invOpen = false;
+    this.save = loadSave();
+    this.chopHits = new Map();
 
     addEventListener('resize', () => this.resize());
     this.resize();
     this.canvas.addEventListener('click', () => {
-      if (this.state === 'raid' && !this.invOpen && !this.hud.mapOpen) this.input.lock();
+      if (this.state === 'play' && !this.invOpen && !this.hud.mapOpen) this.input.lock();
     });
     document.addEventListener('pointerlockchange', () => this.updatePause());
-    $('pause').addEventListener('click', (e) => { if (e.target.id !== 'btn-abandon') this.input.lock(); });
-    $('btn-abandon').onclick = () => this.endRaid('died', 'Abandoned the raid');
-    $('btn-raid').onclick = () => this.startRaid();
-    $('btn-back').onclick = () => this.showHideout();
-    $('btn-wipe').onclick = () => {
-      if (confirm('Wipe your profile and start over?')) { this.profile = wipeProfile(); this.showHideout(); }
+    $('pause').addEventListener('click', (e) => { if (e.target.tagName !== 'BUTTON') this.input.lock(); });
+    $('btn-save-quit').onclick = () => this.quitToMenu();
+    $('btn-continue').onclick = () => this.loadWorld();
+    $('btn-newchar').onclick = () => this.showScreen('create');
+    $('btn-create-back').onclick = () => this.showMenu();
+    $('btn-death-next').onclick = () => { this.creation.reset(); this.showScreen('create'); };
+    $('btn-newworld').onclick = () => {
+      if (this.save && !confirm('Start a fresh world? Your current world, base and character are deleted.')) return;
+      deleteSave();
+      this.save = null;
+      this.creation.reset();
+      this.showScreen('create');
     };
+    addEventListener('beforeunload', () => this.saveGame());
+    document.addEventListener('visibilitychange', () => { if (document.hidden) this.saveGame(); });
 
     this.last = performance.now();
-    this.showHideout();
+    this.showMenu();
     requestAnimationFrame((t) => this.loop(t));
   }
 
@@ -79,188 +89,271 @@ class Game {
     this.camera.updateProjectionMatrix();
   }
 
-  // ---------- hideout ----------
-  playerSections() {
-    const p = this.profile;
-    const s = [
-      { kind: 'equip', title: 'Equipment', equip: p.equip },
-      { kind: 'grid', title: 'Pockets', grid: p.pockets },
-    ];
-    if (p.equip.backpack) s.push({ kind: 'grid', title: ITEMS[p.equip.backpack.key].name, grid: p.equip.backpack.grid, noNest: true });
-    s.push({ kind: 'grid', title: 'Secure container (kept on death)', grid: p.secure, noNest: true });
-    return s;
+  // ---------- time ----------
+  get day() { return Math.floor(this.time / 1440) + 1; }
+  get hour() { return (this.time % 1440) / 60; }
+  get isNight() { const h = this.hour; return h >= 21 || h < 5.5; }
+  clockText() {
+    const m = Math.floor(this.time % 1440);
+    return `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
   }
 
-  showHideout() {
-    this.state = 'hideout';
-    $('hideout').style.display = 'block';
-    $('result').style.display = 'none';
+  updateLighting() {
+    const h = this.hour;
+    const d = smooth(5, 7.5, h) - smooth(19, 21.5, h); // 0 = night, 1 = day
+    this.daylight = d;
+    this.scene.background.copy(NIGHT).lerp(DAY, d);
+    this.scene.fog.color.copy(this.scene.background);
+    this.scene.fog.density = 0.026 - 0.014 * d;
+    this.hemi.intensity = 1.1 + 1.3 * d;
+    this.sun.intensity = 0.9 + 1.6 * d;
+    this.sun.color.setHex(0x9aaad8).lerp(new THREE.Color(0xfff0d8), d);
+  }
+
+  // ---------- screens ----------
+  showScreen(name) {
+    for (const s of SCREENS) $(s).style.display = s === name ? 'block' : 'none';
+    this.state = name;
     this.hud.show(false);
-    const p = this.profile;
-    const refreshHeader = () => {
-      $('money').textContent = `₽ ${p.money.toLocaleString()}`;
-      $('stats').textContent = `Raids ${p.stats.raids} · Survived ${p.stats.survived} · Deaths ${p.stats.deaths} · Kills ${p.stats.kills}`;
-    };
-    refreshHeader();
-    this.hideoutInv.open(() => this.playerSections(), () => [
-      { kind: 'grid', title: 'Stash', grid: p.stash },
-      { kind: 'shop', col: 2, title: 'Trader — Jaeger', stock: TRADER, onBuy: (key, price) => {
-        if (p.money < price) return this.toast('Not enough roubles');
-        const it = makeItem(key, key.startsWith('ammo') ? { count: ITEMS[key].stack } : {});
-        if (!addItem(p.stash, it)) return this.toast('Stash is full');
-        p.money -= price;
-        sfx.pickup();
-        saveProfile(p); refreshHeader(); this.hideoutInv.render();
-      } },
-      { kind: 'sell', col: 2, title: 'Sell' },
-    ], {
-      onChange: () => { saveProfile(p); refreshHeader(); },
-      onSell: (it) => { p.money += Math.round(itemValue(it) * 0.7); },
-    });
   }
 
-  toast(text) {
-    const t = document.createElement('div');
-    t.className = 'msg';
-    t.style.cssText = 'position:fixed;left:50%;top:70px;transform:translateX(-50%);z-index:300';
-    t.textContent = text;
-    document.body.appendChild(t);
-    setTimeout(() => t.remove(), 1800);
+  showMenu() {
+    this.showScreen('menu');
+    const s = this.save;
+    const alive = s?.character;
+    $('btn-continue').style.display = alive ? 'block' : 'none';
+    $('btn-newchar').style.display = alive ? 'none' : 'block';
+    $('btn-newchar').textContent = s ? 'NEW CHARACTER (same world)' : 'NEW GAME';
+    $('btn-newworld').style.display = s ? 'block' : 'none';
+    if (s) {
+      const day = Math.floor(s.time / 1440) + 1;
+      $('menu-save').innerHTML = alive
+        ? `${alive.name} — ${alive.professionName}<br><span class="dim">World day ${day}${s.safehouse ? ' · safehouse claimed' : ''}</span>`
+        : `<span class="dim">World day ${day} · no living survivor</span>`;
+    } else $('menu-save').textContent = '';
+    $('graveyard').innerHTML = (s?.graveyard || []).length
+      ? '<b>Graveyard</b><br>' + s.graveyard.slice().reverse().map((g) => `✝ ${g.name} (${g.profession}) — survived ${g.days} day${g.days === 1 ? '' : 's'}, ${g.kills} kills. ${g.reason}.`).join('<br>')
+      : '';
   }
 
-  // ---------- raid lifecycle ----------
-  startRaid() {
+  // ---------- world lifecycle ----------
+  spawnCharacter(ch) {
+    if (!this.save) this.save = { seed: Math.floor(Math.random() * 2 ** 31), time: START_TIME, safehouse: null, world: null, graveyard: [] };
+    ch.spawnTime = this.save.time;
+    this.save.character = ch;
+    writeSave(this.save);
+    this.loadWorld();
+  }
+
+  loadWorld() {
     initAudio();
-    const p = this.profile;
-    $('hideout').style.display = 'none';
+    for (const s of SCREENS) $(s).style.display = 'none';
     $('loading').style.display = 'flex';
-    // Let the loading panel paint before generating.
-    setTimeout(() => {
-      p.stats.raids++;
-      // Save a copy as if we died: closing the tab mid-raid forfeits the gear.
-      const forfeit = JSON.parse(JSON.stringify(p));
-      forfeit.equip = { weapon: null, melee: null, armor: null, helmet: null, backpack: null };
-      forfeit.pockets = makeGrid(4, 2);
-      forfeit.stats.deaths++;
-      saveProfile(forfeit);
-
-      this.startValue = this.gearValue();
-      this.world = buildWorld(this.scene);
-      this.zombies = new Zombies(this.scene, this.world);
-      this.player = new Player(this.camera, this.scene, this);
-      const sp = this.world.spawns[Math.floor(Math.random() * this.world.spawns.length)];
-      this.player.pos.set(sp[0], 0, sp[1]);
-      this.player.yaw = Math.atan2(sp[0], sp[1]); // face the town center
-      this.zombies.populate(85, this.player.pos);
-      this.raidTime = 25 * 60;
-      this.raidElapsed = 0;
-      this.extractTimer = null;
-      this.lookTarget = null;
-      this.state = 'raid';
-      $('loading').style.display = 'none';
-      this.hud.show(true);
-      this.hud.message('Find loot. Reach an extraction point. Stay quiet.', 5);
-      this.input.lock();
-      this.updatePause();
-    }, 30);
+    this.state = 'loading';
+    setTimeout(() => this.buildFromSave(), 30);
   }
 
-  gearValue() {
-    const p = this.profile;
-    let v = 0;
-    for (const k in p.equip) if (p.equip[k]) v += itemValue(p.equip[k]);
-    for (const g of [p.pockets, p.secure]) for (const it of g.items) v += itemValue(it);
-    return v;
+  buildFromSave() {
+    const s = this.save;
+    this.time = s.time;
+    this.safehouse = s.safehouse;
+    this.profile = s.character;
+    this.world = buildWorld(this.scene, s.seed);
+    const w = s.world;
+    if (w) {
+      w.containers.forEach((grid, i) => { if (this.world.containers[i]) this.world.containers[i].grid = grid; });
+      for (const c of w.extra) this.addExtraContainer(c);
+      w.doors.forEach((d, i) => {
+        const door = this.world.doors[i];
+        if (!door) return;
+        door.hp = d.hp;
+        if (d.broken) this.breakDoor(door, true); else setDoor(door, d.open);
+      });
+      for (const i of w.felled) this.world.fellTree(i);
+    }
+    this.builder.structures = [];
+    this.zombies = this.player = null;
+    if (w) this.builder.restore(w.structures);
+    this.zombies = new Zombies(this.scene, this.world);
+    this.player = new Player(this.camera, this.scene, this);
+    const ch = this.profile;
+    if (ch.player) this.player.restore(ch.player);
+    else this.placeNewCharacter(!!w);
+    if (w) this.zombies.restore(w.zombies);
+    else this.zombies.populate(85, this.player.pos);
+
+    this.updateLighting();
+    this.autosave = AUTOSAVE;
+    this.lookTarget = null;
+    this.state = 'play';
+    $('loading').style.display = 'none';
+    this.hud.show(true);
+    this.hud.message(ch.player ? `Welcome back, ${ch.name}.` : `${ch.name}. Day ${this.day}. Find supplies, find shelter. Press V inside a building to claim it.`, 6);
+    this.input.lock();
+    this.updatePause();
   }
 
-  endRaid(outcome, reason) {
-    if (this.state !== 'raid') return;
-    this.state = 'result';
+  // New characters wake up in a random house, away from known zombies.
+  placeNewCharacter(hasZombies) {
+    const houses = this.world.houses;
+    let pick = houses[Math.floor(Math.random() * houses.length)];
+    if (hasZombies) {
+      const zs = this.save.world.zombies;
+      for (let i = 0; i < 20; i++) {
+        const h = houses[Math.floor(Math.random() * houses.length)];
+        const cx = (h.x0 + h.x1) / 2, cz = (h.z0 + h.z1) / 2;
+        if (!zs.some((z) => Math.hypot(z.x - cx, z.z - cz) < 15)) { pick = h; break; }
+      }
+    }
+    const cx = (pick.x0 + pick.x1) / 2, cz = (pick.z0 + pick.z1) / 2;
+    this.player.pos.set(cx, 0, cz);
+    this.player.yaw = Math.random() * Math.PI * 2;
+  }
+
+  addExtraContainer(c) {
+    const ct = this.world.addContainer(c.type === 'drop' ? 'body' : c.type, c.x, c.z);
+    ct.type = c.type;
+    ct.name = c.name;
+    ct.grid = c.grid;
+    ct.color = c.color;
+    if (c.type === 'drop') ct.mesh = this.dropMesh(c.x, c.z);
+    else ct.mesh = corpseMesh(this.world.group, c.x, c.z, c.color ?? 0x4a4a3a);
+    return ct;
+  }
+
+  dropMesh(x, z) {
+    const m = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.2, 0.3), new THREE.MeshStandardMaterial({ color: 0x5a5a3a }));
+    m.position.set(x, 0.1, z);
+    this.world.group.add(m);
+    return m;
+  }
+
+  saveGame() {
+    if (this.state !== 'play' || !this.world) return;
+    const W = this.world;
+    this.profile.player = this.player.serialize();
+    this.profile.kills = this.player.kills;
+    this.save.time = this.time;
+    this.save.safehouse = this.safehouse;
+    this.save.character = this.profile;
+    this.save.world = {
+      containers: W.containers.slice(0, W.generatedContainers).map((c) => c.grid),
+      extra: W.containers.slice(W.generatedContainers).map((c) => ({ type: c.type, name: c.name, x: c.x, z: c.z, grid: c.grid, color: c.color })),
+      doors: W.doors.map((d) => ({ open: d.open, hp: d.hp, broken: d.broken || undefined })),
+      felled: [...W.felled],
+      structures: this.builder.serialize(),
+      zombies: this.zombies.serialize(),
+    };
+    writeSave(this.save);
+  }
+
+  teardown() {
     this.closeInventory();
     this.hud.toggleMap(false);
+    this.builder.toggle(false);
     this.input.unlock();
-    const p = this.profile;
-    const kills = this.player.kills;
-    p.stats.kills += kills;
-    const survived = outcome === 'extracted';
-    const endValue = this.gearValue();
-    if (survived) {
-      p.stats.survived++;
-    } else {
-      p.stats.deaths++;
-      p.equip = { weapon: null, melee: null, armor: null, helmet: null, backpack: null };
-      p.pockets = makeGrid(4, 2);
-    }
-    // Never leave a player completely unarmed: the trader gives a knife.
-    if (!p.equip.melee && !p.equip.weapon && p.money < 9000) p.equip.melee = makeItem('knife');
-    saveProfile(p);
-
-    const mins = Math.floor(this.raidElapsed / 60), secs = Math.floor(this.raidElapsed % 60);
-    $('res-title').textContent = survived ? 'SURVIVED' : outcome === 'mia' ? 'MISSING IN ACTION' : 'KILLED IN ACTION';
-    $('res-title').style.color = survived ? '#8f8' : '#e55';
-    $('res-reason').textContent = reason || '';
-    $('res-stats').innerHTML = `Time in raid: ${mins}m ${secs}s<br>Zombies killed: ${kills}<br>` +
-      (survived ? `Gear value: ₽${this.startValue.toLocaleString()} → ₽${endValue.toLocaleString()} (<span class="${endValue >= this.startValue ? 'green' : 'red'}">${endValue >= this.startValue ? '+' : ''}${(endValue - this.startValue).toLocaleString()}</span>)`
-        : `Lost gear worth ₽${endValue.toLocaleString()} (secure container kept)`);
-    $('result').style.display = 'block';
-    this.hud.show(false);
-    $('pause').style.display = 'none';
-
-    // Tear down the world
-    this.zombies.dispose();
-    this.world.dispose();
+    this.zombies?.dispose();
+    this.world?.dispose();
     this.fx.clear();
     for (const c of [...this.camera.children]) this.camera.remove(c);
     this.world = this.zombies = null;
+    $('pause').style.display = 'none';
+  }
+
+  quitToMenu() {
+    this.saveGame();
+    this.teardown();
+    this.showMenu();
+  }
+
+  onDeath(reason) {
+    if (this.state !== 'play') return;
+    const ch = this.profile;
+    const p = this.player;
+    // Leave a corpse with everything the character carried.
+    const grid = makeGrid(10, 10);
+    for (const k in ch.equip) if (ch.equip[k]) addItem(grid, ch.equip[k]) || (grid.h += 4, addItem(grid, ch.equip[k]));
+    for (const it of ch.pockets.items) addItem(grid, it);
+    const corpse = this.addExtraContainer({ type: 'body', name: `${ch.name}'s corpse`, x: p.pos.x, z: p.pos.z, grid, color: 0x2a3020 });
+    corpse.grid = grid;
+    const days = Math.floor((this.time - ch.spawnTime) / 1440);
+    this.save.graveyard = this.save.graveyard || [];
+    this.save.graveyard.push({ name: ch.name, profession: ch.professionName, days, kills: p.kills, reason });
+    // Save the world without a living character.
+    this.profile.player = p.serialize();
+    this.saveGame();
+    this.save.character = null;
+    writeSave(this.save);
+    this.teardown();
+    this.showScreen('death');
+    $('death-title').textContent = `${ch.name.toUpperCase()} IS DEAD`;
+    $('death-reason').textContent = reason;
+    $('death-stats').innerHTML = `Survived ${days} day${days === 1 ? '' : 's'}<br>Zombies killed: ${p.kills}<br>Profession: ${ch.professionName}`;
   }
 
   updatePause() {
-    const show = this.state === 'raid' && !this.input.locked && !this.invOpen && !this.hud.mapOpen;
+    const show = this.state === 'play' && !this.input.locked && !this.invOpen && !this.hud.mapOpen;
     $('pause').style.display = show ? 'flex' : 'none';
   }
 
-  // ---------- raid inventory ----------
+  // ---------- inventory ----------
+  playerSections() {
+    const p = this.profile;
+    const s = [
+      { kind: 'equip', title: `${p.name} — Equipment`, equip: p.equip },
+      { kind: 'grid', title: 'Pockets', grid: p.pockets },
+    ];
+    if (p.equip.backpack) s.push({ kind: 'grid', title: ITEMS[p.equip.backpack.key].name, grid: p.equip.backpack.grid, noNest: true });
+    return s;
+  }
+
   openInventory(container) {
     this.invOpen = true;
     this.input.unlock();
     const right = container ? () => [{ kind: 'grid', title: container.name, grid: container.grid }] : () => [];
-    $('invtitle').textContent = container ? `Searching: ${container.name}` : 'Inventory';
+    $('invtitle').textContent = container ? container.name : 'Inventory';
     $('invwrap').style.display = 'block';
-    this.raidInv.open(() => this.playerSections(), right, {
-      onChange: () => { this.player.buildViewmodel(); this.hud.ammoChanged = true; },
+    this.inv.open(() => this.playerSections(), right, {
+      onChange: () => { this.player.buildViewmodel(); },
       onUse: (it) => this.player.use(it),
       onDrop: (it) => this.dropItem(it),
+      actions: (it, src) => this.itemActions(it, src),
     });
     this.updatePause();
+  }
+
+  itemActions(it, src) {
+    if (it.key !== 'log' || !src.grid) return [];
+    const grids = this.player.ammoGrids();
+    if (!grids.some((g) => g.items.some((i) => i.key === 'saw'))) return [['Saw into planks (needs a saw)', () => this.hud.message('You need a saw')]];
+    return [['Saw into 4 planks', () => {
+      removeItem(src.grid, it);
+      const planks = makeItem('planks', { count: 4 });
+      if (!addItem(src.grid, planks)) this.dropItem(planks);
+      this.zombies.noise(this.player.pos.x, this.player.pos.z, 10);
+      sfx.chop();
+    }]];
   }
 
   closeInventory() {
     if (!this.invOpen) return;
     this.invOpen = false;
-    this.raidInv.closeMenu();
+    this.inv.closeMenu();
     $('invwrap').style.display = 'none';
-    if (this.state === 'raid') { this.input.lock(); this.updatePause(); }
+    if (this.state === 'play') { this.input.lock(); this.updatePause(); }
   }
 
   dropItem(it) {
     const pp = this.player.pos;
     let c = this.world.containers.find((k) => k.type === 'drop' && Math.hypot(k.x - pp.x, k.z - pp.z) < 1.5);
-    if (!c) {
-      c = { type: 'drop', name: 'Dropped items', x: pp.x, z: pp.z, grid: makeGrid(8, 8) };
-      const m = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.2, 0.3), new THREE.MeshStandardMaterial({ color: 0x5a5a3a }));
-      m.position.set(pp.x, 0.1, pp.z);
-      this.world.group.add(m);
-      c.mesh = m;
-      this.world.containers.push(c);
-    }
+    if (!c) c = this.addExtraContainer({ type: 'drop', name: 'Dropped items', x: pp.x, z: pp.z, grid: makeGrid(8, 8) });
     if (!addItem(c.grid, it)) { c.grid.w += 2; c.grid.h += 2; addItem(c.grid, it); }
   }
 
   quickHeal() {
     const pl = this.player;
-    const grids = pl.ammoGrids().concat([this.profile.secure]);
     const want = pl.bleeding.size ? (k) => ITEMS[k].stopBleed : (k) => ITEMS[k].heal;
-    for (const g of grids) {
+    for (const g of pl.ammoGrids()) {
       for (const it of g.items) {
         if (ITEMS[it.key].type !== 'med' || !want(it.key)) continue;
         if (pl.use(it)) {
@@ -273,71 +366,194 @@ class Game {
     this.hud.message('No suitable meds');
   }
 
+  // ---------- world interaction ----------
+  interactables() {
+    const out = [...this.world.containers, ...this.world.beds];
+    for (const d of this.world.doors) if (!d.broken) out.push(d);
+    for (const s of this.builder.structures) if (s.grid || s.door || s.type === 'bed') out.push(s);
+    return out;
+  }
+
+  findLookTarget() {
+    const p = this.player;
+    const fx = -Math.sin(p.yaw), fz = -Math.cos(p.yaw);
+    let best = null, bestScore = Infinity;
+    for (const c of this.interactables()) {
+      const dx = c.x - p.pos.x, dz = c.z - p.pos.z;
+      const d = Math.hypot(dx, dz);
+      if (d > 2.3) continue;
+      const dot = d > 0.6 ? (dx * fx + dz * fz) / d : 1;
+      if (dot < 0.7) continue;
+      const score = d * (2 - dot);
+      if (score < bestScore) { bestScore = score; best = c; }
+    }
+    return best;
+  }
+
+  interact(t) {
+    if (t.kind === 'door') {
+      setDoor(t, !t.open);
+      this.zombies.updateNavRegion(t.box.minX, t.box.minZ, t.box.maxX, t.box.maxZ);
+      sfx.door();
+      this.zombies.noise(t.x, t.z, 3);
+    } else if (t.door) {
+      this.builder.toggleDoor(t);
+      sfx.door();
+    } else if (t.kind === 'bed' || t.type === 'bed') {
+      this.sleep();
+    } else if (t.grid) {
+      this.openInventory(t);
+      sfx.pickup();
+    }
+  }
+
+  sleep() {
+    const p = this.player;
+    if (p.fatigue < 30) return this.hud.message("You're not tired enough to sleep.");
+    if (this.zombies.list.some((z) => z.state === 'chase' || Math.hypot(z.pos.x - p.pos.x, z.pos.z - p.pos.z) < 12)) {
+      return this.hud.message("You can't sleep with zombies nearby.");
+    }
+    const hours = Math.min(9, Math.ceil(p.fatigue / 14));
+    const fade = $('sleepfade');
+    fade.style.opacity = 1;
+    this.sleeping = true;
+    setTimeout(() => {
+      this.time += hours * 60;
+      p.sleep(hours);
+      this.updateLighting();
+      let woke = `You slept ${hours} hours.`;
+      // Sleeping outside a safehouse is risky: the dead come looking.
+      if (!this.inSafehouse(p.pos.x, p.pos.z) && Math.random() < 0.6) {
+        for (let i = 0; i < 3 + Math.floor(Math.random() * 4); i++) {
+          const a = Math.random() * Math.PI * 2;
+          const z = this.zombies.spawn(p.pos.x + Math.cos(a) * 22, p.pos.z + Math.sin(a) * 22);
+          z.state = 'investigate'; z.target = { x: p.pos.x, z: p.pos.z };
+        }
+        woke += ' You wake to groaning outside...';
+      }
+      this.hud.message(woke, 5);
+      fade.style.opacity = 0;
+      this.sleeping = false;
+      this.saveGame();
+    }, 1200);
+  }
+
+  inSafehouse(x, z) {
+    const s = this.safehouse;
+    return !!s && x > s.x0 && x < s.x1 && z > s.z0 && z < s.z1;
+  }
+
+  claimSafehouse() {
+    const p = this.player.pos;
+    const b = this.world.buildingAt(p.x, p.z);
+    let area;
+    if (b) {
+      if (this.zombies.list.some((z) => z.pos.x > b.x0 && z.pos.x < b.x1 && z.pos.z > b.z0 && z.pos.z < b.z1)) {
+        return this.hud.message('Clear the zombies out of this building first.');
+      }
+      area = { x0: b.x0, x1: b.x1, z0: b.z0, z1: b.z1, name: `this ${b.kind}` };
+    } else {
+      // Outdoors: claim a camp area around you for your own construction.
+      area = { x0: p.x - 10, x1: p.x + 10, z0: p.z - 10, z1: p.z + 10, name: 'a camp' };
+    }
+    this.safehouse = area;
+    this.hud.message(`You claimed ${area.name} as your safehouse. Zombies won't respawn here.`, 5);
+    this.saveGame();
+  }
+
+  // Melee swing that hit no zombie: an axe chops the tree in front of you.
+  meleeWorld(key) {
+    if (key !== 'axe') return;
+    const p = this.player;
+    const x = p.pos.x - Math.sin(p.yaw) * 1.0, z = p.pos.z - Math.cos(p.yaw) * 1.0;
+    const tree = this.world.nearestTree(x, z, 1.2);
+    if (tree < 0) return;
+    sfx.chop();
+    this.zombies.noise(p.pos.x, p.pos.z, 12);
+    const hits = (this.chopHits.get(tree) || 0) + 1;
+    this.chopHits.set(tree, hits);
+    if (hits < 5) return this.hud.message(`Chopping... (${hits}/5)`, 1);
+    this.world.fellTree(tree);
+    this.zombies.updateNavRegion(x - 1, z - 1, x + 1, z + 1);
+    for (let i = 0; i < 2; i++) this.dropItem(makeItem('log'));
+    this.hud.message('Timber! Two logs dropped at your feet. Saw them into planks.', 4);
+  }
+
+  damageStructure(s, dmg) {
+    s.hp -= dmg;
+    const p = this.player.pos;
+    const near = Math.hypot(s.x - p.x, s.z - p.z) < 30;
+    if (near) sfx.bash();
+    if (s.hp > 0) return;
+    if (s.kind === 'door') this.breakDoor(s);
+    else this.builder.remove(s);
+    if (near) this.hud.message(`A ${s.name.toLowerCase()} was smashed!`);
+  }
+
+  breakDoor(d, silent) {
+    d.broken = true;
+    d.box.noCollide = true;
+    d.box.blocksShot = d.box.blocksSight = false;
+    d.box.structure = null;
+    this.world.group.remove(d.mesh);
+    if (!silent) this.zombies.updateNavRegion(d.box.minX, d.box.minZ, d.box.maxX, d.box.maxZ);
+  }
+
   // ---------- main loop ----------
   loop(t) {
     const dt = Math.min(0.05, (t - this.last) / 1000);
     this.last = t;
-    if (this.state === 'raid') this.updateRaid(dt);
+    if (this.state === 'play') this.update(dt, t / 1000);
     this.input.endFrame();
-    if (this.state === 'raid') this.renderer.render(this.scene, this.camera);
+    if (this.state === 'play') this.renderer.render(this.scene, this.camera);
     requestAnimationFrame((tt) => this.loop(tt));
   }
 
-  updateRaid(dt) {
+  update(dt, now) {
     const inp = this.input.state();
-    // UI toggles
-    if (inp.inventory || (this.invOpen && this.input.pressed.has('Escape'))) {
-      if (this.invOpen) this.closeInventory(); else this.openInventory(this.lookTarget && Math.hypot(this.lookTarget.x - this.player.pos.x, this.lookTarget.z - this.player.pos.z) < 2.5 ? this.lookTarget : null);
+    const pressed = (c) => this.input.pressed.has(c);
+    if (inp.inventory || (this.invOpen && pressed('Escape'))) {
+      if (this.invOpen) this.closeInventory();
+      else this.openInventory(this.lookTarget?.grid ? this.lookTarget : null);
     }
     if (inp.map) { this.hud.toggleMap(); if (this.hud.mapOpen) this.input.unlock(); else this.input.lock(); this.updatePause(); }
-    if (this.hud.mapOpen && this.input.pressed.has('Escape')) { this.hud.toggleMap(false); this.input.lock(); }
-    // Pause when the pointer is released without a UI open.
+    if (this.hud.mapOpen && pressed('Escape')) { this.hud.toggleMap(false); this.input.lock(); }
     const paused = !this.input.locked && !this.invOpen && !this.hud.mapOpen;
-    if (paused) return;
+    if (paused || this.sleeping) return;
 
-    if (inp.interact && !this.invOpen && this.lookTarget) { this.openInventory(this.lookTarget); sfx.pickup(); }
+    if (this.invOpen) inp.reload = inp.swap = inp.slot1 = inp.slot2 = inp.flashlight = inp.interact = false;
+    if (pressed('KeyB') && !this.invOpen) {
+      this.builder.toggle();
+      this.hud.message(this.builder.active ? 'Build mode: 1–6 select, R rotate, LMB build, X dismantle, B exit' : 'Build mode off');
+    }
+    if (pressed('KeyV') && !this.invOpen) this.claimSafehouse();
+    if (inp.interact && !this.invOpen && this.lookTarget) this.interact(this.lookTarget);
     if (inp.heal) this.quickHeal();
-    if (this.invOpen) inp.reload = inp.swap = inp.slot1 = inp.slot2 = inp.flashlight = false;
 
-    this.raidElapsed += dt;
-    this.player.update(dt, inp);
-    if (this.state !== 'raid') return;
-    this.zombies.update(dt, this.player, this);
-    if (this.state !== 'raid') return;
-    this.fx.update(dt);
-
-    // Moon shadow follows the player
-    const pp = this.player.pos;
-    this.moon.position.set(pp.x + 30, 60, pp.z + 20);
-    this.moon.target.position.set(pp.x, 0, pp.z);
-
-    // What container are we looking at?
-    this.lookTarget = null;
-    if (!this.invOpen) {
-      const fx = -Math.sin(this.player.yaw), fz = -Math.cos(this.player.yaw);
-      let best = 2.3;
-      for (const c of this.world.containers) {
-        const dx = c.x - pp.x, dz = c.z - pp.z;
-        const d = Math.hypot(dx, dz);
-        if (d > best) continue;
-        if (d > 0.6 && (dx * fx + dz * fz) / d < 0.75) continue;
-        best = d; this.lookTarget = c;
-      }
+    if (this.builder.active && !this.invOpen) {
+      this.builder.update(inp);
+      inp.fire = inp.firePressed = inp.reload = inp.slot1 = inp.slot2 = inp.swap = false;
     }
 
-    // Extraction
-    const ex = this.world.extracts.find((e) => Math.hypot(e.x - pp.x, e.z - pp.z) < 3.5);
-    if (ex) {
-      if (this.extractTimer == null) { this.extractTimer = 7; this.hud.message(`Extracting at ${ex.name}…`); }
-      this.extractTimer -= dt;
-      if (this.extractTimer <= 0) { sfx.extract(); return this.endRaid('extracted', `Extracted at ${ex.name}`); }
-    } else this.extractTimer = null;
+    this.time += dt; // one in-game minute per real second
+    this.updateLighting();
+    this.player.update(dt, inp);
+    if (this.state !== 'play') return;
+    this.zombies.update(dt, this.player, this);
+    if (this.state !== 'play') return;
+    this.fx.update(dt);
+    this.builder.flicker(now);
 
-    if (this.raidElapsed >= this.raidTime) return this.endRaid('mia', 'Raid time ran out');
+    const pp = this.player.pos;
+    this.sun.position.set(pp.x + 30, 60, pp.z + 20);
+    this.sun.target.position.set(pp.x, 0, pp.z);
+    this.lookTarget = this.invOpen || this.builder.active ? null : this.findLookTarget();
 
-    // Heartbeat when badly hurt
     this.beat = (this.beat || 0) - dt;
     if (this.beat <= 0 && (this.player.hp.thorax < 30 || this.player.hp.head < 12)) { this.beat = 1; sfx.heartbeat(); }
+
+    this.autosave -= dt;
+    if (this.autosave <= 0) { this.autosave = AUTOSAVE; this.saveGame(); }
 
     this.hud.update(dt, this);
   }

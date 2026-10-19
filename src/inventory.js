@@ -35,7 +35,7 @@ export function findSpot(grid, it) {
 // Try to merge ammo stacks first, then place anywhere. Returns true if fully stored.
 export function addItem(grid, it) {
   const def = ITEMS[it.key];
-  if (def.type === 'ammo') {
+  if (def.stack) {
     for (const o of grid.items) {
       if (o.key === it.key && o.count < def.stack) {
         const n = Math.min(def.stack - o.count, it.count);
@@ -56,11 +56,30 @@ export function removeItem(grid, it) {
   if (i >= 0) grid.items.splice(i, 1);
 }
 
-// Count/take ammo of a given key across several grids.
+// Count/take stackable items (ammo, nails, planks) across several grids.
 export function countAmmo(grids, key) {
   let n = 0;
   for (const g of grids) for (const it of g.items) if (it.key === key) n += it.count;
   return n;
+}
+
+export function countItem(grids, key) {
+  let n = 0;
+  for (const g of grids) for (const it of g.items) if (it.key === key) n += it.count ?? 1;
+  return n;
+}
+
+export function takeItem(grids, key, want) {
+  let got = 0;
+  for (const g of grids) {
+    for (const it of [...g.items]) {
+      if (it.key !== key) continue;
+      if (it.count == null) { removeItem(g, it); got++; }
+      else { const n = Math.min(it.count, want - got); it.count -= n; got += n; if (it.count <= 0) removeItem(g, it); }
+      if (got >= want) return got;
+    }
+  }
+  return got;
 }
 
 export function takeAmmo(grids, key, want) {

@@ -28,6 +28,11 @@ export class Player {
     this.eye = 1.65;
     this.vy = 0; this.y = 0;
     this.stamina = 100;
+    this.fatigue = 10;
+    // Character skills (0..8) from character creation.
+    const st = game.profile.stats;
+    this.skill = st;
+    this.stealthMul = 1 - 0.07 * st.stealth;
     this.hp = {};
     for (const k in PARTS) this.hp[k] = PARTS[k].max;
     this.bleeding = new Set();
@@ -40,7 +45,7 @@ export class Player {
     this.meleeCd = 0; this.swing = 0;
     this.recoil = 0;
     this.ads = 0;
-    this.flashlight = true;
+    this.flashlight = game.isNight;
     this.crouch = false;
     this.stepDist = 0;
     this.noiseTimer = 0;
@@ -50,6 +55,7 @@ export class Player {
     this.bob = 0;
 
     camera.rotation.order = 'YXZ';
+    if (!this.weapon) this.active = 'melee';
     this.buildViewmodel();
 
     this.light = new THREE.SpotLight(0xfff2d8, 40, 38, 0.42, 0.45, 1.4);
@@ -123,6 +129,7 @@ export class Player {
       const mk = mel ? mel.key : null;
       if (mk === 'knife') { box(0.02, 0.03, 0.22, new THREE.MeshStandardMaterial({ color: 0xcccccc, metalness: 0.9, roughness: 0.2 }), 0, 0, -0.18); box(0.03, 0.04, 0.1, dark, 0, 0, -0.03); }
       else if (mk === 'crowbar') { box(0.03, 0.03, 0.7, new THREE.MeshStandardMaterial({ color: 0x8a1a1a, metalness: 0.5 }), 0, 0, -0.3); }
+      else if (mk === 'hammer') { box(0.03, 0.03, 0.4, wood, 0, 0, -0.15); box(0.05, 0.05, 0.14, dark, 0, 0.02, -0.36).rotation.y = Math.PI / 2; }
       else if (mk === 'axe') { box(0.035, 0.035, 0.7, wood, 0, 0, -0.3); box(0.02, 0.18, 0.12, new THREE.MeshStandardMaterial({ color: 0xaa2222, metalness: 0.4 }), 0, 0.06, -0.62); }
       box(0.06, 0.06, 0.16, sleeve, 0, -0.03, 0.14);
       box(0.045, 0.05, 0.06, skin, 0, 0, 0.03);
@@ -152,7 +159,8 @@ export class Player {
     const wantSprint = input.sprint && input.f && !this.crouch && this.stamina > 1 && !legsBroken;
     const aiming = input.aim && this.active === 'gun' && !wantSprint;
     this.ads += ((aiming ? 1 : 0) - this.ads) * Math.min(1, dt * 12);
-    let speed = this.crouch ? 1.5 : wantSprint ? 6.2 : 3.4;
+    let speed = this.crouch ? 1.5 : wantSprint ? 6.2 * (1 + 0.03 * this.skill.fitness) : 3.4;
+    if (this.fatigue > 80) speed *= 0.88;
     if (this.ads > 0.5) speed *= 0.55;
     if (legsBroken) speed *= 0.55;
     if (this.reloading > 0) speed *= 0.8;
@@ -175,14 +183,15 @@ export class Player {
         if (!this.crouch) sfx.step(wantSprint ? 0.14 : 0.08);
       }
     }
-    if (wantSprint && moving) this.stamina = Math.max(0, this.stamina - 14 * dt);
-    else this.stamina = Math.min(100, this.stamina + (moving ? 7 : 14) * dt);
+    const fit = this.skill.fitness;
+    if (wantSprint && moving) this.stamina = Math.max(0, this.stamina - 14 * (1 - 0.08 * fit) * dt);
+    else this.stamina = Math.min(100, this.stamina + (moving ? 7 : 14) * (1 + 0.1 * fit) * (this.fatigue >= 100 ? 0.5 : 1) * dt);
 
     // Footstep noise draws zombies
     this.noiseTimer -= dt;
     if (moving && this.noiseTimer <= 0) {
       this.noiseTimer = 0.5;
-      const r = this.crouch ? 1.5 : wantSprint ? 13 : 5;
+      const r = (this.crouch ? 1.5 : wantSprint ? 13 : 5) * (1 - 0.1 * this.skill.stealth);
       g.zombies.noise(this.pos.x, this.pos.z, r);
     }
 
@@ -251,10 +260,10 @@ export class Player {
     sfx.shot(w.key);
     this.flash.intensity = 30;
     this.recoil += def.pellets > 1 ? 1.6 : def.auto ? 0.45 : 0.9;
-    this.pitch += (def.pellets > 1 ? 0.035 : def.auto ? 0.012 : 0.02) * (1 - this.ads * 0.4);
+    this.pitch += (def.pellets > 1 ? 0.035 : def.auto ? 0.012 : 0.02) * (1 - this.ads * 0.4) * (1 - 0.06 * this.skill.aiming);
     this.yaw += (Math.random() - 0.5) * 0.01;
     const armsBroken = (this.hp.armL <= 0 || this.hp.armR <= 0) && this.painkiller <= 0;
-    let spread = def.spread * (1 - this.ads * 0.85) + (moving ? 0.03 : 0) + (armsBroken ? 0.06 : 0);
+    let spread = def.spread * (1 - this.ads * 0.85) * (1 - 0.08 * this.skill.aiming) + (moving ? 0.03 : 0) + (armsBroken ? 0.06 : 0) + (this.fatigue > 80 ? 0.02 : 0);
     if (def.pellets > 1) spread = Math.max(spread, def.spread * 0.6);
     const origin = this.camera.position.clone();
     for (let p = 0; p < def.pellets; p++) {
@@ -299,7 +308,7 @@ export class Player {
   meleeAttack() {
     const def = this.melee ? ITEMS[this.melee.key] : { damage: 12, range: 1.2, rate: 0.5 };
     if (this.stamina < 5) return;
-    this.stamina -= 8;
+    this.stamina -= 8 * (1 - 0.08 * this.skill.strength);
     this.meleeCd = def.rate;
     this.swing = 1;
     sfx.swing();
@@ -311,13 +320,14 @@ export class Player {
       if (d > def.range + zb.radius) continue;
       if ((dx * fx + dz * fz) / (d || 1) < 0.6) continue;
       const head = this.pitch > -0.15 && Math.random() < 0.35;
-      const dmg = def.damage * (head ? 1.8 : 1);
+      const dmg = def.damage * (head ? 1.8 : 1) * (1 + 0.12 * this.skill.strength);
       this.game.fx.blood(new THREE.Vector3(zb.pos.x, head ? 1.6 : 1.2, zb.pos.z));
       if (this.game.zombies.damage(zb, dmg, this.pos.x, this.pos.z)) this.onKill();
       hit = true;
       if (!this.melee || this.melee.key !== 'axe') break; // axes cleave
     }
     if (hit) sfx.hitFlesh();
+    else this.game.meleeWorld?.(this.melee?.key);
     this.game.zombies.noise(this.pos.x, this.pos.z, 3);
   }
 
@@ -329,7 +339,7 @@ export class Player {
     const def = ITEMS[w.key];
     if (w.loaded >= def.mag) return;
     if (countAmmo(this.ammoGrids(), def.ammo) <= 0) { this.game.hud.message(`No ${ITEMS[def.ammo].name} ammo`); return; }
-    this.reloading = def.reload;
+    this.reloading = def.reload * (1 - 0.07 * this.skill.aiming);
     sfx.reload();
     this.game.zombies.noise(this.pos.x, this.pos.z, 4);
   }
@@ -386,6 +396,7 @@ export class Player {
   }
 
   updateBody(dt) {
+    this.fatigue = Math.min(100, this.fatigue + dt * 0.09);
     this.food = Math.max(0, this.food - dt * 0.09);
     this.water = Math.max(0, this.water - dt * 0.13);
     if (this.food <= 0) this.damagePart('stomach', dt * 0.4);
@@ -423,7 +434,7 @@ export class Player {
       }
       if (def.heal) {
         // Heal the most damaged non-destroyed parts first.
-        let pool = def.heal;
+        let pool = def.heal * (1 + 0.15 * this.skill.firstaid);
         const parts = Object.keys(PARTS).filter((k) => this.hp[k] > 0 && this.hp[k] < PARTS[k].max)
           .sort((a, b) => this.hp[a] / PARTS[a].max - this.hp[b] / PARTS[b].max);
         for (const k of parts) {
@@ -431,7 +442,7 @@ export class Player {
           this.hp[k] += n; pool -= n;
           if (pool <= 0) break;
         }
-        if (pool < def.heal) used = true;
+        if (pool < def.heal * (1 + 0.15 * this.skill.firstaid)) used = true;
         // Salewa-class kits also restore a destroyed limb to 1 HP.
         if (def.stopBleed) for (const k in PARTS) if (this.hp[k] <= 0 && !PARTS[k].vital) { this.hp[k] = 1; used = true; }
       }
@@ -441,10 +452,37 @@ export class Player {
     return false;
   }
 
+  // Sleeping fast-forwards needs and lets the body recover.
+  sleep(hours) {
+    this.fatigue = Math.max(0, this.fatigue - hours * 14);
+    this.food = Math.max(0, this.food - hours * 2.5);
+    this.water = Math.max(0, this.water - hours * 3.5);
+    for (const k in PARTS) if (this.hp[k] > 0) this.hp[k] = Math.min(PARTS[k].max, this.hp[k] + hours * 4);
+    if (this.infected) this.infection = Math.min(99, this.infection + hours * 6);
+  }
+
+  serialize() {
+    return {
+      x: this.pos.x, z: this.pos.z, yaw: this.yaw, hp: this.hp, bleeding: [...this.bleeding],
+      food: this.food, water: this.water, fatigue: this.fatigue, stamina: this.stamina,
+      infected: this.infected, infection: this.infection, painkiller: this.painkiller, kills: this.kills,
+      flashlight: this.flashlight, active: this.active,
+    };
+  }
+
+  restore(s) {
+    this.pos.set(s.x, 0, s.z);
+    this.yaw = s.yaw;
+    Object.assign(this.hp, s.hp);
+    this.bleeding = new Set(s.bleeding);
+    for (const k of ['food', 'water', 'fatigue', 'stamina', 'infected', 'infection', 'painkiller', 'kills', 'flashlight', 'active']) if (s[k] !== undefined) this[k] = s[k];
+    this.buildViewmodel();
+  }
+
   die(reason) {
     if (this.dead) return;
     this.dead = true;
     this.deathReason = reason;
-    this.game.endRaid('died', reason);
+    this.game.onDeath(reason);
   }
 }

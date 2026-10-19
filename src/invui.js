@@ -131,7 +131,7 @@ export class InventoryUI {
     el.style.height = h * CELL - 2 + 'px';
     el.style.background = def.color;
     let badge = '';
-    if (def.type === 'ammo') badge = it.count;
+    if (def.stack) badge = it.count;
     else if (def.type === 'weapon') badge = `${it.loaded}/${def.mag}`;
     else if (def.uses > 1) badge = `${it.uses}/${def.uses}`;
     else if (def.durability) badge = `${Math.round(it.dur)}/${def.durability}`;
@@ -237,7 +237,7 @@ export class InventoryUI {
       const y = Math.floor((e.clientY - r.top - CELL / 2) / CELL + 0.5);
       // Ammo merge onto an existing stack
       const onItem = target.closest('.item');
-      if (def.type === 'ammo' && onItem) {
+      if (def.stack && onItem) {
         const other = sec.grid.items.find((o) => o !== item && o.key === item.key && o.count < def.stack &&
           x >= o.x && y >= o.y && x < o.x + itemSize(o)[0] && y < o.y + itemSize(o)[1]);
         if (other) {
@@ -289,7 +289,7 @@ export class InventoryUI {
         this.changed();
       });
     }
-    if (def.type === 'ammo' && it.count > 1) {
+    if (def.stack && it.count > 1) {
       add('Split stack', () => {
         const grid = src.grid;
         if (!grid) return;
@@ -300,6 +300,7 @@ export class InventoryUI {
         this.changed();
       });
     }
+    for (const [label, fn] of this.opts.actions?.(it, src) ?? []) add(label, () => { fn(); this.changed(); });
     if (this.opts.onSell) add(`Sell (₽${Math.round(itemValue(it) * 0.7).toLocaleString()})`, () => {
       this.detach(it, src); this.opts.onSell(it); this.changed();
     });
