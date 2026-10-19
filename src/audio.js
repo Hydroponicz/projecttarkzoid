@@ -43,11 +43,25 @@ function tone(freq, dur, vol, type = 'sine', slide = 0) {
 }
 
 export const sfx = {
-  shot(kind) {
+  shot(kind, suppressed) {
     const big = kind === 'mp133' || kind === 'sks';
+    if (suppressed) {
+      // A suppressed shot is a sharp, muffled crack rather than a boom.
+      noise(0.15, 900, 0.8, 0.45, 'lowpass', 0.12);
+      noise(0.05, 3500, 2, 0.2, 'bandpass', 0.05);
+      return;
+    }
     noise(0.5, big ? 1400 : 2200, 0.7, 1.0, 'lowpass', big ? 0.45 : 0.3);
     tone(big ? 90 : 140, 0.18, 0.6, 'sine', -60);
   },
+  click(f = 2400, v = 0.12) { noise(0.03, f, 4, v, 'bandpass', 0.03); },
+  magOut() { this.click(1500, 0.2); setTimeout(() => noise(0.08, 700, 2, 0.15, 'bandpass', 0.08), 60); },
+  magIn() { noise(0.06, 1100, 3, 0.3, 'bandpass', 0.06); setTimeout(() => this.click(2600, 0.25), 70); },
+  bolt() { noise(0.07, 1800, 3, 0.3, 'bandpass', 0.07); setTimeout(() => noise(0.06, 2400, 3, 0.35, 'bandpass', 0.06), 140); },
+  pump() { noise(0.09, 900, 2, 0.35, 'bandpass', 0.09); setTimeout(() => noise(0.08, 1300, 2, 0.35, 'bandpass', 0.08), 180); },
+  shell() { noise(0.05, 1600, 3, 0.2, 'bandpass', 0.05); },
+  round() { this.click(3200, 0.08); },
+  casing() { tone(3000 + Math.random() * 1500, 0.08, 0.03, 'triangle'); },
   dry() { tone(1800, 0.03, 0.2, 'square'); },
   reload() { tone(900, 0.05, 0.15, 'square'); setTimeout(() => tone(600, 0.06, 0.15, 'square'), 180); },
   swing() { noise(0.15, 900, 1, 0.25, 'bandpass', 0.15); },

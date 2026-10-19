@@ -1,10 +1,10 @@
 // First-person player: movement, mouselook, weapons (hitscan + melee),
 // Tarkov-style body-part health, hunger/thirst, bleeding and infection.
 import * as THREE from 'three';
-import { moveCircle, segBox } from './collision.js';
+import { moveCircle, segBox, raycast } from './collision.js';
 import { ITEMS } from './items.js';
-import { countAmmo, takeAmmo } from './inventory.js';
 import { sfx } from './audio.js';
+import { GunController, VM_LAYER } from './weapons.js';
 
 export const PARTS = {
   head: { name: 'Head', max: 35, vital: true },
@@ -40,11 +40,9 @@ export class Player {
     this.infection = 0; this.infected = false;
     this.painkiller = 0;
     this.active = 'gun';
-    this.fireCd = 0;
-    this.reloading = 0;
     this.meleeCd = 0; this.swing = 0;
-    this.recoil = 0;
     this.ads = 0;
+    this.lean = 0;
     this.flashlight = game.isNight;
     this.crouch = false;
     this.stepDist = 0;
@@ -55,6 +53,7 @@ export class Player {
     this.bob = 0;
 
     camera.rotation.order = 'YXZ';
+    this.gun = new GunController(this);
     if (!this.weapon) this.active = 'melee';
     this.buildViewmodel();
 
@@ -66,7 +65,7 @@ export class Player {
     this.light.position.set(0.15, -0.1, -0.9);
     this.light.target.position.set(0, 0, -6);
     camera.add(this.light, this.light.target);
-    this.handLight = new THREE.PointLight(0xc8c0b0, 1.2, 1.5, 1);
+    this.handLight = new THREE.PointLight(0xc8c0b0, 2.2, 1.6, 1);
     this.handLight.position.set(0.1, 0.2, 0);
     camera.add(this.handLight);
 
@@ -85,61 +84,38 @@ export class Player {
   }
 
   // ---------- viewmodel ----------
+  // Firearms are handled by GunController; this builds the melee/fists view.
   buildViewmodel() {
+    const gunActive = this.active === 'gun' && this.weapon;
+    this.gun.setVisible(!!gunActive);
+    if (gunActive) this.gun.rebuild();
     if (this.vm) this.camera.remove(this.vm);
     const vm = new THREE.Group();
     const dark = new THREE.MeshStandardMaterial({ color: 0x3a3a3a, roughness: 0.6, metalness: 0.3 });
     const wood = new THREE.MeshStandardMaterial({ color: 0x6b4423, roughness: 0.8 });
-    const skin = new THREE.MeshStandardMaterial({ color: 0x8a6a50, roughness: 0.9 });
-    const sleeve = new THREE.MeshStandardMaterial({ color: 0x2a3020, roughness: 1 });
+    const glove = new THREE.MeshStandardMaterial({ color: 0x2c2c28, roughness: 0.95 });
+    const sleeve = new THREE.MeshStandardMaterial({ color: 0x3a4230, roughness: 1 });
     const box = (w, h, d, m, x, y, z) => { const b = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), m); b.position.set(x, y, z); vm.add(b); return b; };
-    const w = this.weapon, mel = this.melee;
-    this.muzzle = new THREE.Vector3(0, 0, -0.6);
-    if (this.active === 'gun' && w) {
-      const k = w.key;
-      if (k === 'pm') {
-        box(0.04, 0.05, 0.2, dark, 0, 0, -0.1);
-        box(0.035, 0.1, 0.05, dark, 0, -0.06, -0.02).rotation.x = 0.2;
-        this.muzzle.set(0, 0, -0.22);
-      } else if (k === 'mp133') {
-        box(0.05, 0.05, 0.75, dark, 0, 0.01, -0.35);
-        box(0.05, 0.04, 0.6, dark, 0, -0.035, -0.32);
-        box(0.06, 0.06, 0.18, wood, 0, -0.035, -0.4);
-        box(0.05, 0.1, 0.3, wood, 0, -0.04, 0.12);
-        this.muzzle.set(0, 0.01, -0.75);
-      } else if (k === 'sks') {
-        box(0.04, 0.04, 0.6, dark, 0, 0.02, -0.4);
-        box(0.06, 0.07, 0.75, wood, 0, -0.02, -0.08);
-        this.muzzle.set(0, 0.02, -0.72);
-      } else {
-        box(0.05, 0.07, 0.45, dark, 0, 0, -0.2);
-        box(0.03, 0.03, 0.3, dark, 0, 0.015, -0.55);
-        box(0.06, 0.06, 0.2, wood, 0, -0.01, -0.35);
-        const mag = box(0.04, 0.16, 0.07, dark, 0, -0.1, -0.15); mag.rotation.x = 0.35;
-        box(0.05, 0.08, 0.28, wood, 0, -0.03, 0.17);
-        box(0.01, 0.03, 0.01, dark, 0, 0.05, -0.62);
-        this.muzzle.set(0, 0.015, -0.7);
-      }
-      box(0.06, 0.06, 0.16, sleeve, 0.02, -0.12, 0.1);
-      box(0.045, 0.05, 0.06, skin, 0, -0.07, -0.02);
-      if (k !== 'pm') box(0.045, 0.045, 0.07, skin, -0.01, -0.05, -0.33);
-      vm.userData.hip = new THREE.Vector3(0.17, -0.16, -0.48);
-      vm.userData.ads = new THREE.Vector3(0, -0.03, k === 'pm' ? -0.42 : -0.3);
-    } else {
-      const mk = mel ? mel.key : null;
-      if (mk === 'knife') { box(0.02, 0.03, 0.22, new THREE.MeshStandardMaterial({ color: 0xcccccc, metalness: 0.9, roughness: 0.2 }), 0, 0, -0.18); box(0.03, 0.04, 0.1, dark, 0, 0, -0.03); }
-      else if (mk === 'crowbar') { box(0.03, 0.03, 0.7, new THREE.MeshStandardMaterial({ color: 0x8a1a1a, metalness: 0.5 }), 0, 0, -0.3); }
-      else if (mk === 'hammer') { box(0.03, 0.03, 0.4, wood, 0, 0, -0.15); box(0.05, 0.05, 0.14, dark, 0, 0.02, -0.36).rotation.y = Math.PI / 2; }
-      else if (mk === 'axe') { box(0.035, 0.035, 0.7, wood, 0, 0, -0.3); box(0.02, 0.18, 0.12, new THREE.MeshStandardMaterial({ color: 0xaa2222, metalness: 0.4 }), 0, 0.06, -0.62); }
-      box(0.06, 0.06, 0.16, sleeve, 0, -0.03, 0.14);
-      box(0.045, 0.05, 0.06, skin, 0, 0, 0.03);
-      vm.userData.hip = new THREE.Vector3(0.22, -0.22, -0.5);
-      vm.userData.ads = vm.userData.hip;
-    }
+    const mk = this.melee ? this.melee.key : null;
+    if (mk === 'knife') { box(0.02, 0.03, 0.22, new THREE.MeshStandardMaterial({ color: 0xcccccc, metalness: 0.9, roughness: 0.2 }), 0, 0, -0.18); box(0.03, 0.04, 0.1, dark, 0, 0, -0.03); }
+    else if (mk === 'crowbar') { box(0.03, 0.03, 0.7, new THREE.MeshStandardMaterial({ color: 0x8a1a1a, metalness: 0.5 }), 0, 0, -0.3); }
+    else if (mk === 'hammer') { box(0.03, 0.03, 0.4, wood, 0, 0, -0.15); box(0.05, 0.05, 0.14, dark, 0, 0.02, -0.36).rotation.y = Math.PI / 2; }
+    else if (mk === 'axe') { box(0.035, 0.035, 0.7, wood, 0, 0, -0.3); box(0.02, 0.18, 0.12, new THREE.MeshStandardMaterial({ color: 0xaa2222, metalness: 0.4 }), 0, 0.06, -0.62); }
+    box(0.07, 0.07, 0.25, sleeve, 0, -0.03, 0.17);
+    box(0.045, 0.06, 0.07, glove, 0, 0, 0.03);
+    vm.userData.hip = new THREE.Vector3(0.22, -0.22, -0.5);
     vm.position.copy(vm.userData.hip);
-    vm.traverse((o) => { if (o.isMesh) { o.renderOrder = 10; } });
+    vm.visible = !gunActive;
+    vm.traverse((o) => o.layers.set(VM_LAYER));
     this.vm = vm;
     this.camera.add(vm);
+  }
+
+  setActive(slot) {
+    if (this.active === slot) return;
+    this.active = slot;
+    this.buildViewmodel();
+    if (slot === 'gun' && this.weapon) this.gun.play('draw', 0.45);
   }
 
   // ---------- input-driven update ----------
@@ -148,22 +124,26 @@ export class Player {
     const g = this.game;
     const hash = g.world.hash;
 
-    // Look
-    this.yaw -= input.mdx * 0.0022 * (this.ads > 0.5 ? 0.6 : 1);
-    this.pitch -= input.mdy * 0.0022 * (this.ads > 0.5 ? 0.6 : 1);
+    // Look (slower while aiming, slower still through a magnified scope)
+    const gunActive = this.active === 'gun' && this.weapon;
+    this.ads = gunActive ? this.gun.ads : 0;
+    const scoped = gunActive && this.gun.built?.parts.optic?.lens;
+    const sens = 0.0022 * (1 - this.ads * (scoped ? 0.75 : 0.4));
+    this.yaw -= input.mdx * sens;
+    this.pitch -= input.mdy * sens;
     this.pitch = Math.max(-1.45, Math.min(1.45, this.pitch));
 
-    // Movement state
+    // Movement state. Shift while aiming holds breath instead of sprinting.
     const legsBroken = (this.hp.legL <= 0 || this.hp.legR <= 0) && this.painkiller <= 0;
     this.crouch = input.crouch;
-    const wantSprint = input.sprint && input.f && !this.crouch && this.stamina > 1 && !legsBroken;
-    const aiming = input.aim && this.active === 'gun' && !wantSprint;
-    this.ads += ((aiming ? 1 : 0) - this.ads) * Math.min(1, dt * 12);
+    const aimHeld = input.aim && gunActive;
+    const wantSprint = input.sprint && input.f && !this.crouch && this.stamina > 1 && !legsBroken && !aimHeld;
     let speed = this.crouch ? 1.5 : wantSprint ? 6.2 * (1 + 0.03 * this.skill.fitness) : 3.4;
     if (this.fatigue > 80) speed *= 0.88;
     if (this.ads > 0.5) speed *= 0.55;
     if (legsBroken) speed *= 0.55;
-    if (this.reloading > 0) speed *= 0.8;
+    if (gunActive && this.gun.busy) speed *= 0.8;
+    if (Math.abs(this.lean) > 0.3) speed *= 0.7;
     const fx = -Math.sin(this.yaw), fz = -Math.cos(this.yaw);
     const rx = -fz, rz = fx;
     let mx = (input.f - input.b) * fx + (input.r - input.l) * rx;
@@ -196,48 +176,51 @@ export class Player {
       g.zombies.noise(this.pos.x, this.pos.z, r);
     }
 
+    // Lean (Q/E): shift the eye sideways unless a wall is in the way.
+    const leanTarget = (input.leanR ? 1 : 0) - (input.leanL ? 1 : 0);
+    this.lean += (leanTarget - this.lean) * Math.min(1, dt * 9);
+    const rxv = Math.cos(this.yaw), rzv = -Math.sin(this.yaw);
+    let leanDist = 0.38 * this.lean;
+    if (Math.abs(leanDist) > 0.01) {
+      const ex = this.pos.x + rxv * (leanDist + Math.sign(leanDist) * 0.15), ez = this.pos.z + rzv * (leanDist + Math.sign(leanDist) * 0.15);
+      const hit = raycast(hash, this.pos.x, this.pos.z, ex, ez, 'blocksSight');
+      if (hit.box) leanDist *= Math.max(0, hit.t - 0.3);
+    }
+
     // Camera
     const targetEye = this.crouch ? 1.05 : 1.65;
     this.eye += (targetEye - this.eye) * Math.min(1, dt * 10);
-    const bobAmt = moving ? (wantSprint ? 0.06 : 0.035) * (1 - this.ads * 0.8) : 0;
-    this.camera.position.set(this.pos.x, this.eye + Math.abs(Math.sin(this.bob)) * bobAmt, this.pos.z);
-    this.recoil *= Math.exp(-dt * 10);
-    this.camera.rotation.set(this.pitch + this.recoil * 0.05, this.yaw, Math.sin(this.bob * 0.5) * bobAmt * 0.3);
-    const zoom = this.weapon?.key === 'sks' ? 38 : 50;
-    this.camera.fov = 75 + (zoom - 75) * this.ads;
-    this.camera.updateProjectionMatrix();
+    const bobAmt = moving ? (wantSprint ? 0.06 : 0.035) * (1 - this.ads * 0.85) : 0;
+    this.camera.position.set(this.pos.x + rxv * leanDist, this.eye + Math.abs(Math.sin(this.bob)) * bobAmt - Math.abs(this.lean) * 0.05, this.pos.z + rzv * leanDist);
+    this.camera.rotation.set(this.pitch, this.yaw, Math.sin(this.bob * 0.5) * bobAmt * 0.3 - this.lean * 0.16);
+    const targetFov = gunActive ? 75 + (this.gun.adsFov - 75) * this.ads : 75;
+    if (Math.abs(this.camera.fov - targetFov) > 0.01) { this.camera.fov = targetFov; this.camera.updateProjectionMatrix(); }
 
-    // Viewmodel sway / ADS / recoil / swing
-    const vm = this.vm;
-    const hip = vm.userData.hip, adsP = vm.userData.ads;
-    vm.position.lerpVectors(hip, adsP, this.ads);
-    vm.position.x += Math.sin(this.bob * 0.5) * bobAmt * 0.4;
-    vm.position.y += Math.abs(Math.cos(this.bob * 0.5)) * bobAmt * 0.3 - (wantSprint && moving ? 0.08 : 0);
-    vm.position.z += this.recoil * 0.06;
-    vm.rotation.set(this.recoil * 0.12 + (wantSprint && moving ? -0.3 : 0), wantSprint && moving ? 0.5 : 0, 0);
-    if (this.reloading > 0) { vm.rotation.x -= 0.5; vm.position.y -= 0.08; }
-    if (this.swing > 0) {
-      const s = this.swing;
-      vm.rotation.set(-0.6 + (1 - s) * 1.6, 0.6 - (1 - s) * 1.2, -0.4);
-      this.swing = Math.max(0, this.swing - dt * 4);
-    }
+    // Weapon switching (1 / 2 / mouse wheel)
+    this.meleeCd -= dt;
+    if (input.swap) this.setActive(this.active === 'gun' ? 'melee' : 'gun');
+    if (input.slot1) this.setActive('gun');
+    if (input.slot2) this.setActive('melee');
 
-    // Weapons
-    this.fireCd -= dt; this.meleeCd -= dt;
-    if (input.swap) { this.active = this.active === 'gun' ? 'melee' : 'gun'; this.buildViewmodel(); }
-    if (input.slot1 && this.active !== 'gun') { this.active = 'gun'; this.buildViewmodel(); }
-    if (input.slot2 && this.active !== 'melee') { this.active = 'melee'; this.buildViewmodel(); }
-    if (this.reloading > 0) {
-      this.reloading -= dt;
-      if (this.reloading <= 0) this.finishReload();
-    }
-    if (input.reload && this.active === 'gun') this.startReload();
     if (this.active === 'gun' && this.weapon) {
-      const def = ITEMS[this.weapon.key];
-      const trig = def.auto ? input.fire : input.firePressed;
-      if (trig && this.fireCd <= 0 && this.reloading <= 0 && !(wantSprint && moving)) this.shoot(def, moving);
-    } else if (input.firePressed && this.meleeCd <= 0) {
-      this.meleeAttack();
+      this.vm.visible = false;
+      this.gun.setVisible(true);
+      this.gun.update(dt, input, { moving, sprinting: wantSprint && moving });
+    } else {
+      this.gun.setVisible(false);
+      // Melee / fists viewmodel: sway, sprint pose and swing
+      const vm = this.vm;
+      vm.visible = true;
+      vm.position.copy(vm.userData.hip);
+      vm.position.x += Math.sin(this.bob * 0.5) * bobAmt * 0.4;
+      vm.position.y += Math.abs(Math.cos(this.bob * 0.5)) * bobAmt * 0.3 - (wantSprint && moving ? 0.08 : 0);
+      vm.rotation.set(wantSprint && moving ? -0.3 : 0, wantSprint && moving ? 0.5 : 0, 0);
+      if (this.swing > 0) {
+        const s = this.swing;
+        vm.rotation.set(-0.6 + (1 - s) * 1.6, 0.6 - (1 - s) * 1.2, -0.4);
+        this.swing = Math.max(0, this.swing - dt * 4);
+      }
+      if (input.firePressed && this.meleeCd <= 0) this.meleeAttack();
     }
     if (input.flashlight) this.flashlight = !this.flashlight;
     this.light.intensity = this.flashlight ? 40 : 0;
@@ -247,34 +230,6 @@ export class Player {
   }
 
   // ---------- combat ----------
-  aimDir(spread) {
-    const d = new THREE.Vector3(0, 0, -1);
-    const e = new THREE.Euler(this.pitch + (Math.random() - 0.5) * spread, this.yaw + (Math.random() - 0.5) * spread, 0, 'YXZ');
-    return d.applyEuler(e);
-  }
-
-  shoot(def, moving) {
-    const w = this.weapon;
-    if (w.loaded <= 0) { sfx.dry(); this.fireCd = 0.25; return; }
-    w.loaded -= 1;
-    this.fireCd = 60 / def.rpm;
-    sfx.shot(w.key);
-    this.flash.intensity = 30;
-    this.recoil += def.pellets > 1 ? 1.6 : def.auto ? 0.45 : 0.9;
-    this.pitch += (def.pellets > 1 ? 0.035 : def.auto ? 0.012 : 0.02) * (1 - this.ads * 0.4) * (1 - 0.06 * this.skill.aiming);
-    this.yaw += (Math.random() - 0.5) * 0.01;
-    const armsBroken = (this.hp.armL <= 0 || this.hp.armR <= 0) && this.painkiller <= 0;
-    let spread = def.spread * (1 - this.ads * 0.85) * (1 - 0.08 * this.skill.aiming) + (moving ? 0.03 : 0) + (armsBroken ? 0.06 : 0) + (this.fatigue > 80 ? 0.02 : 0);
-    if (def.pellets > 1) spread = Math.max(spread, def.spread * 0.6);
-    const origin = this.camera.position.clone();
-    for (let p = 0; p < def.pellets; p++) {
-      const dir = this.aimDir(spread);
-      this.fireRay(origin, dir, def);
-    }
-    this.game.zombies.noise(this.pos.x, this.pos.z, def.noise);
-    this.game.hud.ammoChanged = true;
-  }
-
   fireRay(origin, dir, def) {
     const maxD = 120;
     const end = origin.clone().addScaledVector(dir, maxD);
@@ -333,25 +288,6 @@ export class Player {
   }
 
   onKill() { this.kills++; this.game.hud.message('Kill confirmed'); }
-
-  startReload() {
-    const w = this.weapon;
-    if (!w || this.reloading > 0) return;
-    const def = ITEMS[w.key];
-    if (w.loaded >= def.mag) return;
-    if (countAmmo(this.ammoGrids(), def.ammo) <= 0) { this.game.hud.message(`No ${ITEMS[def.ammo].name} ammo`); return; }
-    this.reloading = def.reload * (1 - 0.07 * this.skill.aiming);
-    sfx.reload();
-    this.game.zombies.noise(this.pos.x, this.pos.z, 4);
-  }
-
-  finishReload() {
-    const w = this.weapon;
-    if (!w) return;
-    const def = ITEMS[w.key];
-    w.loaded += takeAmmo(this.ammoGrids(), def.ammo, def.mag - w.loaded);
-    this.game.hud.ammoChanged = true;
-  }
 
   // ---------- health ----------
   takeZombieHit(amount, zb) {

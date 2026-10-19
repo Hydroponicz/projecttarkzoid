@@ -2,7 +2,6 @@
 // interaction prompts, build bar, messages, hitmarker and a fold-out map.
 import { PARTS } from './player.js';
 import { ITEMS } from './items.js';
-import { countAmmo } from './inventory.js';
 import { HALF } from './world.js';
 
 const $ = (id) => document.getElementById(id);
@@ -58,6 +57,7 @@ export class HUD {
       row.children[3].style.visibility = p.bleeding.has(k) ? 'visible' : 'hidden';
     }
     $('stam').style.width = p.stamina + '%';
+    $('arms').style.width = p.gun.armStamina + '%';
     $('food').style.width = p.food + '%';
     $('water').style.width = p.water + '%';
 
@@ -70,11 +70,15 @@ export class HUD {
     if (p.water <= 10) status.push('<b class="red">DEHYDRATED</b>');
 
     // Weapon
+    // Weapon panel: like Tarkov there's no exact ammo counter — press T to check.
     const w = p.active === 'gun' ? p.weapon : p.melee;
-    if (p.active === 'gun' && w) {
-      const def = ITEMS[w.key];
-      const spare = countAmmo(p.ammoGrids(), def.ammo);
-      $('weapon').innerHTML = `${def.name}<br><span class="big">${w.loaded}</span> / ${def.mag} <span class="dim">[${spare}]</span>${p.reloading > 0 ? ' <span class="dim">RELOADING</span>' : ''}`;
+    const gi = p.active === 'gun' && w ? p.gun.hudInfo() : null;
+    if (gi) {
+      $('weapon').innerHTML = `${gi.name}<span class="mode">${gi.mode}</span><br>` +
+        (gi.check ? `<span class="check">${gi.check}</span><br>` : '') +
+        `<span class="dim">${gi.mag}${gi.spare != null ? ` · ${gi.spare} spare mag${gi.spare === 1 ? '' : 's'}` : ''}</span>` +
+        (gi.mods.length ? `<br><span class="mods">${gi.mods.join(' · ')}</span>` : '') +
+        (gi.state ? `<br><span class="dim">${gi.state}</span>` : '');
     } else {
       $('weapon').innerHTML = w ? ITEMS[w.key].name : p.active === 'gun' ? 'No firearm' : 'Fists';
     }
@@ -120,7 +124,8 @@ export class HUD {
     this.updateBuildBar(game);
 
     $('vignette').style.opacity = Math.max(p.hurtFlash, (1 - Math.min(p.hp.thorax / 85, p.hp.head / 35)) * 0.6);
-    $('crosshair').style.opacity = p.ads > 0.5 || p.active !== 'gun' ? 0 : 0.7;
+    // No crosshair with a firearm (Tarkov-style); a small dot for melee and building.
+    $('crosshair').style.opacity = p.active === 'gun' && p.weapon && !game.builder.active ? 0 : 0.6;
 
     this.hitTimer -= dt;
     if (this.hitTimer <= 0) $('hitmarker').className = '';

@@ -8,6 +8,7 @@ export class Input {
     this.mdx = 0; this.mdy = 0;
     this.mouse = [false, false];
     this.mousePressed = false;
+    this.wheel = 0;
     window.addEventListener('keydown', (e) => {
       if (e.repeat) return;
       // Typing into a text field (e.g. the dev console) shouldn't drive the game.
@@ -31,6 +32,7 @@ export class Input {
       if (e.button === 2) this.mouse[1] = false;
     });
     canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+    canvas.addEventListener('wheel', (e) => { if (document.pointerLockElement === canvas) { this.wheel += Math.sign(e.deltaY); e.preventDefault(); } }, { passive: false });
   }
 
   lock() { this.canvas.requestPointerLock?.()?.catch?.(() => {}); }
@@ -49,9 +51,11 @@ export class Input {
       aim: live && this.mouse[1],
       fire: live && this.mouse[0],
       firePressed: live && this.mousePressed,
-      reload: p('KeyR'), interact: p('KeyF') || p('KeyE'),
-      swap: p('KeyQ'), slot1: p('Digit1'), slot2: p('Digit2'),
-      flashlight: p('KeyL') || p('KeyT'),
+      reload: p('KeyR'), interact: p('KeyF'),
+      leanL: live && k('KeyQ'), leanR: live && k('KeyE'),
+      swap: live && this.wheel !== 0, slot1: p('Digit1'), slot2: p('Digit2'),
+      check: p('KeyT'), fireMode: p('KeyZ'),
+      flashlight: p('KeyL'),
       inventory: p('Tab') || p('KeyI'), map: p('KeyM'),
       heal: p('KeyH'),
       mdx: live ? this.mdx : 0, mdy: live ? this.mdy : 0,
@@ -61,6 +65,7 @@ export class Input {
   endFrame() {
     this.pressed.clear();
     this.mousePressed = false;
+    this.wheel = 0;
     this.mdx = 0; this.mdy = 0;
   }
 }

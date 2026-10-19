@@ -6,7 +6,8 @@ import { Input } from './input.js';
 import { HUD } from './hud.js';
 import { FX } from './fx.js';
 import { InventoryUI } from './invui.js';
-import { ITEMS, makeItem } from './items.js';
+import { ITEMS, makeItem, migrateItem } from './items.js';
+import { combineItems, weaponActions, loadStep } from './weapons.js';
 import { makeGrid, addItem, removeItem } from './inventory.js';
 import { loadSave, writeSave, deleteSave } from './save.js';
 import { initAudio, sfx } from './audio.js';
@@ -24,7 +25,8 @@ const smooth = (a, b, x) => { const t = Math.max(0, Math.min(1, (x - a) / (b - a
 class Game {
   constructor() {
     this.canvas = $('game');
-    this.renderer = new THREE.WebGLRenderer({ canvas: this.canvas, antialias: true });
+    // Stencil is needed for reflex-sight reticles.
+    this.renderer = new THREE.WebGLRenderer({ canvas: this.canvas, antialias: true, stencil: true });
     this.renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
@@ -185,6 +187,7 @@ class Game {
     this.time = s.time;
     this.safehouse = s.safehouse;
     this.profile = s.character;
+    this.migrateSave(s);
     this.world = buildWorld(this.scene, s.seed);
     const w = s.world;
     if (w) {
@@ -218,6 +221,20 @@ class Game {
     this.hud.message(ch.player ? `Welcome back, ${ch.name}.` : `${ch.name}. Day ${this.day}. Find supplies, find shelter. Press V inside a building to claim it.`, 6);
     this.input.lock();
     this.updatePause();
+  }
+
+  // Bring items from older saves up to date (e.g. weapons gain magazines).
+  migrateSave(s) {
+    const ch = s.character;
+    if (ch) {
+      for (const k in ch.equip) if (ch.equip[k]) migrateItem(ch.equip[k]);
+      ch.pockets.items.forEach(migrateItem);
+    }
+    const w = s.world;
+    if (!w) return;
+    for (const g of w.containers) g.items.forEach(migrateItem);
+    for (const c of w.extra) c.grid.items.forEach(migrateItem);
+    for (const st of w.structures) st.grid?.items.forEach(migrateItem);
   }
 
   // New characters wake up in a random house, away from known zombies.
@@ -344,13 +361,39 @@ class Game {
     this.inv.open(() => this.playerSections(), right, {
       onChange: () => { this.player.buildViewmodel(); },
       onUse: (it) => this.player.use(it),
+      combine: (a, b, ctx) => combineItems(a, b, { ...ctx, game: this }),
+      loading: () => this.loader?.target,
       onDrop: (it) => this.dropItem(it),
       actions: (it, src) => this.itemActions(it, src),
     });
     this.updatePause();
   }
 
+  // Grids visible in the inventory besides the player's own (e.g. a container).
+  openGrids() {
+    return this.openContainer ? [this.openContainer.grid] : [];
+  }
+
+  // Load / unload a magazine or tube one round at a time while the
+  // inventory stays open (like Tarkov). `source` = the dragged ammo stack.
+  startLoading(target, unload, source) {
+    this.loader = { target, unload, source, t: 0.15 };
+  }
+
+  tickLoader(dt) {
+    const L = this.loader;
+    if (!L) return;
+    if (!this.invOpen) { this.loader = null; return; }
+    L.t -= dt;
+    if (L.t > 0) return;
+    L.t = L.unload ? 0.18 : 0.42 * (1 - 0.06 * this.player.skill.aiming);
+    if (!loadStep(L, this)) this.loader = null;
+    this.inv.render();
+  }
+
   itemActions(it, src) {
+    const wa = weaponActions(it, src, this);
+    if (wa.length) return wa;
     if (it.key !== 'log' || !src.grid) return [];
     const grids = this.player.ammoGrids();
     if (!grids.some((g) => g.items.some((i) => i.key === 'saw'))) return [['Saw into planks (needs a saw)', () => this.hud.message('You need a saw')]];
@@ -367,6 +410,7 @@ class Game {
     if (!this.invOpen) return;
     this.invOpen = false;
     this.openContainer = null;
+    this.loader = null;
     this.inv.cancelDrag();
     this.inv.closeMenu();
     $('invwrap').style.display = 'none';
@@ -536,7 +580,10 @@ class Game {
     if (this.state === 'play') this.update(dt, t / 1000);
     this.dev.update(dt);
     this.input.endFrame();
-    if (this.state === 'play') this.renderer.render(this.scene, this.camera);
+    if (this.state === 'play') {
+      this.player?.gun.renderScope(this.renderer, this.scene);
+      this.renderer.render(this.scene, this.camera);
+    }
     requestAnimationFrame((tt) => this.loop(tt));
   }
 
@@ -570,7 +617,8 @@ class Game {
       return;
     }
 
-    if (this.invOpen) inp.reload = inp.swap = inp.slot1 = inp.slot2 = inp.flashlight = inp.interact = false;
+    if (this.invOpen) inp.reload = inp.swap = inp.slot1 = inp.slot2 = inp.flashlight = inp.interact = inp.check = inp.fireMode = false;
+    this.tickLoader(dt);
     if (pressed('KeyB') && !this.invOpen) {
       this.builder.toggle();
       this.hud.message(this.builder.active ? 'Build mode: 1–6 select, R rotate, LMB build, X dismantle, B exit' : 'Build mode off');
@@ -581,7 +629,7 @@ class Game {
 
     if (this.builder.active && !this.invOpen) {
       this.builder.update(inp);
-      inp.fire = inp.firePressed = inp.reload = inp.slot1 = inp.slot2 = inp.swap = false;
+      inp.fire = inp.firePressed = inp.reload = inp.slot1 = inp.slot2 = inp.swap = inp.aim = false;
     }
 
     this.time += dt * this.dev.timeScale; // one in-game minute per real second at 1x

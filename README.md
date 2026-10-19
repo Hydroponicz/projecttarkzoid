@@ -25,7 +25,23 @@ npm run build    # static build in dist/
 - **Doors.** Every building has real doors. Open and close them with **F**. Zombies can break them down for good, and you can barricade over a doorway.
 - **Health.** Seven body parts. Bleeding, broken limbs and spreading damage work like Tarkov's. Painkillers mask limb damage. Bites can infect you, and you have about 6 minutes to find an antiviral before you turn.
 - **Needs.** Hunger, thirst, stamina and fatigue. When you're exhausted you move slower and shoot worse.
-- **Weapons.** PM, MP-133, SKS and AK-74N, each with its own ammo, magazine, recoil and aim-down-sights. Melee weapons are silent: knife, hammer, crowbar, and an axe that also chops trees.
+- **Weapons.** Melee weapons are silent: knife, hammer, crowbar, and an axe that also chops trees.
+
+## Firearms
+
+Guns work much like Tarkov's. Each firearm is a detailed procedural model, and its iron sights are properly aligned with where the bullets go.
+
+- **Magazines are items.** Load them in the inventory, round by round, by dragging ammo onto a magazine (or right-click → Load). Loading only continues while the inventory is open. Drag a magazine onto a weapon to insert it.
+- **Chambered rounds.** **R** swaps in your fullest spare magazine. A tactical reload keeps the chambered round (30+1). On an empty reload the bolt has to be racked. Double-tap **R** for a quick reload that drops the old mag on the ground. The MP-133 loads shell by shell; firing interrupts the loading, and you pump between shots. The PM's slide and the SKS bolt lock back when empty.
+- **No ammo counter.** Press **T** to check your magazine, which gives a rough "About half" reading. **Z** switches fire mode on the AK.
+- **Aiming physics.** The gun lags behind your mouse, and your breathing sways it in a figure-8. Sway grows when you're low on stamina, tired, or moving. Aiming drains arm stamina; hold **Shift** while aiming to hold your breath and steady the shot. Recoil kicks the weapon on springs and climbs the camera, which partly recovers. Bullets fire along the barrel, not the screen center.
+- **Animations.** Drawing, magazine swaps (tilt, mag out, hand to pouch, mag in, rack), mag checks, pumping, shell loading, fire-mode switching, bolt and slide cycling, ejected brass and shells, and muzzle flash. The gun pulls back when you face a wall.
+- **Attachments.** Drag them onto a weapon to fit them; right-click the weapon to detach. They change ergonomics, sway and recoil.
+  - Red dot and holographic sights project their reticle at infinity, like real reflex sights.
+  - The **PSO-1 4×** and **Hunting 6×** are true picture-in-picture scopes: a magnified view renders onto the lens, with the PSO's chevron and rangefinder reticle and an eye-box shadow when the gun sways.
+  - Suppressors cut gunshot noise by about 80%, which matters with zombies around.
+  - Also a muzzle brake and a vertical foregrip.
+- **Lean** with **Q** / **E**.
 
 ## Controls
 
@@ -34,9 +50,12 @@ npm run build    # static build in dist/
 | WASD / Mouse | Move / look |
 | Shift / C | Sprint / crouch |
 | LMB / RMB | Fire or swing / aim down sights |
-| R | Reload |
-| Q, 1, 2 | Swap between firearm and melee |
-| F or E | Interact: open/close doors, search containers, sleep in beds |
+| Shift while aiming | Hold breath |
+| R / double-tap R | Reload / quick reload (drops the mag) |
+| T / Z | Check magazine / switch fire mode |
+| Q / E | Lean left / right |
+| 1, 2, mouse wheel | Switch between firearm and melee |
+| F | Interact: open/close doors, search containers, sleep in beds |
 | Tab or I | Inventory. Close it with Esc, Tab, F, the Close button, a click outside, or by walking off. |
 | H | Quick-heal (bandage if bleeding, otherwise a medkit) |
 | L | Flashlight |
@@ -60,7 +79,8 @@ Press **`** (backquote) or **F1** to open the dev console, in game or on the men
 The command line has Tab completion and ↑/↓ history. Type `help` for the full list. Examples:
 
 ```
-give ak74            give ammo_545 120    kit Builder         spawn brute 3
+give ak74            give mag_ak30 3      kit Rifleman        kit Marksman
+give scope_pso       give supp_rifle      kit Builder         spawn brute 3
 tp 0 0               tp safehouse         time 22:00          time +8
 speed 20             skill carpentry 8    set fatigue 90      killall 25
 god / noclip / invis / freeze / freebuild                    js player.skill
@@ -74,7 +94,8 @@ god / noclip / invis / freeze / freebuild                    js player.skill
 | `src/character.js` | Professions, skills and the character creation screen |
 | `src/build.js` | Carpentry: placing, saving and dismantling structures |
 | `src/world.js` | Seeded procedural town: roads, buildings with doors and roofs, beds, cars, trees, containers |
-| `src/player.js` | First-person controller, viewmodel, shooting/melee, body-part health, status effects |
+| `src/player.js` | First-person controller, leaning, melee, body-part health, status effects |
+| `src/weapons.js` | Firearms: weapon/optic models, PIP scopes, sway/recoil physics, animations, magazines, attachments |
 | `src/zombies.js` | Zombie spawning, perception, flow-field pathing, attacks, corpses |
 | `src/collision.js` | 2D spatial hash, circle-vs-box movement, raycasts |
 | `src/items.js` | Item definitions, loot tables, container types |

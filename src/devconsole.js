@@ -9,6 +9,7 @@ import { STATS, MAX_SKILL } from './character.js';
 import { moveCircle, raycast } from './collision.js';
 import { HALF, setDoor } from './world.js';
 import { NAV_CELL, NAV_N, FIELD_R } from './zombies.js';
+import { fillWeapon, weaponRounds } from './weapons.js';
 import { loadSave, writeSave, deleteSave } from './save.js';
 
 const PREFS_KEY = 'tarkzoid-dev';
@@ -29,8 +30,11 @@ const FLAGS = {
 };
 const TABS = ['Player', 'World', 'Items', 'Debug', 'Save'];
 const KITS = {
-  'Rifleman': [['ak74', { loaded: 30 }], ['ammo_545', { count: 60 }], ['ammo_545', { count: 60 }], 'armor_6b13', 'helmet_ssh', 'bp_tri', 'salewa'],
-  'Builder': ['hammer', 'saw', 'bp_tri', ['planks', { count: 10 }], ['planks', { count: 10 }], ['planks', { count: 10 }], ['nails', { count: 100 }], ['nails', { count: 100 }]],
+  'Rifleman': ['bp_tri', 'ak74', 'mag_ak30', 'mag_ak30', 'mag_ak45', ['ammo_545', { count: 60 }], 'scope_pso', 'sight_reddot', 'supp_rifle', 'grip_vert', 'armor_6b13', 'helmet_ssh', 'salewa'],
+  'Marksman': ['bp_scav', 'sks', 'mag_sks', 'mag_sks', 'mag_sks', ['ammo_762', { count: 40 }], 'scope_6x', 'brake_ak'],
+  'Shotgunner': ['bp_scav', 'mp133', ['ammo_12g', { count: 20 }], ['ammo_12g', { count: 20 }], 'sight_holo', 'grip_vert'],
+  'Pistolero': ['bp_scav', 'pm', 'mag_pm', 'mag_pm', 'mag_pm', ['ammo_9x18', { count: 50 }], 'supp_pm'],
+  'Builder': ['bp_tri', 'hammer', 'saw', ['planks', { count: 10 }], ['planks', { count: 10 }], ['planks', { count: 10 }], ['nails', { count: 100 }], ['nails', { count: 100 }]],
   'Medic': ['salewa', 'salewa', 'ai2', 'ai2', 'bandage', 'bandage', 'painkillers', 'antiviral'],
   'Lumberjack': ['axe', 'saw', 'bp_scav'],
   'Survivor': ['water', 'water', 'beans', 'beans', 'crackers', 'soda'],
@@ -318,7 +322,7 @@ export class DevConsole {
       const r = this.row(s1);
       this.button(r, 'Clear pockets', () => { this.game.profile.pockets.items.length = 0; this.log('Pockets cleared'); });
       this.button(r, 'Clear backpack', () => { const b = this.game.profile.equip.backpack; if (b) b.grid.items.length = 0; this.log('Backpack cleared'); });
-      this.button(r, 'Refill magazine', () => { const w = this.game.player.weapon; if (w) w.loaded = ITEMS[w.key].mag; this.log('Magazine full'); });
+      this.button(r, 'Refill weapon', () => { const w = this.game.player.weapon; if (w) fillWeapon(w); this.log('Weapon loaded and chambered'); });
     }
   }
 
@@ -458,7 +462,11 @@ export class DevConsole {
     if (def.stack) {
       for (let left = count; left > 0; left -= def.stack) items.push(makeItem(key, { count: Math.min(def.stack, left) }));
     } else {
-      for (let i = 0; i < count; i++) items.push(makeItem(key, def.type === 'weapon' ? { loaded: def.mag } : {}));
+      for (let i = 0; i < count; i++) {
+        const it = makeItem(key, def.type === 'mag' ? { rounds: def.cap } : def.type === 'weapon' ? { loaded: 0 } : {});
+        if (def.type === 'weapon') fillWeapon(it);
+        items.push(it);
+      }
     }
     let dest = target;
     const look = g.lookTarget?.grid;
@@ -489,7 +497,7 @@ export class DevConsole {
   applyCheats() {
     const p = this.game.player;
     if (this.infStamina) p.stamina = 100;
-    if (this.infAmmo && p.weapon) p.weapon.loaded = ITEMS[p.weapon.key].mag;
+    if (this.infAmmo && p.weapon && weaponRounds(p.weapon) < 2) fillWeapon(p.weapon);
     if (this.noNeeds) { p.food = Math.max(p.food, 100); p.water = Math.max(p.water, 100); p.fatigue = 0; }
     if (this.god) { p.bleeding.clear(); if (p.infection > 90) p.infection = 90; }
   }

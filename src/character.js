@@ -16,7 +16,7 @@ const BASE_POINTS = 6;
 
 export const PROFESSIONS = {
   unemployed: { name: 'Unemployed', desc: 'No training, but plenty of free points.', points: 8, bonus: {}, kit: ['knife'] },
-  police: { name: 'Police Officer', desc: 'Sidearm and steady hands.', points: 0, bonus: { aiming: 2, fitness: 1 }, kit: [['pm', { loaded: 8 }], ['ammo_9x18', { count: 16 }], 'bandage'] },
+  police: { name: 'Police Officer', desc: 'Sidearm and steady hands.', points: 0, bonus: { aiming: 2, fitness: 1 }, kit: [['pm', { loaded: 8 }], ['mag_pm', { rounds: 8 }], ['ammo_9x18', { count: 16 }], 'bandage'] },
   fire: { name: 'Fire Officer', desc: 'Strong, fit, carries an axe.', points: 0, bonus: { strength: 1, fitness: 2 }, kit: ['axe'] },
   carpenter: { name: 'Carpenter', desc: 'Builds from day one. Toolbag included.', points: 1, bonus: { carpentry: 3 }, kit: ['hammer', 'bp_scav', ['planks', { count: 8 }], ['nails', { count: 40 }], 'saw'] },
   nurse: { name: 'Nurse', desc: 'Patches people up. Brought supplies.', points: 1, bonus: { firstaid: 3 }, kit: ['knife', 'ai2', 'bandage', 'bandage', 'painkillers'] },

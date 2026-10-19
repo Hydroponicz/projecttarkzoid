@@ -131,13 +131,23 @@ export class InventoryUI {
     el.style.height = h * CELL - 2 + 'px';
     el.style.background = def.color;
     let badge = '';
+    const loading = this.opts.loading?.() === it;
     if (def.stack) badge = it.count;
-    else if (def.type === 'weapon') badge = `${it.loaded}/${def.mag}`;
+    else if (def.type === 'weapon') badge = def.tube ? `${it.tube || 0}+${it.chamber || 0}` : it.mag ? `${it.mag.rounds}+${it.chamber || 0}` : `no mag${it.chamber ? '+1' : ''}`;
+    else if (def.type === 'mag') badge = `${it.rounds}/${def.cap}`;
     else if (def.uses > 1) badge = `${it.uses}/${def.uses}`;
     else if (def.durability) badge = `${Math.round(it.dur)}/${def.durability}`;
     else if (it.grid) badge = `${it.grid.items.length}`;
-    el.innerHTML = `<span class="iname">${def.short}</span><span class="ibadge">${badge}</span>`;
-    el.title = `${def.name}\n₽${itemValue(it).toLocaleString()}`;
+    if (loading) { badge = '⟳ ' + badge; el.classList.add('loading'); }
+    const mods = it.mods ? Object.values(it.mods).filter(Boolean).map((m) => ITEMS[m.key].short) : [];
+    const modTag = mods.length ? `<span class="imods">${mods.join(' · ')}</span>` : '';
+    el.innerHTML = `<span class="iname">${def.short}</span>${modTag}<span class="ibadge">${badge}</span>`;
+    let tip = `${def.name}\n₽${itemValue(it).toLocaleString()}`;
+    if (def.type === 'weapon') tip += `\n${it.mag ? ITEMS[it.mag.key].name : def.tube ? 'Internal tube' : 'No magazine'}${mods.length ? '\nMods: ' + mods.join(', ') : ''}`;
+    if (def.fits) tip += `\nFits: ${def.fits.map((k) => ITEMS[k].short).join(', ')}`;
+    el.title = tip;
+    el.itemRef = it;
+    el.srcRef = src;
     el.addEventListener('pointerdown', (e) => {
       if (e.button === 2) return;
       e.preventDefault();
@@ -227,6 +237,16 @@ export class InventoryUI {
       return this.changed();
     }
 
+    // Dropping onto another item: load ammo into a magazine, insert a
+    // magazine, attach a mod...
+    const onEl = target.closest('.item');
+    if (onEl && onEl.itemRef && onEl.itemRef !== item && onEl.itemRef.key !== item.key && this.opts.combine) {
+      if (this.opts.combine(item, onEl.itemRef, { detach: () => this.detach(item, src), src, targetSrc: onEl.srcRef })) {
+        item.rot = drag.origRot;
+        return this.changed();
+      }
+    }
+
     const gridEl = target.closest('[data-grid]');
     if (gridEl) {
       const sec = this.grids.get(gridEl.dataset.grid);
@@ -278,14 +298,6 @@ export class InventoryUI {
           if (def.uses) { it.uses -= 1; if (it.uses <= 0) this.detach(it, src); }
           else this.detach(it, src);
         }
-        this.changed();
-      });
-    }
-    if (def.type === 'weapon' && it.loaded > 0) {
-      add('Unload', () => {
-        const ammo = makeItem(def.ammo, { count: it.loaded });
-        const grid = src.grid || this.firstGrid();
-        if (grid && addItem(grid, ammo)) it.loaded = 0;
         this.changed();
       });
     }
