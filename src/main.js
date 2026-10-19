@@ -356,10 +356,11 @@ class Game {
     this.openContainer = container || null;
     this.input.unlock();
     const right = container ? () => [{ kind: 'grid', title: container.name, grid: container.grid }] : () => [];
-    $('invtitle').textContent = container ? container.name : 'Inventory';
+    const title = () => { $('invtitle').textContent = `${container ? container.name : 'Inventory'} — carrying ${this.player.carryWeight().toFixed(1)} kg`; };
+    title();
     $('invwrap').style.display = 'block';
     this.inv.open(() => this.playerSections(), right, {
-      onChange: () => { this.player.buildViewmodel(); },
+      onChange: () => { this.player.buildViewmodel(); this.player.weightTimer = 0; title(); },
       onUse: (it) => this.player.use(it),
       combine: (a, b, ctx) => combineItems(a, b, { ...ctx, game: this }),
       loading: () => this.loader?.target,
@@ -617,7 +618,7 @@ class Game {
       return;
     }
 
-    if (this.invOpen) inp.reload = inp.swap = inp.slot1 = inp.slot2 = inp.flashlight = inp.interact = inp.check = inp.fireMode = false;
+    if (this.invOpen) inp.reload = inp.slot1 = inp.slot2 = inp.flashlight = inp.interact = inp.check = inp.fireMode = inp.jump = inp.crouchToggle = inp.prone = false;
     this.tickLoader(dt);
     if (pressed('KeyB') && !this.invOpen) {
       this.builder.toggle();
@@ -629,7 +630,7 @@ class Game {
 
     if (this.builder.active && !this.invOpen) {
       this.builder.update(inp);
-      inp.fire = inp.firePressed = inp.reload = inp.slot1 = inp.slot2 = inp.swap = inp.aim = false;
+      inp.fire = inp.firePressed = inp.reload = inp.slot1 = inp.slot2 = inp.aim = inp.prone = false;
     }
 
     this.time += dt * this.dev.timeScale; // one in-game minute per real second at 1x

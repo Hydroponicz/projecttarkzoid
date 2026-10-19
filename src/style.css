@@ -46,6 +46,9 @@ button { font-family: inherit; cursor: pointer; }
 #food { background: #c9883a !important; }
 #water { background: #3a8ac9 !important; }
 #rest { background: #8a6ac9 !important; }
+#move { margin-top: 6px; color: #a8a488; font-size: 11px; line-height: 1.5; }
+#move .warn { color: #e5c84a; }
+#move .red { color: #e55; }
 #status { margin-top: 6px; display: flex; flex-wrap: wrap; gap: 6px; }
 #weapon { position: absolute; right: 20px; bottom: 20px; text-align: right; background: #0008; padding: 8px 12px; border: 1px solid #fff1; }
 #weapon .big { font-size: 26px; color: #fff; }

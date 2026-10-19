@@ -25,6 +25,14 @@ npm run build    # static build in dist/
 - **Doors.** Every building has real doors. Open and close them with **F**. Zombies can break them down for good, and you can barricade over a doorway.
 - **Health.** Seven body parts. Bleeding, broken limbs and spreading damage work like Tarkov's. Painkillers mask limb damage. Bites can infect you, and you have about 6 minutes to find an antiviral before you turn.
 - **Needs.** Hunger, thirst, stamina and fatigue. When you're exhausted you move slower and shoot worse.
+- **Movement.** You're an average person, not a super-soldier:
+  - **Speeds:** walking is about 1.6 m/s, sprinting 4.6 m/s, crouching 1 m/s and prone 0.4 m/s. Backpedalling and strafing are slower.
+  - **Momentum:** you take a moment to get up to speed and slide about a metre and a half to a stop after a sprint. You can barely steer in the air.
+  - **Pace:** the mouse wheel sets your walking pace, like Tarkov. Footstep noise scales with speed, so creeping is almost silent.
+  - **Stance:** **C** toggles crouch and **X** prone. Both make you harder to see and steady your aim.
+  - **Jumping:** **Space** jumps about 0.45 m and costs stamina.
+  - **Stamina:** sprinting drains it. Run it dry and you're winded: you can't sprint again until it recovers, and you hear heavy breathing.
+  - **Weight:** every item weighs something. Over 25 kg slows you and drains stamina faster; over 45 kg you can't sprint; over 60 kg you can only shuffle.
 - **Weapons.** Melee weapons are silent: knife, hammer, crowbar, and an axe that also chops trees.
 
 ## Firearms
@@ -48,13 +56,15 @@ Guns work much like Tarkov's. Each firearm is a detailed procedural model, and i
 | Key | Action |
 | --- | --- |
 | WASD / Mouse | Move / look |
-| Shift / C | Sprint / crouch |
+| Shift | Sprint |
+| Mouse wheel | Walking pace (20–100%) |
+| C / X / Space | Crouch / prone / jump |
 | LMB / RMB | Fire or swing / aim down sights |
 | Shift while aiming | Hold breath |
 | R / double-tap R | Reload / quick reload (drops the mag) |
 | T / Z | Check magazine / switch fire mode |
 | Q / E | Lean left / right |
-| 1, 2, mouse wheel | Switch between firearm and melee |
+| 1, 2 | Switch between firearm and melee |
 | F | Interact: open/close doors, search containers, sleep in beds |
 | Tab or I | Inventory. Close it with Esc, Tab, F, the Close button, a click outside, or by walking off. |
 | H | Quick-heal (bandage if bleeding, otherwise a medkit) |

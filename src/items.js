@@ -75,6 +75,34 @@ export const ITEMS = {
   ledx: { name: 'LEDX Transilluminator', short: 'LEDX', type: 'loot', w: 1, h: 1, color: '#6ad', value: 280000 },
 };
 
+// Weights in kg (per round / per unit for stackables). Carried weight slows
+// you down and drains stamina, like Tarkov's overweight system.
+const KG = {
+  pm: 0.73, mp133: 3.4, ak74: 3.3, sks: 3.85,
+  ammo_9x18: 0.01, ammo_12g: 0.045, ammo_545: 0.011, ammo_762: 0.016,
+  mag_pm: 0.09, mag_ak30: 0.23, mag_ak45: 0.33, mag_sks: 0.15,
+  knife: 0.2, crowbar: 1.4, axe: 1.7, hammer: 0.6, saw: 0.6,
+  armor_paca: 3.5, armor_6b13: 10.5, helmet_ssh: 1.6, bp_scav: 0.6, bp_tri: 1.2,
+  beans: 0.4, crackers: 0.2, water: 0.6, soda: 0.35,
+  bandage: 0.05, ai2: 0.1, salewa: 0.6, antiviral: 0.05, painkillers: 0.05,
+  bolts: 0.3, tape: 0.2, wires: 0.2, battery: 12, chain: 0.05, roler: 0.1, gpu: 0.6, ledx: 0.3,
+  planks: 1.2, nails: 0.01, log: 8,
+  sight_reddot: 0.2, sight_holo: 0.35, scope_pso: 0.6, scope_6x: 0.7,
+  supp_pm: 0.2, supp_rifle: 0.5, brake_ak: 0.15, grip_vert: 0.15,
+};
+for (const k in ITEMS) ITEMS[k].kg = KG[k] ?? 0.3;
+
+export function itemWeight(it) {
+  const def = ITEMS[it.key];
+  let w = def.kg * (it.count ?? 1);
+  if (def.type === 'mag') w += (it.rounds || 0) * ITEMS[def.ammo].kg;
+  if (def.tube) w += (it.tube || 0) * ITEMS[def.ammo].kg;
+  if (it.mag) w += itemWeight(it.mag);
+  if (it.mods) for (const m of Object.values(it.mods)) if (m) w += itemWeight(m);
+  if (it.grid) for (const c of it.grid.items) w += itemWeight(c);
+  return w;
+}
+
 let uidCounter = Date.now();
 export function uid() { return (uidCounter++).toString(36); }
 

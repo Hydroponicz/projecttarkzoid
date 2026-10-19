@@ -729,7 +729,8 @@ export class GunController {
     amp *= 1 + (1 - p.stamina / 100) * 1.6;
     if (this.armStamina < 25) amp *= 1 + (25 - this.armStamina) / 10;
     if (ctx.moving) amp *= 2.2;
-    if (p.crouch) amp *= 0.7;
+    if (p.prone) amp *= 0.45;
+    else if (p.crouch) amp *= 0.7;
     if (p.fatigue > 80) amp *= 1.4;
     amp *= 1 - 0.05 * aimSkill;
     amp *= 1 + (1 - this.ads) * 1.8;
@@ -988,7 +989,7 @@ export class GunController {
     else p.flash.intensity = 4;
 
     // Recoil: weapon springs + camera climb
-    const rm = modMul(w, 'recoil') * (1 - 0.05 * p.skill.aiming) * (1 - this.ads * 0.25) * (p.crouch ? 0.85 : 1);
+    const rm = modMul(w, 'recoil') * (1 - 0.05 * p.skill.aiming) * (1 - this.ads * 0.25) * (p.prone ? 0.7 : p.crouch ? 0.85 : 1);
     const r = cfg.recoil;
     this.recP.v += r.v * 0.55 * rm;
     this.recY.v += (Math.random() - 0.5) * r.h * 0.9 * rm;

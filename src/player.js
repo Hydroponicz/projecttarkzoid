@@ -2,7 +2,7 @@
 // Tarkov-style body-part health, hunger/thirst, bleeding and infection.
 import * as THREE from 'three';
 import { moveCircle, segBox, raycast } from './collision.js';
-import { ITEMS } from './items.js';
+import { ITEMS, itemWeight } from './items.js';
 import { sfx } from './audio.js';
 import { GunController, VM_LAYER } from './weapons.js';
 
@@ -43,6 +43,15 @@ export class Player {
     this.meleeCd = 0; this.swing = 0;
     this.ads = 0;
     this.lean = 0;
+    // Movement: Tarkov-style momentum, stances and pace control.
+    this.vel = new THREE.Vector3();   // horizontal velocity, m/s
+    this.vy = 0; this.y = 0;          // vertical (jumping)
+    this.stance = 'stand';            // stand | crouch | prone
+    this.pace = 1;                    // walk pace set with the mouse wheel (0.2..1)
+    this.exhausted = false;           // sprint locked until stamina recovers
+    this.weight = 0; this.weightTimer = 0;
+    this.landDip = 0;
+    this.breathTimer = 0;
     this.flashlight = game.isNight;
     this.crouch = false;
     this.stepDist = 0;
@@ -128,56 +137,144 @@ export class Player {
     const gunActive = this.active === 'gun' && this.weapon;
     this.ads = gunActive ? this.gun.ads : 0;
     const scoped = gunActive && this.gun.built?.parts.optic?.lens;
-    const sens = 0.0022 * (1 - this.ads * (scoped ? 0.75 : 0.4));
+    const sens = 0.0022 * (1 - this.ads * (scoped ? 0.75 : 0.4)) * (this.sprinting ? 0.6 : 1);
     this.yaw -= input.mdx * sens;
     this.pitch -= input.mdy * sens;
     this.pitch = Math.max(-1.45, Math.min(1.45, this.pitch));
 
-    // Movement state. Shift while aiming holds breath instead of sprinting.
+    // ---------- movement ----------
     const legsBroken = (this.hp.legL <= 0 || this.hp.legR <= 0) && this.painkiller <= 0;
-    this.crouch = input.crouch;
+    const fit = this.skill.fitness;
+    const grounded = this.y <= 0;
+
+    // Carried weight (refreshed a few times a second)
+    this.weightTimer -= dt;
+    if (this.weightTimer <= 0) { this.weightTimer = 0.5; this.weight = this.carryWeight(); }
+    const kg = this.weight;
+    const over = kg > 25 ? Math.min(1, (kg - 25) / 35) : 0; // 0 at 25 kg, 1 at 60 kg
+    const canSprintWeight = kg < 45;
+
+    // Stance: C toggles crouch, X toggles prone. Getting up from prone takes a moment.
+    if (input.crouchToggle) this.stance = this.stance === 'crouch' ? 'stand' : 'crouch';
+    if (input.prone) this.stance = this.stance === 'prone' ? 'crouch' : 'prone';
+    // Pace (mouse wheel), like Tarkov's walk speed
+    if (input.wheel) {
+      this.pace = Math.max(0.2, Math.min(1, Math.round((this.pace - input.wheel * 0.1) * 10) / 10));
+      g.hud.message(`Pace ${Math.round(this.pace * 100)}%`, 0.8);
+    }
+    this.crouch = this.stance !== 'stand';
+    this.prone = this.stance === 'prone';
+
     const aimHeld = input.aim && gunActive;
-    const wantSprint = input.sprint && input.f && !this.crouch && this.stamina > 1 && !legsBroken && !aimHeld;
-    let speed = this.crouch ? 1.5 : wantSprint ? 6.2 * (1 + 0.03 * this.skill.fitness) : 3.4;
-    if (this.fatigue > 80) speed *= 0.88;
-    if (this.ads > 0.5) speed *= 0.55;
-    if (legsBroken) speed *= 0.55;
-    if (gunActive && this.gun.busy) speed *= 0.8;
-    if (Math.abs(this.lean) > 0.3) speed *= 0.7;
+    const fwd = input.f - input.b, side = input.r - input.l;
+    if (this.stamina <= 0.5) this.exhausted = true;
+    if (this.exhausted && this.stamina > 25) this.exhausted = false;
+    const wantSprint = input.sprint && fwd > 0 && !aimHeld && !legsBroken && !this.exhausted && canSprintWeight && grounded;
+    if (wantSprint && this.stance !== 'stand') this.stance = 'stand', this.crouch = this.prone = false;
+    this.sprinting = wantSprint;
+
+    // Target speed (m/s) for an average person
+    let maxSpeed;
+    if (this.prone) maxSpeed = 0.4;
+    else if (this.crouch) maxSpeed = 1.0 * Math.max(0.35, this.pace);
+    else if (wantSprint) maxSpeed = 4.6 * (1 + 0.03 * fit);
+    else maxSpeed = 1.6 * this.pace;
+    if (fwd < 0) maxSpeed *= 0.65;                 // walking backwards
+    else if (side && !fwd) maxSpeed *= 0.8;        // strafing
+    if (this.ads > 0.3) maxSpeed *= 1 - 0.4 * this.ads;
+    if (legsBroken) maxSpeed *= 0.5;
+    if (this.fatigue > 80) maxSpeed *= 0.88;
+    if (gunActive && this.gun.busy) maxSpeed *= 0.85;
+    if (Math.abs(this.lean) > 0.3) maxSpeed *= 0.7;
+    maxSpeed *= 1 - 0.35 * over;
+    if (kg > 60) maxSpeed = Math.min(maxSpeed, 0.8);
+
     const fx = -Math.sin(this.yaw), fz = -Math.cos(this.yaw);
     const rx = -fz, rz = fx;
-    let mx = (input.f - input.b) * fx + (input.r - input.l) * rx;
-    let mz = (input.f - input.b) * fz + (input.r - input.l) * rz;
+    let mx = fwd * fx + side * rx, mz = fwd * fz + side * rz;
     const ml = Math.hypot(mx, mz);
-    const moving = ml > 0.01;
-    if (moving) {
-      mx /= ml; mz /= ml;
-      const bx = this.pos.x, bz = this.pos.z;
-      if (g.dev?.noclip) { this.pos.x += mx * speed * 2 * dt; this.pos.z += mz * speed * 2 * dt; }
-      else moveCircle(hash, this.pos, this.radius, mx * speed * dt, mz * speed * dt);
-      const moved = Math.hypot(this.pos.x - bx, this.pos.z - bz);
-      this.stepDist += moved;
-      this.bob += moved * (wantSprint ? 2.2 : 2.6);
-      const stride = wantSprint ? 1.6 : 1.3;
-      if (this.stepDist > stride) {
-        this.stepDist = 0;
-        if (!this.crouch) sfx.step(wantSprint ? 0.14 : 0.08);
+    if (ml > 0) { mx /= ml; mz /= ml; }
+    const tvx = mx * maxSpeed, tvz = mz * maxSpeed;
+
+    // Momentum: accelerate toward the target velocity; heavier = slower to
+    // get going and to stop. Barely any control in the air.
+    const inertia = 1 + kg / 30;
+    const speedingUp = Math.hypot(tvx, tvz) > Math.hypot(this.vel.x, this.vel.z);
+    let accel = (speedingUp ? (wantSprint ? 4.0 : 6.5) : 7.5) / inertia;
+    if (!grounded) accel = 0.8;
+    const dvx = tvx - this.vel.x, dvz = tvz - this.vel.z;
+    const dl = Math.hypot(dvx, dvz);
+    const step = Math.min(dl, accel * dt);
+    if (dl > 1e-5) { this.vel.x += (dvx / dl) * step; this.vel.z += (dvz / dl) * step; }
+
+    const bx = this.pos.x, bz = this.pos.z;
+    if (g.dev?.noclip) { this.pos.x += mx * 8 * dt; this.pos.z += mz * 8 * dt; this.vel.set(0, 0, 0); }
+    else {
+      moveCircle(hash, this.pos, this.radius, this.vel.x * dt, this.vel.z * dt);
+      // Running into a wall kills the momentum in that direction.
+      if (dt > 0) {
+        const ax = (this.pos.x - bx) / dt, az = (this.pos.z - bz) / dt;
+        this.vel.x = Math.abs(ax) < Math.abs(this.vel.x) ? ax : this.vel.x;
+        this.vel.z = Math.abs(az) < Math.abs(this.vel.z) ? az : this.vel.z;
       }
     }
-    const fit = this.skill.fitness;
-    if (wantSprint && moving) this.stamina = Math.max(0, this.stamina - 14 * (1 - 0.08 * fit) * dt);
-    else this.stamina = Math.min(100, this.stamina + (moving ? 7 : 14) * (1 + 0.1 * fit) * (this.fatigue >= 100 ? 0.5 : 1) * dt);
+    const moved = Math.hypot(this.pos.x - bx, this.pos.z - bz);
+    const speed = dt > 0 ? moved / dt : 0;
+    this.speed = speed;
+    const moving = speed > 0.15;
 
-    // Footstep noise draws zombies
+    // Jumping (Space): costs stamina, not while prone or exhausted.
+    if (input.jump && grounded && this.stance !== 'prone' && this.stamina > 12 && kg < 60 && !legsBroken) {
+      this.stance = 'stand'; this.crouch = false;
+      this.vy = 3.1 * (1 - 0.4 * over);
+      this.stamina -= 12 * (1 + over);
+      sfx.step(0.1);
+    }
+    if (!grounded || this.vy > 0) {
+      this.vy -= 9.81 * dt;
+      this.y += this.vy * dt;
+      if (this.y <= 0) {
+        this.y = 0;
+        this.landDip = Math.min(0.12, -this.vy * 0.03);
+        this.vy = 0;
+        sfx.step(0.18);
+        g.zombies.noise(this.pos.x, this.pos.z, 6);
+      }
+    }
+
+    // Footsteps follow the distance actually covered
+    if (grounded) {
+      this.stepDist += moved;
+      this.bob += moved * (wantSprint ? 2.0 : this.crouch ? 3.4 : 3.0);
+      const stride = wantSprint ? 1.5 : this.prone ? 0.6 : this.crouch ? 0.6 : 0.75;
+      if (this.stepDist > stride) {
+        this.stepDist = 0;
+        const loud = Math.min(1, speed / 4.6) * (this.crouch ? 0.4 : 1) * (1 + over * 0.5);
+        if (loud > 0.12) sfx.step(0.03 + 0.12 * loud);
+      }
+    }
+
+    // Stamina: sprinting drains it (more when overweight); recovers slowly.
+    if (wantSprint && moving) this.stamina = Math.max(0, this.stamina - 8.5 * (1 + over * 1.5) * (1 - 0.08 * fit) * dt);
+    else {
+      let regen = moving ? 3.5 : this.crouch ? 8 : 6.5;
+      regen *= (1 + 0.1 * fit) * (1 - 0.5 * over) * (this.fatigue >= 100 ? 0.5 : 1) * (this.exhausted ? 0.6 : 1);
+      this.stamina = Math.min(100, this.stamina + regen * dt);
+    }
+    // Heavy breathing when winded
+    this.breathTimer -= dt;
+    if ((this.exhausted || this.stamina < 15) && this.breathTimer <= 0) { this.breathTimer = 1.1; sfx.breath(); }
+
+    // Footstep noise scales with speed (slow walking is nearly silent)
     this.noiseTimer -= dt;
-    if (moving && this.noiseTimer <= 0) {
+    if (moving && grounded && this.noiseTimer <= 0) {
       this.noiseTimer = 0.5;
-      const r = (this.crouch ? 1.5 : wantSprint ? 13 : 5) * (1 - 0.1 * this.skill.stealth);
-      g.zombies.noise(this.pos.x, this.pos.z, r);
+      let r = speed * 3 * (this.prone ? 0.3 : this.crouch ? 0.5 : 1) * (1 + over * 0.4) * (1 - 0.1 * this.skill.stealth);
+      if (r > 0.8) g.zombies.noise(this.pos.x, this.pos.z, r);
     }
 
     // Lean (Q/E): shift the eye sideways unless a wall is in the way.
-    const leanTarget = (input.leanR ? 1 : 0) - (input.leanL ? 1 : 0);
+    const leanTarget = this.prone || wantSprint ? 0 : (input.leanR ? 1 : 0) - (input.leanL ? 1 : 0);
     this.lean += (leanTarget - this.lean) * Math.min(1, dt * 9);
     const rxv = Math.cos(this.yaw), rzv = -Math.sin(this.yaw);
     let leanDist = 0.38 * this.lean;
@@ -188,24 +285,30 @@ export class Player {
     }
 
     // Camera
-    const targetEye = this.crouch ? 1.05 : 1.65;
-    this.eye += (targetEye - this.eye) * Math.min(1, dt * 10);
-    const bobAmt = moving ? (wantSprint ? 0.06 : 0.035) * (1 - this.ads * 0.85) : 0;
-    this.camera.position.set(this.pos.x + rxv * leanDist, this.eye + Math.abs(Math.sin(this.bob)) * bobAmt - Math.abs(this.lean) * 0.05, this.pos.z + rzv * leanDist);
-    this.camera.rotation.set(this.pitch, this.yaw, Math.sin(this.bob * 0.5) * bobAmt * 0.3 - this.lean * 0.16);
-    const targetFov = gunActive ? 75 + (this.gun.adsFov - 75) * this.ads : 75;
+    const targetEye = this.prone ? 0.32 : this.crouch ? 1.1 : 1.65;
+    // Stance changes take time (prone especially)
+    this.eye += (targetEye - this.eye) * Math.min(1, dt * (this.prone || this.eye < 0.6 ? 3 : 8));
+    this.landDip *= Math.exp(-dt * 8);
+    const sp = Math.min(1, speed / 4.6);
+    const bobAmt = grounded && moving ? (0.012 + 0.04 * sp) * (1 - this.ads * 0.85) * (this.prone ? 0.3 : 1) : 0;
+    this.camera.position.set(
+      this.pos.x + rxv * leanDist,
+      this.eye + this.y + Math.abs(Math.sin(this.bob)) * bobAmt - Math.abs(this.lean) * 0.05 - this.landDip,
+      this.pos.z + rzv * leanDist);
+    this.camera.rotation.set(this.pitch - this.landDip * 0.4, this.yaw, Math.sin(this.bob * 0.5) * bobAmt * 0.35 - this.lean * 0.16);
+    const sprintFov = wantSprint && moving ? 4 : 0;
+    const targetFov = (gunActive ? 75 + (this.gun.adsFov - 75) * this.ads : 75) + sprintFov * (1 - this.ads);
     if (Math.abs(this.camera.fov - targetFov) > 0.01) { this.camera.fov = targetFov; this.camera.updateProjectionMatrix(); }
 
     // Weapon switching (1 / 2 / mouse wheel)
     this.meleeCd -= dt;
-    if (input.swap) this.setActive(this.active === 'gun' ? 'melee' : 'gun');
     if (input.slot1) this.setActive('gun');
     if (input.slot2) this.setActive('melee');
 
     if (this.active === 'gun' && this.weapon) {
       this.vm.visible = false;
       this.gun.setVisible(true);
-      this.gun.update(dt, input, { moving, sprinting: wantSprint && moving });
+      this.gun.update(dt, input, { moving, sprinting: wantSprint && moving, speed });
     } else {
       this.gun.setVisible(false);
       // Melee / fists viewmodel: sway, sprint pose and swing
@@ -390,6 +493,14 @@ export class Player {
     return false;
   }
 
+  carryWeight() {
+    const p = this.game.profile;
+    let kg = 0;
+    for (const k in p.equip) if (p.equip[k]) kg += itemWeight(p.equip[k]);
+    for (const it of p.pockets.items) kg += itemWeight(it);
+    return kg;
+  }
+
   // Sleeping fast-forwards needs and lets the body recover.
   sleep(hours) {
     this.fatigue = Math.max(0, this.fatigue - hours * 14);
@@ -404,7 +515,7 @@ export class Player {
       x: this.pos.x, z: this.pos.z, yaw: this.yaw, hp: this.hp, bleeding: [...this.bleeding],
       food: this.food, water: this.water, fatigue: this.fatigue, stamina: this.stamina,
       infected: this.infected, infection: this.infection, painkiller: this.painkiller, kills: this.kills,
-      flashlight: this.flashlight, active: this.active,
+      flashlight: this.flashlight, active: this.active, stance: this.stance, pace: this.pace,
     };
   }
 
@@ -413,7 +524,7 @@ export class Player {
     this.yaw = s.yaw;
     Object.assign(this.hp, s.hp);
     this.bleeding = new Set(s.bleeding);
-    for (const k of ['food', 'water', 'fatigue', 'stamina', 'infected', 'infection', 'painkiller', 'kills', 'flashlight', 'active']) if (s[k] !== undefined) this[k] = s[k];
+    for (const k of ['food', 'water', 'fatigue', 'stamina', 'infected', 'infection', 'painkiller', 'kills', 'flashlight', 'active', 'stance', 'pace']) if (s[k] !== undefined) this[k] = s[k];
     this.buildViewmodel();
   }
 

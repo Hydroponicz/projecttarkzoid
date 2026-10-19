@@ -90,6 +90,7 @@ export const sfx = {
   bash() { noise(0.25, 250, 1, 0.7, 'lowpass', 0.25); tone(60, 0.2, 0.4); },
   door() { tone(180, 0.15, 0.15, 'triangle', -60); noise(0.1, 600, 1, 0.15); },
   chop() { noise(0.12, 700, 2, 0.6, 'bandpass', 0.12); tone(120, 0.08, 0.3); },
+  breath() { noise(0.55, 900, 0.6, 0.12, 'bandpass', 0.5); setTimeout(() => noise(0.45, 600, 0.6, 0.09, 'bandpass', 0.4), 520); },
   heartbeat() { tone(55, 0.15, 0.4); setTimeout(() => tone(50, 0.15, 0.3), 220); },
   extract() { tone(440, 0.3, 0.2, 'triangle'); setTimeout(() => tone(660, 0.4, 0.2, 'triangle'), 250); },
 };

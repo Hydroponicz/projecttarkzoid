@@ -57,6 +57,12 @@ export class HUD {
       row.children[3].style.visibility = p.bleeding.has(k) ? 'visible' : 'hidden';
     }
     $('stam').style.width = p.stamina + '%';
+    $('stam').style.background = p.exhausted ? '#c55' : '';
+    // Stance, pace, speed and carried weight
+    const kg = p.weight || 0;
+    const wcls = kg > 60 ? 'red' : kg > 45 ? 'red' : kg > 25 ? 'warn' : '';
+    $('move').innerHTML = `${p.stance === 'stand' ? (p.sprinting ? 'SPRINTING' : 'STANDING') : p.stance.toUpperCase()} · pace ${Math.round(p.pace * 100)}% · ${(p.speed || 0).toFixed(1)} m/s<br>` +
+      `<span class="${wcls}">${kg.toFixed(1)} kg${kg > 60 ? ' — CRITICALLY OVERWEIGHT' : kg > 45 ? ' — OVERWEIGHT, can\'t sprint' : kg > 25 ? ' — overweight' : ''}</span>`;
     $('arms').style.width = p.gun.armStamina + '%';
     $('food').style.width = p.food + '%';
     $('water').style.width = p.water + '%';
@@ -66,6 +72,7 @@ export class HUD {
     if (p.infected) status.push(`<b class="green">INFECTED ${Math.floor(p.infection)}%</b>`);
     if (p.painkiller > 0) status.push('<b>PAINKILLERS</b>');
     if ((p.hp.legL <= 0 || p.hp.legR <= 0) && p.painkiller <= 0) status.push('<b class="red">LEG DESTROYED</b>');
+    if (p.exhausted) status.push('<b class="red">WINDED</b>');
     if (p.food <= 10) status.push('<b class="red">STARVING</b>');
     if (p.water <= 10) status.push('<b class="red">DEHYDRATED</b>');
 

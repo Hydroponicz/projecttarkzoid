@@ -15,7 +15,7 @@ export class Input {
       if (e.target.closest?.('input, textarea, select')) return;
       this.keys.add(e.code);
       this.pressed.add(e.code);
-      if (e.code === 'Tab') e.preventDefault();
+      if (e.code === 'Tab' || (e.code === 'Space' && this.locked)) e.preventDefault();
     });
     window.addEventListener('keyup', (e) => this.keys.delete(e.code));
     window.addEventListener('blur', () => { this.keys.clear(); this.mouse = [false, false]; });
@@ -47,13 +47,14 @@ export class Input {
       f: live && k('KeyW') ? 1 : 0, b: live && k('KeyS') ? 1 : 0,
       l: live && k('KeyA') ? 1 : 0, r: live && k('KeyD') ? 1 : 0,
       sprint: k('ShiftLeft') || k('ShiftRight'),
-      crouch: k('KeyC'),
+      crouchToggle: p('KeyC'), prone: p('KeyX'), jump: p('Space'),
+      wheel: live ? this.wheel : 0,
       aim: live && this.mouse[1],
       fire: live && this.mouse[0],
       firePressed: live && this.mousePressed,
       reload: p('KeyR'), interact: p('KeyF'),
       leanL: live && k('KeyQ'), leanR: live && k('KeyE'),
-      swap: live && this.wheel !== 0, slot1: p('Digit1'), slot2: p('Digit2'),
+      slot1: p('Digit1'), slot2: p('Digit2'),
       check: p('KeyT'), fireMode: p('KeyZ'),
       flashlight: p('KeyL'),
       inventory: p('Tab') || p('KeyI'), map: p('KeyM'),

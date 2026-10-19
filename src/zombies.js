@@ -257,7 +257,8 @@ export class Zombies {
       if (zb.losTimer <= 0) {
         zb.losTimer = 0.25;
         let range = (player.flashlight ? 30 : 18) * (game.isNight ? 0.8 : 1.3) * player.stealthMul * (game.dev?.invisible ? 0 : 1);
-        if (player.crouch) range *= 0.6;
+        if (player.prone) range *= 0.4;
+        else if (player.crouch) range *= 0.6;
         zb.canSee = dist < range && hasLOS(hash, zb.pos.x, zb.pos.z, px, pz);
         if (zb.canSee) {
           // Zombies need roughly to face you unless you're very close.
