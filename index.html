@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Tarkzoid</title>
+  <link rel="stylesheet" href="/src/style.css" />
+</head>
+<body>
+  <canvas id="game"></canvas>
+
+  <!-- In-raid HUD -->
+  <div id="hud">
+    <div id="compass"></div>
+    <div id="timer">00:00</div>
+    <div id="extracts"></div>
+    <div id="crosshair"></div>
+    <div id="hitmarker"></div>
+    <div id="vignette"></div>
+    <div id="prompt"></div>
+    <div id="extracting"></div>
+    <div id="messages"></div>
+    <div id="bottomleft">
+      <div id="doll"></div>
+      <div class="meter"><span>STA</span><div class="bar"><i id="stam"></i></div></div>
+      <div class="meter"><span>FOOD</span><div class="bar"><i id="food"></i></div></div>
+      <div class="meter"><span>H2O</span><div class="bar"><i id="water"></i></div></div>
+      <div id="status"></div>
+    </div>
+    <div id="weapon"></div>
+  </div>
+
+  <div id="map"><canvas id="mapcanvas" width="640" height="640"></canvas><div class="hint">M to close</div></div>
+
+  <!-- Inventory overlay (raid + hideout) -->
+  <div id="invwrap">
+    <div id="invhead"><span id="invtitle">Inventory</span><span class="hint">Drag to move · R rotates while dragging · Shift+click quick-move · Right-click for actions · Tab/Esc to close</span></div>
+    <div id="inv"></div>
+  </div>
+
+  <!-- Pause / pointer-lock prompt -->
+  <div id="pause" class="overlay">
+    <div class="panel">
+      <h2>PAUSED</h2>
+      <p>Click to resume</p>
+      <button id="btn-abandon" class="danger">Abandon raid (lose gear)</button>
+    </div>
+  </div>
+
+  <!-- Hideout -->
+  <div id="hideout" class="screen">
+    <header>
+      <h1>TARKZOID</h1>
+      <div id="money"></div>
+      <div id="stats"></div>
+      <div class="spacer"></div>
+      <button id="btn-wipe" class="danger small">Wipe profile</button>
+      <button id="btn-raid" class="go">START RAID ▶</button>
+    </header>
+    <div id="hideout-inv"></div>
+    <footer>
+      WASD move · Shift sprint · C crouch · Mouse look · LMB fire · RMB aim · R reload · Q/1/2 gun/melee · F search · Tab inventory · H quick-heal · L flashlight · M map · Esc pause
+      <br>Everything you take into a raid is lost if you die. Your 2×2 secure container is always kept. Find an extraction point before the timer runs out.
+    </footer>
+  </div>
+
+  <!-- Raid result -->
+  <div id="result" class="screen">
+    <div class="panel">
+      <h1 id="res-title"></h1>
+      <p id="res-reason"></p>
+      <div id="res-stats"></div>
+      <button id="btn-back" class="go">Return to hideout</button>
+    </div>
+  </div>
+
+  <div id="loading" class="overlay"><div class="panel"><h2>Generating town…</h2></div></div>
+
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>

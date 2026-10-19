@@ -1,0 +1,360 @@
+// Zombie AI: wander, hear noises, see the player, chase via a BFS flow
+// field (so they find doors), attack, die, and leave lootable corpses.
+import * as THREE from 'three';
+import { moveCircle, hasLOS } from './collision.js';
+import { HALF, corpseMesh } from './world.js';
+import { sfx } from './audio.js';
+
+const NAV_CELL = 0.6;
+const NAV_N = Math.ceil((HALF * 2) / NAV_CELL);
+const FIELD_R = 60; // cells around the player covered by the flow field
+
+const TYPES = {
+  walker: { hp: 100, speed: 1.3, chase: 2.1, dmg: [7, 13], scale: 1, weight: 70 },
+  runner: { hp: 70, speed: 1.6, chase: 4.6, dmg: [6, 10], scale: 0.95, weight: 22 },
+  brute: { hp: 320, speed: 1.0, chase: 2.6, dmg: [16, 26], scale: 1.3, weight: 8 },
+};
+
+const geo = {
+  torso: new THREE.BoxGeometry(0.5, 0.65, 0.28),
+  head: new THREE.BoxGeometry(0.26, 0.3, 0.26),
+  arm: new THREE.BoxGeometry(0.13, 0.13, 0.6),
+  leg: new THREE.BoxGeometry(0.17, 0.8, 0.17),
+};
+geo.arm.translate(0, 0, 0.3);
+geo.leg.translate(0, -0.4, 0);
+const skinMats = [0x7d8a6a, 0x8a8a70, 0x6f7a62, 0x998a7a].map((c) => new THREE.MeshStandardMaterial({ color: c, roughness: 0.9 }));
+const clothMats = [0x3a3f4a, 0x5a3a2a, 0x4a4a3a, 0x6a6a6a, 0x2a3a4a, 0x5a2a2a, 0x3a4a2a].map((c) => new THREE.MeshStandardMaterial({ color: c, roughness: 1 }));
+const eyeMat = new THREE.MeshBasicMaterial({ color: 0xffdd88 });
+const eyeGeo = new THREE.BoxGeometry(0.05, 0.03, 0.02);
+const pickArr = (a) => a[Math.floor(Math.random() * a.length)];
+
+export class Zombies {
+  constructor(scene, world) {
+    this.scene = scene;
+    this.world = world;
+    this.list = [];
+    this.buildNav();
+    this.field = new Uint16Array((FIELD_R * 2 + 1) ** 2);
+    this.fieldOrigin = [0, 0];
+    this.fieldTimer = 0;
+    this.spawnTimer = 0;
+  }
+
+  buildNav() {
+    const blocked = new Uint8Array(NAV_N * NAV_N);
+    const tmp = [];
+    const r = 0.32;
+    for (let i = 0; i < NAV_N; i++) {
+      for (let j = 0; j < NAV_N; j++) {
+        const x = -HALF + (i + 0.5) * NAV_CELL, z = -HALF + (j + 0.5) * NAV_CELL;
+        const boxes = this.world.hash.query(x - r, z - r, x + r, z + r, tmp);
+        for (const b of boxes) {
+          if (x > b.minX - r && x < b.maxX + r && z > b.minZ - r && z < b.maxZ + r) { blocked[i * NAV_N + j] = 1; break; }
+        }
+      }
+    }
+    this.blocked = blocked;
+  }
+
+  // BFS distance field over a window centered on the target.
+  updateField(tx, tz) {
+    const ci = Math.floor((tx + HALF) / NAV_CELL), cj = Math.floor((tz + HALF) / NAV_CELL);
+    const W = FIELD_R * 2 + 1;
+    const f = this.field;
+    f.fill(65535);
+    this.fieldOrigin = [ci - FIELD_R, cj - FIELD_R];
+    const q = new Int32Array(W * W);
+    let qh = 0, qt = 0;
+    const start = FIELD_R * W + FIELD_R;
+    f[start] = 0; q[qt++] = start;
+    const [oi, oj] = this.fieldOrigin;
+    while (qh < qt) {
+      const cur = q[qh++];
+      const li = Math.floor(cur / W), lj = cur % W;
+      const d = f[cur] + 1;
+      for (let k = 0; k < 4; k++) {
+        const ni = li + (k === 0 ? 1 : k === 1 ? -1 : 0), nj = lj + (k === 2 ? 1 : k === 3 ? -1 : 0);
+        if (ni < 0 || nj < 0 || ni >= W || nj >= W) continue;
+        const idx = ni * W + nj;
+        if (f[idx] !== 65535) continue;
+        const gi = oi + ni, gj = oj + nj;
+        if (gi < 0 || gj < 0 || gi >= NAV_N || gj >= NAV_N || this.blocked[gi * NAV_N + gj]) continue;
+        f[idx] = d;
+        q[qt++] = idx;
+      }
+    }
+  }
+
+  // Direction to step along the flow field, or null if outside it.
+  flowDir(x, z) {
+    const W = FIELD_R * 2 + 1;
+    const [oi, oj] = this.fieldOrigin;
+    const li = Math.floor((x + HALF) / NAV_CELL) - oi, lj = Math.floor((z + HALF) / NAV_CELL) - oj;
+    if (li < 1 || lj < 1 || li >= W - 1 || lj >= W - 1) return null;
+    let best = this.field[li * W + lj], bi = 0, bj = 0;
+    if (best === 65535) {
+      // Standing in a "blocked" cell (hugging a wall) — use neighbors anyway.
+      best = 65534;
+    }
+    for (let di = -1; di <= 1; di++) {
+      for (let dj = -1; dj <= 1; dj++) {
+        if (!di && !dj) continue;
+        // no corner cutting
+        if (di && dj && (this.field[(li + di) * W + lj] === 65535 || this.field[li * W + lj + dj] === 65535)) continue;
+        const v = this.field[(li + di) * W + lj + dj];
+        if (v < best) { best = v; bi = di; bj = dj; }
+      }
+    }
+    if (!bi && !bj) return null;
+    const tx = -HALF + (oi + li + bi + 0.5) * NAV_CELL, tz = -HALF + (oj + lj + bj + 0.5) * NAV_CELL;
+    const dx = tx - x, dz = tz - z;
+    const l = Math.hypot(dx, dz) || 1;
+    return [dx / l, dz / l];
+  }
+
+  randomOpenPoint(awayFrom, minDist) {
+    for (let i = 0; i < 50; i++) {
+      const x = (Math.random() * 2 - 1) * (HALF - 4), z = (Math.random() * 2 - 1) * (HALF - 4);
+      const gi = Math.floor((x + HALF) / NAV_CELL), gj = Math.floor((z + HALF) / NAV_CELL);
+      if (this.blocked[gi * NAV_N + gj]) continue;
+      if (awayFrom && Math.hypot(x - awayFrom.x, z - awayFrom.z) < minDist) continue;
+      return { x, z };
+    }
+    return null;
+  }
+
+  spawn(x, z, typeName) {
+    if (!typeName) {
+      const r = Math.random() * 100;
+      typeName = r < TYPES.walker.weight ? 'walker' : r < TYPES.walker.weight + TYPES.runner.weight ? 'runner' : 'brute';
+    }
+    const t = TYPES[typeName];
+    const g = new THREE.Group();
+    const skin = pickArr(skinMats), cloth = pickArr(clothMats), pants = pickArr(clothMats);
+    const torso = new THREE.Mesh(geo.torso, cloth); torso.position.y = 1.15;
+    const head = new THREE.Mesh(geo.head, skin); head.position.y = 1.65;
+    const e1 = new THREE.Mesh(eyeGeo, eyeMat); e1.position.set(-0.06, 0.03, 0.135);
+    const e2 = e1.clone(); e2.position.x = 0.06;
+    head.add(e1, e2);
+    const armL = new THREE.Mesh(geo.arm, skin); armL.position.set(-0.32, 1.38, 0);
+    const armR = new THREE.Mesh(geo.arm, skin); armR.position.set(0.32, 1.38, 0);
+    const legL = new THREE.Mesh(geo.leg, pants); legL.position.set(-0.13, 0.82, 0);
+    const legR = new THREE.Mesh(geo.leg, pants); legR.position.set(0.13, 0.82, 0);
+    g.add(torso, head, armL, armR, legL, legR);
+    g.traverse((o) => { o.castShadow = true; });
+    g.scale.setScalar(t.scale);
+    g.position.set(x, 0, z);
+    this.scene.add(g);
+    const zb = {
+      mesh: g, parts: { head, torso, armL, armR, legL, legR }, type: typeName, def: t,
+      pos: g.position, hp: t.hp, maxHp: t.hp, state: 'wander', target: null, lastSeen: 0,
+      phase: Math.random() * 10, attackCd: 0, losTimer: Math.random() * 0.3, canSee: false,
+      groanTimer: 3 + Math.random() * 10, wanderTimer: 0, dir: Math.random() * Math.PI * 2,
+      radius: 0.32 * t.scale, height: 1.85 * t.scale, stagger: 0, dead: false,
+    };
+    this.list.push(zb);
+    return zb;
+  }
+
+  populate(count, player) {
+    for (let i = 0; i < count; i++) {
+      const p = this.randomOpenPoint(player, 30);
+      if (p) this.spawn(p.x, p.z);
+    }
+    // Small hordes around a few buildings
+    for (let i = 0; i < 4; i++) {
+      const b = this.world.buildings[Math.floor(Math.random() * this.world.buildings.length)];
+      const cx = (b.x0 + b.x1) / 2, cz = (b.z0 + b.z1) / 2;
+      if (Math.hypot(cx - player.x, cz - player.z) < 35) continue;
+      for (let k = 0; k < 6; k++) this.spawn(cx + (Math.random() - 0.5) * 4, cz + (Math.random() - 0.5) * 4);
+    }
+  }
+
+  // A noise at (x,z) with radius r draws zombies that hear it.
+  noise(x, z, r) {
+    for (const zb of this.list) {
+      if (zb.dead || zb.state === 'chase') continue;
+      const d = Math.hypot(zb.pos.x - x, zb.pos.z - z);
+      if (d < r) { zb.state = 'investigate'; zb.target = { x: x + (Math.random() - 0.5) * 3, z: z + (Math.random() - 0.5) * 3 }; }
+    }
+  }
+
+  damage(zb, amount, fromX, fromZ) {
+    if (zb.dead) return false;
+    zb.hp -= amount;
+    zb.stagger = 0.25;
+    zb.state = 'chase';
+    zb.lastSeen = 3;
+    // knockback
+    const dx = zb.pos.x - fromX, dz = zb.pos.z - fromZ, l = Math.hypot(dx, dz) || 1;
+    moveCircle(this.world.hash, zb.pos, zb.radius, (dx / l) * 0.15, (dz / l) * 0.15);
+    if (zb.hp <= 0) { this.kill(zb); return true; }
+    return false;
+  }
+
+  kill(zb) {
+    zb.dead = true;
+    this.scene.remove(zb.mesh);
+    const cloth = zb.parts.torso.material.color.getHex();
+    const c = this.world.addContainer('body', zb.pos.x, zb.pos.z);
+    c.name = 'Zombie';
+    if (Math.random() < 0.65) c.grid.items.length = 0; // most zombies carry nothing
+    c.mesh = corpseMesh(this.world.group, zb.pos.x, zb.pos.z, cloth);
+    this.list.splice(this.list.indexOf(zb), 1);
+  }
+
+  update(dt, player, game) {
+    const hash = this.world.hash;
+    const px = player.pos.x, pz = player.pos.z;
+
+    this.fieldTimer -= dt;
+    if (this.fieldTimer <= 0) { this.fieldTimer = 0.35; this.updateField(px, pz); }
+
+    // Trickle spawns keep the town alive; more over time.
+    this.spawnTimer -= dt;
+    const cap = 90 + Math.floor(game.raidElapsed / 60) * 6;
+    if (this.spawnTimer <= 0) {
+      this.spawnTimer = 6;
+      if (this.list.length < cap) {
+        const p = this.randomOpenPoint(player.pos, 45);
+        if (p) { const z = this.spawn(p.x, p.z); if (Math.random() < 0.5) { z.state = 'investigate'; z.target = { x: px, z: pz }; } }
+      }
+    }
+
+    let nearest = Infinity;
+    for (const zb of this.list) {
+      const dx = px - zb.pos.x, dz = pz - zb.pos.z;
+      const dist = Math.hypot(dx, dz);
+      nearest = Math.min(nearest, dist);
+
+      // Too far away: cheap sleep update.
+      if (dist > 90) continue;
+
+      // Perception (staggered)
+      zb.losTimer -= dt;
+      if (zb.losTimer <= 0) {
+        zb.losTimer = 0.25;
+        const sightRange = player.flashlight ? 30 : 18;
+        const range = player.crouch ? sightRange * 0.6 : sightRange;
+        zb.canSee = dist < range && hasLOS(hash, zb.pos.x, zb.pos.z, px, pz);
+        if (zb.canSee) {
+          // Zombies need roughly to face you unless you're very close.
+          const ang = Math.atan2(dx, dz);
+          let da = Math.abs(((ang - zb.dir + Math.PI) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2) - Math.PI);
+          if (dist < 4 || da < 1.4 || zb.state === 'chase') { zb.state = 'chase'; zb.lastSeen = 4; }
+        }
+      }
+
+      let mx = 0, mz = 0, speed = 0;
+      if (zb.state === 'chase') {
+        zb.lastSeen -= dt;
+        if (zb.lastSeen <= 0 && !zb.canSee) { zb.state = 'investigate'; zb.target = { x: px, z: pz }; }
+        speed = zb.def.chase;
+        const flow = (!zb.canSee || dist > 6) ? this.flowDir(zb.pos.x, zb.pos.z) : null;
+        if (flow) { mx = flow[0]; mz = flow[1]; }
+        else { mx = dx / (dist || 1); mz = dz / (dist || 1); }
+      } else if (zb.state === 'investigate') {
+        const tx = zb.target.x - zb.pos.x, tz = zb.target.z - zb.pos.z;
+        const td = Math.hypot(tx, tz);
+        if (td < 1.2) { zb.state = 'wander'; zb.wanderTimer = 4; }
+        else { mx = tx / td; mz = tz / td; speed = zb.def.speed * 1.3; }
+      } else {
+        zb.wanderTimer -= dt;
+        if (zb.wanderTimer <= 0) { zb.wanderTimer = 3 + Math.random() * 6; zb.dir += (Math.random() - 0.5) * 2.5; zb.idle = Math.random() < 0.4; }
+        if (!zb.idle) { mx = Math.sin(zb.dir); mz = Math.cos(zb.dir); speed = zb.def.speed * 0.6; }
+      }
+
+      if (zb.stagger > 0) { zb.stagger -= dt; speed *= 0.2; }
+
+      // Separation from other zombies (only nearby ones matter)
+      if (speed > 0) {
+        for (const o of this.list) {
+          if (o === zb) continue;
+          const ox = zb.pos.x - o.pos.x, oz = zb.pos.z - o.pos.z;
+          const d2 = ox * ox + oz * oz;
+          if (d2 < 0.5 && d2 > 1e-6) { const d = Math.sqrt(d2); mx += (ox / d) * 0.8; mz += (oz / d) * 0.8; }
+        }
+      }
+
+      // Attack
+      zb.attackCd -= dt;
+      const reach = 1.0 * zb.def.scale;
+      if (dist < reach + 0.1 && zb.state === 'chase') {
+        speed = 0;
+        if (zb.attackCd <= 0) {
+          zb.attackCd = 1.3;
+          const [a, b] = zb.def.dmg;
+          player.takeZombieHit(a + Math.random() * (b - a), zb);
+        }
+      }
+
+      const ml = Math.hypot(mx, mz);
+      if (ml > 0.01 && speed > 0) {
+        const before = { x: zb.pos.x, z: zb.pos.z };
+        moveCircle(hash, zb.pos, zb.radius, (mx / ml) * speed * dt, (mz / ml) * speed * dt);
+        // Don't walk into the player
+        const pdx = zb.pos.x - px, pdz = zb.pos.z - pz, pd = Math.hypot(pdx, pdz);
+        const minD = zb.radius + player.radius;
+        if (pd < minD && pd > 1e-4) { zb.pos.x = px + (pdx / pd) * minD; zb.pos.z = pz + (pdz / pd) * minD; }
+        const moved = Math.hypot(zb.pos.x - before.x, zb.pos.z - before.z);
+        // stuck while wandering → turn around
+        if (zb.state === 'wander' && moved < speed * dt * 0.3) zb.dir += Math.PI * (0.5 + Math.random());
+        const targetDir = Math.atan2(mx, mz);
+        let dd = targetDir - zb.dir;
+        dd = Math.atan2(Math.sin(dd), Math.cos(dd));
+        zb.dir += dd * Math.min(1, dt * 6);
+        zb.phase += moved * 3.2;
+      } else if (zb.state === 'chase') {
+        zb.dir = Math.atan2(dx, dz);
+      }
+
+      // Animate
+      const p = zb.parts;
+      zb.mesh.rotation.y = zb.dir;
+      const swing = Math.sin(zb.phase) * 0.6;
+      p.legL.rotation.x = swing; p.legR.rotation.x = -swing;
+      const reachUp = zb.state === 'chase' ? -0.15 : 0.5;
+      p.armL.rotation.x = reachUp + Math.sin(zb.phase * 0.5) * 0.15;
+      p.armR.rotation.x = reachUp + Math.cos(zb.phase * 0.5) * 0.15;
+      if (zb.attackCd > 1.0) { p.armL.rotation.x = -0.6; p.armR.rotation.x = -0.6; }
+      p.torso.rotation.x = zb.state === 'chase' ? 0.18 : 0.08;
+      p.head.rotation.z = Math.sin(zb.phase * 0.3 + zb.groanTimer) * 0.25;
+
+      // Groans
+      zb.groanTimer -= dt;
+      if (zb.groanTimer <= 0) {
+        zb.groanTimer = (zb.state === 'chase' ? 2.5 : 8) + Math.random() * 8;
+        if (dist < 30) sfx.groan((1 - dist / 30) * 0.8);
+      }
+    }
+    this.nearest = nearest;
+  }
+
+  // 3D ray test against zombies. Returns { zb, t, head } for the closest hit.
+  raycast(origin, dir, maxDist) {
+    let best = null;
+    for (const zb of this.list) {
+      const ox = zb.pos.x - origin.x, oz = zb.pos.z - origin.z;
+      const hd = Math.hypot(dir.x, dir.z) || 1e-6;
+      // closest approach in XZ
+      const tAlong = (ox * dir.x + oz * dir.z) / (hd * hd);
+      if (tAlong < 0 || tAlong > maxDist) continue;
+      const cx = origin.x + dir.x * tAlong - zb.pos.x, cz = origin.z + dir.z * tAlong - zb.pos.z;
+      const off = Math.hypot(cx, cz);
+      const r = zb.radius * 1.05;
+      if (off > r) continue;
+      const tHit = tAlong - Math.sqrt(r * r - off * off) / hd;
+      const y = origin.y + dir.y * tAlong;
+      const s = zb.def.scale;
+      if (y < 0 || y > zb.height) continue;
+      if (!best || tHit < best.t) best = { zb, t: Math.max(0, tHit), head: y > 1.5 * s };
+    }
+    return best;
+  }
+
+  dispose() {
+    for (const zb of this.list) this.scene.remove(zb.mesh);
+    this.list = [];
+  }
+}

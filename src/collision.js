@@ -1,0 +1,127 @@
+// 2D (XZ plane) collision: axis-aligned boxes in a spatial hash, circle
+// movement with sliding, and segment raycasts for bullets / line of sight.
+
+export class SpatialHash {
+  constructor(cell = 6) {
+    this.cell = cell;
+    this.map = new Map();
+    this.stamp = 0;
+  }
+  key(cx, cz) { return cx * 73856093 ^ cz * 19349663; }
+  insert(box) {
+    box._s = 0;
+    const c = this.cell;
+    for (let cx = Math.floor(box.minX / c); cx <= Math.floor(box.maxX / c); cx++) {
+      for (let cz = Math.floor(box.minZ / c); cz <= Math.floor(box.maxZ / c); cz++) {
+        const k = this.key(cx, cz);
+        let arr = this.map.get(k);
+        if (!arr) this.map.set(k, (arr = []));
+        arr.push(box);
+      }
+    }
+  }
+  remove(box) {
+    for (const arr of this.map.values()) {
+      const i = arr.indexOf(box);
+      if (i >= 0) arr.splice(i, 1);
+    }
+  }
+  query(minX, minZ, maxX, maxZ, out = []) {
+    const c = this.cell;
+    const s = ++this.stamp;
+    out.length = 0;
+    for (let cx = Math.floor(minX / c); cx <= Math.floor(maxX / c); cx++) {
+      for (let cz = Math.floor(minZ / c); cz <= Math.floor(maxZ / c); cz++) {
+        const arr = this.map.get(this.key(cx, cz));
+        if (!arr) continue;
+        for (const b of arr) if (b._s !== s) { b._s = s; out.push(b); }
+      }
+    }
+    return out;
+  }
+}
+
+const tmp = [];
+
+// Move a circle at pos by (dx, dz), resolving penetration against boxes.
+export function moveCircle(hash, pos, r, dx, dz) {
+  pos.x += dx;
+  pos.z += dz;
+  for (let iter = 0; iter < 2; iter++) {
+    const boxes = hash.query(pos.x - r, pos.z - r, pos.x + r, pos.z + r, tmp);
+    for (const b of boxes) {
+      if (b.noCollide) continue;
+      const cx = Math.max(b.minX, Math.min(pos.x, b.maxX));
+      const cz = Math.max(b.minZ, Math.min(pos.z, b.maxZ));
+      let ox = pos.x - cx, oz = pos.z - cz;
+      const d2 = ox * ox + oz * oz;
+      if (d2 >= r * r) continue;
+      if (d2 > 1e-8) {
+        const d = Math.sqrt(d2);
+        pos.x += (ox / d) * (r - d);
+        pos.z += (oz / d) * (r - d);
+      } else {
+        // Center inside the box: push out along the shallowest axis.
+        const l = pos.x - b.minX, rr = b.maxX - pos.x, t = pos.z - b.minZ, bt = b.maxZ - pos.z;
+        const m = Math.min(l, rr, t, bt);
+        if (m === l) pos.x = b.minX - r; else if (m === rr) pos.x = b.maxX + r;
+        else if (m === t) pos.z = b.minZ - r; else pos.z = b.maxZ + r;
+      }
+    }
+  }
+}
+
+// Returns entry t in [0,1] where segment hits box, or -1.
+export function segBox(x1, z1, x2, z2, b) {
+  const dx = x2 - x1, dz = z2 - z1;
+  let t0 = 0, t1 = 1;
+  if (Math.abs(dx) < 1e-9) { if (x1 < b.minX || x1 > b.maxX) return -1; }
+  else {
+    let a = (b.minX - x1) / dx, c = (b.maxX - x1) / dx;
+    if (a > c) [a, c] = [c, a];
+    t0 = Math.max(t0, a); t1 = Math.min(t1, c);
+    if (t0 > t1) return -1;
+  }
+  if (Math.abs(dz) < 1e-9) { if (z1 < b.minZ || z1 > b.maxZ) return -1; }
+  else {
+    let a = (b.minZ - z1) / dz, c = (b.maxZ - z1) / dz;
+    if (a > c) [a, c] = [c, a];
+    t0 = Math.max(t0, a); t1 = Math.min(t1, c);
+    if (t0 > t1) return -1;
+  }
+  return t0;
+}
+
+// Nearest blocking hit along a segment. `flag` selects which boxes block
+// (e.g. 'blocksShot' or 'blocksSight').
+export function raycast(hash, x1, z1, x2, z2, flag) {
+  const boxes = hash.query(Math.min(x1, x2), Math.min(z1, z2), Math.max(x1, x2), Math.max(z1, z2), tmp);
+  let best = 1;
+  let hit = null;
+  for (const b of boxes) {
+    if (flag && !b[flag]) continue;
+    const t = segBox(x1, z1, x2, z2, b);
+    if (t >= 0 && t < best) { best = t; hit = b; }
+  }
+  return { t: best, box: hit };
+}
+
+export function hasLOS(hash, x1, z1, x2, z2) {
+  return raycast(hash, x1, z1, x2, z2, 'blocksSight').box === null;
+}
+
+// Segment vs circle: returns t of first intersection or -1.
+export function segCircle(x1, z1, x2, z2, cx, cz, r) {
+  const dx = x2 - x1, dz = z2 - z1;
+  const fx = x1 - cx, fz = z1 - cz;
+  const a = dx * dx + dz * dz;
+  const b = 2 * (fx * dx + fz * dz);
+  const c = fx * fx + fz * fz - r * r;
+  const disc = b * b - 4 * a * c;
+  if (disc < 0) return -1;
+  const s = Math.sqrt(disc);
+  const t = (-b - s) / (2 * a);
+  if (t >= 0 && t <= 1) return t;
+  if (c < 0) return 0;
+  return -1;
+}
