@@ -318,6 +318,15 @@ export class InventoryUI {
 
   closeMenu() { if (this.menu) { this.menu.remove(); this.menu = null; } }
 
+  // Abort an in-progress drag (e.g. the window was closed mid-drag).
+  cancelDrag() {
+    if (!this.drag) return;
+    const { item, ghost, origRot, origX, origY } = this.drag;
+    ghost.remove();
+    item.rot = origRot; item.x = origX; item.y = origY;
+    this.drag = null;
+  }
+
   changed() {
     this.opts.onChange?.();
     this.render();

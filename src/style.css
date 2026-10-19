@@ -52,7 +52,12 @@ button { font-family: inherit; cursor: pointer; }
 
 /* ---------- inventory ---------- */
 #invwrap { display: none; position: fixed; inset: 0; background: #0b0c0add; z-index: 4; padding: 20px; overflow: auto; }
-#invhead { display: flex; gap: 20px; align-items: baseline; margin-bottom: 12px; }
+#invhead { display: flex; gap: 20px; align-items: center; margin-bottom: 12px; }
+#invhead .hint { flex: 1; line-height: 1.5; }
+#btn-inv-close { background: #2a1d14; color: #e8d8c0; border: 1px solid #6a4a2a; padding: 8px 18px; font-size: 14px; }
+#btn-inv-close:hover { background: #4a2d1a; }
+#invwrap { cursor: default; }
+#pause .panel button { display: block; width: 100%; margin-top: 8px; background: #1c1d15; color: #ccc; border: 1px solid #3a3b30; padding: 8px; }
 #invtitle { font-size: 18px; color: #cfc8a8; }
 #inv, #hideout-inv { display: flex; gap: 30px; align-items: flex-start; }
 .inv-col { display: flex; flex-direction: column; gap: 14px; }

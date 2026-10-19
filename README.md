@@ -37,13 +37,13 @@ npm run build    # static build in dist/
 | R | Reload |
 | Q, 1, 2 | Swap between firearm and melee |
 | F or E | Interact: open/close doors, search containers, sleep in beds |
-| Tab or I | Inventory |
+| Tab or I | Inventory. Close it with Esc, Tab, F, the Close button, a click outside, or by walking off. |
 | H | Quick-heal (bandage if bleeding, otherwise a medkit) |
 | L | Flashlight |
 | M | Map (your safehouse is outlined in yellow) |
 | B | Build mode: 1–6 select a piece, R rotate, LMB build, X dismantle |
 | V | Claim a safehouse |
-| Esc | Pause |
+| Esc | Pause. The game goes fullscreen when you spawn; hold Esc or use the pause menu to leave fullscreen. |
 
 ## Dev console
 

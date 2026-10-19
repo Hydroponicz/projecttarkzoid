@@ -66,6 +66,12 @@ class Game {
     document.addEventListener('pointerlockchange', () => this.updatePause());
     $('pause').addEventListener('click', (e) => { if (e.target.tagName !== 'BUTTON') this.input.lock(); });
     $('btn-save-quit').onclick = () => this.quitToMenu();
+    $('btn-fullscreen').onclick = () => { if (document.fullscreenElement) this.exitFullscreen(); else this.enterFullscreen(); };
+    $('btn-inv-close').onclick = () => this.closeInventory();
+    // Clicking the dim background (not a panel) closes the inventory.
+    $('invwrap').addEventListener('pointerdown', (e) => {
+      if (e.button === 0 && (e.target.id === 'invwrap' || e.target.id === 'inv' || e.target.classList.contains('inv-col'))) this.closeInventory();
+    });
     $('btn-continue').onclick = () => this.loadWorld();
     $('btn-newchar').onclick = () => this.showScreen('create');
     $('btn-create-back').onclick = () => this.showMenu();
@@ -112,8 +118,26 @@ class Game {
     this.sun.color.setHex(0x9aaad8).lerp(new THREE.Color(0xfff0d8), d);
   }
 
+  // ---------- fullscreen ----------
+  // Must run inside a click/key handler (browsers require a user gesture).
+  enterFullscreen() {
+    const el = document.documentElement;
+    if (document.fullscreenElement || !el.requestFullscreen) return;
+    el.requestFullscreen({ navigationUI: 'hide' })
+      // Capture Esc (Chrome/Edge) so closing menus doesn't also exit fullscreen.
+      // Holding Esc still leaves fullscreen.
+      .then(() => navigator.keyboard?.lock?.(['Escape']))
+      .catch(() => {});
+  }
+
+  exitFullscreen() {
+    navigator.keyboard?.unlock?.();
+    if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+  }
+
   // ---------- screens ----------
   showScreen(name) {
+    this.exitFullscreen();
     for (const s of SCREENS) $(s).style.display = s === name ? 'block' : 'none';
     this.state = name;
     this.hud.show(false);
@@ -149,6 +173,7 @@ class Game {
 
   loadWorld() {
     initAudio();
+    this.enterFullscreen();
     for (const s of SCREENS) $(s).style.display = 'none';
     $('loading').style.display = 'flex';
     this.state = 'loading';
@@ -311,6 +336,7 @@ class Game {
 
   openInventory(container) {
     this.invOpen = true;
+    this.openContainer = container || null;
     this.input.unlock();
     const right = container ? () => [{ kind: 'grid', title: container.name, grid: container.grid }] : () => [];
     $('invtitle').textContent = container ? container.name : 'Inventory';
@@ -340,6 +366,8 @@ class Game {
   closeInventory() {
     if (!this.invOpen) return;
     this.invOpen = false;
+    this.openContainer = null;
+    this.inv.cancelDrag();
     this.inv.closeMenu();
     $('invwrap').style.display = 'none';
     if (this.state === 'play') { this.input.lock(); this.updatePause(); }
@@ -515,9 +543,21 @@ class Game {
   update(dt, now) {
     const inp = this.input.state();
     const pressed = (c) => this.input.pressed.has(c);
-    if (inp.inventory || (this.invOpen && pressed('Escape'))) {
-      if (this.invOpen) this.closeInventory();
-      else this.openInventory(this.lookTarget?.grid ? this.lookTarget : null);
+    if (this.invOpen) {
+      // Many ways out: Esc, Tab/I, the interact key, or simply starting to walk.
+      const walk = ['KeyW', 'KeyA', 'KeyS', 'KeyD'].some(pressed);
+      const c = this.openContainer;
+      const tooFar = c && Math.hypot(c.x - this.player.pos.x, c.z - this.player.pos.z) > 3;
+      if (inp.inventory || pressed('Escape') || inp.interact || walk || tooFar) {
+        this.closeInventory();
+        inp.interact = inp.inventory = false;
+      }
+    } else if (inp.inventory) {
+      this.openInventory(this.lookTarget?.grid ? this.lookTarget : null);
+    } else if (pressed('Escape') && this.input.locked && !this.hud.mapOpen) {
+      // With Esc captured in fullscreen the browser won't release the mouse,
+      // so Esc pauses explicitly.
+      this.input.unlock();
     }
     if (inp.map) { this.hud.toggleMap(); if (this.hud.mapOpen) this.input.unlock(); else this.input.lock(); this.updatePause(); }
     if (this.hud.mapOpen && pressed('Escape')) { this.hud.toggleMap(false); this.input.lock(); }
