@@ -5,9 +5,9 @@ import { moveCircle, hasLOS } from './collision.js';
 import { HALF, corpseMesh } from './world.js';
 import { sfx } from './audio.js';
 
-const NAV_CELL = 0.6;
-const NAV_N = Math.ceil((HALF * 2) / NAV_CELL);
-const FIELD_R = 60; // cells around the player covered by the flow field
+export const NAV_CELL = 0.6;
+export const NAV_N = Math.ceil((HALF * 2) / NAV_CELL);
+export const FIELD_R = 60; // cells around the player covered by the flow field
 
 const TYPES = {
   walker: { hp: 100, speed: 1.3, chase: 2.1, dmg: [7, 13], scale: 1, weight: 70 },
@@ -256,7 +256,7 @@ export class Zombies {
       zb.losTimer -= dt;
       if (zb.losTimer <= 0) {
         zb.losTimer = 0.25;
-        let range = (player.flashlight ? 30 : 18) * (game.isNight ? 0.8 : 1.3) * player.stealthMul;
+        let range = (player.flashlight ? 30 : 18) * (game.isNight ? 0.8 : 1.3) * player.stealthMul * (game.dev?.invisible ? 0 : 1);
         if (player.crouch) range *= 0.6;
         zb.canSee = dist < range && hasLOS(hash, zb.pos.x, zb.pos.z, px, pz);
         if (zb.canSee) {

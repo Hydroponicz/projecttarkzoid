@@ -10,6 +10,8 @@ export class Input {
     this.mousePressed = false;
     window.addEventListener('keydown', (e) => {
       if (e.repeat) return;
+      // Typing into a text field (e.g. the dev console) shouldn't drive the game.
+      if (e.target.closest?.('input, textarea, select')) return;
       this.keys.add(e.code);
       this.pressed.add(e.code);
       if (e.code === 'Tab') e.preventDefault();

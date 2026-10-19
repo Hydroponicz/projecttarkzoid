@@ -12,6 +12,7 @@ import { loadSave, writeSave, deleteSave } from './save.js';
 import { initAudio, sfx } from './audio.js';
 import { Builder, BUILDABLES, buildCostText } from './build.js';
 import { setupCreation } from './character.js';
+import { DevConsole } from './devconsole.js';
 
 const $ = (id) => document.getElementById(id);
 const SCREENS = ['menu', 'create', 'death'];
@@ -51,6 +52,7 @@ class Game {
     this.buildables = BUILDABLES;
     this.buildCost = buildCostText;
     this.creation = setupCreation((ch) => this.spawnCharacter(ch));
+    this.dev = new DevConsole(this);
     this.state = 'menu';
     this.invOpen = false;
     this.save = loadSave();
@@ -100,11 +102,11 @@ class Game {
 
   updateLighting() {
     const h = this.hour;
-    const d = smooth(5, 7.5, h) - smooth(19, 21.5, h); // 0 = night, 1 = day
+    const d = this.dev.fullbright ? 1 : smooth(5, 7.5, h) - smooth(19, 21.5, h); // 0 = night, 1 = day
     this.daylight = d;
     this.scene.background.copy(NIGHT).lerp(DAY, d);
     this.scene.fog.color.copy(this.scene.background);
-    this.scene.fog.density = 0.026 - 0.014 * d;
+    this.scene.fog.density = this.dev.noFog ? 0 : 0.026 - 0.014 * d;
     this.hemi.intensity = 1.1 + 1.3 * d;
     this.sun.intensity = 0.9 + 1.6 * d;
     this.sun.color.setHex(0x9aaad8).lerp(new THREE.Color(0xfff0d8), d);
@@ -292,7 +294,7 @@ class Game {
   }
 
   updatePause() {
-    const show = this.state === 'play' && !this.input.locked && !this.invOpen && !this.hud.mapOpen;
+    const show = this.state === 'play' && !this.input.locked && !this.invOpen && !this.hud.mapOpen && !this.dev.open;
     $('pause').style.display = show ? 'flex' : 'none';
   }
 
@@ -504,6 +506,7 @@ class Game {
     const dt = Math.min(0.05, (t - this.last) / 1000);
     this.last = t;
     if (this.state === 'play') this.update(dt, t / 1000);
+    this.dev.update(dt);
     this.input.endFrame();
     if (this.state === 'play') this.renderer.render(this.scene, this.camera);
     requestAnimationFrame((tt) => this.loop(tt));
@@ -518,8 +521,14 @@ class Game {
     }
     if (inp.map) { this.hud.toggleMap(); if (this.hud.mapOpen) this.input.unlock(); else this.input.lock(); this.updatePause(); }
     if (this.hud.mapOpen && pressed('Escape')) { this.hud.toggleMap(false); this.input.lock(); }
-    const paused = !this.input.locked && !this.invOpen && !this.hud.mapOpen;
+    const paused = !this.input.locked && !this.invOpen && !this.hud.mapOpen && !this.dev.open;
     if (paused || this.sleeping) return;
+    if (this.dev.open && this.dev.pauseWhileOpen) {
+      // Simulation paused, but keep the view in sync with console edits.
+      this.updateLighting();
+      this.hud.update(0, this);
+      return;
+    }
 
     if (this.invOpen) inp.reload = inp.swap = inp.slot1 = inp.slot2 = inp.flashlight = inp.interact = false;
     if (pressed('KeyB') && !this.invOpen) {
@@ -535,11 +544,12 @@ class Game {
       inp.fire = inp.firePressed = inp.reload = inp.slot1 = inp.slot2 = inp.swap = false;
     }
 
-    this.time += dt; // one in-game minute per real second
+    this.time += dt * this.dev.timeScale; // one in-game minute per real second at 1x
     this.updateLighting();
     this.player.update(dt, inp);
     if (this.state !== 'play') return;
-    this.zombies.update(dt, this.player, this);
+    this.dev.applyCheats();
+    if (!this.dev.freeze) this.zombies.update(dt, this.player, this);
     if (this.state !== 'play') return;
     this.fx.update(dt);
     this.builder.flicker(now);

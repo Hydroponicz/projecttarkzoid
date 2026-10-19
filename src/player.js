@@ -173,7 +173,8 @@ export class Player {
     if (moving) {
       mx /= ml; mz /= ml;
       const bx = this.pos.x, bz = this.pos.z;
-      moveCircle(hash, this.pos, this.radius, mx * speed * dt, mz * speed * dt);
+      if (g.dev?.noclip) { this.pos.x += mx * speed * 2 * dt; this.pos.z += mz * speed * 2 * dt; }
+      else moveCircle(hash, this.pos, this.radius, mx * speed * dt, mz * speed * dt);
       const moved = Math.hypot(this.pos.x - bx, this.pos.z - bz);
       this.stepDist += moved;
       this.bob += moved * (wantSprint ? 2.2 : 2.6);
@@ -380,6 +381,7 @@ export class Player {
   }
 
   damagePart(part, amount) {
+    if (this.game.dev?.god) return;
     const before = this.hp[part];
     this.hp[part] = Math.max(0, before - amount);
     let overflow = amount - before;
@@ -480,6 +482,7 @@ export class Player {
   }
 
   die(reason) {
+    if (this.game.dev?.god) return;
     if (this.dead) return;
     this.dead = true;
     this.deathReason = reason;

@@ -97,9 +97,10 @@ export class Builder {
   }
 
   blockReason(def, x, z) {
-    if (def.skill > this.game.player.skill.carpentry) return `Needs Carpentry ${def.skill}`;
-    if (!this.hasHammer()) return 'You need a hammer';
-    if (!this.canAfford(def)) return 'Not enough materials';
+    const free = this.game.dev?.freeBuild;
+    if (!free && def.skill > this.game.player.skill.carpentry) return `Needs Carpentry ${def.skill}`;
+    if (!free && !this.hasHammer()) return 'You need a hammer';
+    if (!free && !this.canAfford(def)) return 'Not enough materials';
     const [w, d] = footprint(def, this.rot);
     const minX = x - w / 2 + 0.02, maxX = x + w / 2 - 0.02, minZ = z - d / 2 + 0.02, maxZ = z + d / 2 - 0.02;
     for (const b of this.world.hash.query(minX, minZ, maxX, maxZ, [])) {
@@ -115,7 +116,7 @@ export class Builder {
 
   place(def, x, z, rot) {
     const grids = this.game.player.ammoGrids();
-    for (const [k, n] of Object.entries(def.cost)) takeItem(grids, k, n);
+    if (!this.game.dev?.freeBuild) for (const [k, n] of Object.entries(def.cost)) takeItem(grids, k, n);
     const s = this.create(def.type, x, z, rot);
     // Hammering is loud.
     this.game.zombies.noise(x, z, 22);

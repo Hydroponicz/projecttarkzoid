@@ -45,6 +45,27 @@ npm run build    # static build in dist/
 | V | Claim a safehouse |
 | Esc | Pause |
 
+## Dev console
+
+Press **`** (backquote) or **F1** to open the dev console, in game or on the menu. It pauses the game while it's open; you can turn that off in its settings. Its toggles are remembered across reloads.
+
+| Tab | What's in it |
+| --- | --- |
+| Player | God mode, noclip, infinite stamina and ammo, frozen needs, invisible to zombies. Sliders for every body part, need and skill. Bleed, infect, break legs, heal, cure. Ready-made loadouts. |
+| World | Freeze zombies, free build, fullbright, no fog. Hour and day sliders, time speed (0–60×). Click the map to teleport. Spawn zombies at your crosshair, around you, or at random. Kill, enrage or calm all zombies. Open, close or repair every door. Restock loot, claim or clear a safehouse. |
+| Items | Search, filter and spawn any item into your inventory, the container you're looking at, or at your feet. Gear goes into an empty equipment slot automatically. |
+| Debug | Collision-box overlay and zombie AI labels (type, state, HP, distance, whether it can see you, bashing). A live view of the zombie pathfinding grid. FPS, draw calls, and game state. |
+| Save | Save now, export or import save files as JSON, reroll the world seed, wipe the save. |
+
+The command line has Tab completion and ↑/↓ history. Type `help` for the full list. Examples:
+
+```
+give ak74            give ammo_545 120    kit Builder         spawn brute 3
+tp 0 0               tp safehouse         time 22:00          time +8
+speed 20             skill carpentry 8    set fatigue 90      killall 25
+god / noclip / invis / freeze / freebuild                    js player.skill
+```
+
 ## Code layout
 
 | File | Purpose |
@@ -60,6 +81,7 @@ npm run build    # static build in dist/
 | `src/inventory.js` / `src/invui.js` | Grid inventory logic and drag-and-drop UI |
 | `src/hud.js` | HUD, compass, map |
 | `src/audio.js` | Synthesized sound effects |
+| `src/devconsole.js` | Dev console: tabs, cheats, overlays, commands |
 | `src/save.js` | Save persistence (localStorage): world seed plus everything that changed |
 
-`window.game` is exposed in the browser console for debugging.
+`window.game` is also exposed in the browser's own devtools console.
