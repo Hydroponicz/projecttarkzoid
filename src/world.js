@@ -37,6 +37,12 @@ export function buildWorld(scene, seed) {
   const rnd = (a, b) => a + rand() * (b - a);
   const pick = (arr) => arr[Math.floor(rand() * arr.length)];
   const shuffle = (arr) => { for (let i = arr.length - 1; i > 0; i--) { const j = Math.floor(rand() * (i + 1)); [arr[i], arr[j]] = [arr[j], arr[i]]; } return arr; };
+  // Purely cosmetic choices (wall finishes, roof clutter, floor tiles) draw
+  // from their own sequence, so adding or changing them never moves a
+  // building: saves store where things are by the layout.
+  const drand = mulberry32((seed ^ 0x2d3c0de) >>> 0);
+  const drnd = (a, b) => a + drand() * (b - a);
+  const dpick = (arr) => arr[Math.floor(drand() * arr.length)];
   const hash = new SpatialHash(6);
   const walls = [];       // {x,z,w,d,h,y,color}
   const containers = [];
@@ -852,7 +858,7 @@ export function buildWorld(scene, seed) {
       }
     }
     // Build the outside walls (brick, clapboard or concrete by building type)
-    const finish = { house: rand() < 0.5 ? 'brick' : 'siding', farmhouse: 'siding', barn: 'siding', cabin: 'siding', shop: 'brick', grocery: 'brick', hardware: 'brick', pharmacy: rand() < 0.5 ? 'brick' : 'concrete', gas: 'concrete' }[kindName] || 'concrete';
+    const finish = { house: drand() < 0.5 ? 'brick' : 'siding', farmhouse: 'siding', barn: 'siding', cabin: 'siding', shop: 'brick', grocery: 'brick', hardware: 'brick', pharmacy: drand() < 0.5 ? 'brick' : 'concrete', gas: 'concrete' }[kindName] || 'concrete';
     curPattern = WALL[finish];
     const outerDoors = [];
     for (const [side, ax, a0, a1, fixed] of [['n', 'x', x0, x1, z0], ['s', 'x', x0, x1, z1], ['w', 'z', z0, z1, x0], ['e', 'z', z0, z1, x1]]) {
@@ -883,20 +889,21 @@ export function buildWorld(scene, seed) {
       facade(cx, cz, w - 2, d - 2, roofY + 0.25, h, new THREE.Color(0x8a9aaa));
       prop(1.2, 4, 1.2, 0x555555, cx + w / 4, h + 2, cz); // rooftop antenna mast
     }
-    if (kind.roof) roof(cx, cz, w, d, kind.roof.type, pick(kind.roof.color), color);
+    // (house roofs came later than the others: their colour is cosmetic-only)
+    if (kind.roof) roof(cx, cz, w, d, kind.roof.type, (kindName === 'house' ? dpick : pick)(kind.roof.color), color);
     else if (!kind.tower) {
       // Flat roof: a parapet round the edge, AC units and vent pipes
       const ry = roofY + 0.25;
       prop(w + 0.6, 0.4, 0.2, 0x5a5a58, cx, ry + 0.2, z0 - 0.2); prop(w + 0.6, 0.4, 0.2, 0x5a5a58, cx, ry + 0.2, z1 + 0.2);
       prop(0.2, 0.4, d + 0.2, 0x5a5a58, x0 - 0.2, ry + 0.2, cz); prop(0.2, 0.4, d + 0.2, 0x5a5a58, x1 + 0.2, ry + 0.2, cz);
-      const n = 1 + Math.floor(rand() * Math.min(3, (w * d) / 80));
+      const n = 1 + Math.floor(drand() * Math.min(3, (w * d) / 80));
       for (let i = 0; i < n; i++) {
-        const ax = cx + rnd(-w / 3, w / 3), az = cz + rnd(-d / 3, d / 3);
+        const ax = cx + drnd(-w / 3, w / 3), az = cz + drnd(-d / 3, d / 3);
         prop(1.1, 0.8, 0.9, 0x9a9c9e, ax, ry + 0.4, az);
         const fan = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.32, 0.04, 14), fur.M(0x3a3a3a));
         fan.position.set(ax, ry + 0.82, az); group.add(fan);
       }
-      for (let i = 0; i < 2; i++) { const v = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 0.7, 8), fur.M(0x7a7a78)); v.position.set(cx + rnd(-w / 2.5, w / 2.5), ry + 0.35, cz + rnd(-d / 2.5, d / 2.5)); group.add(v); }
+      for (let i = 0; i < 2; i++) { const v = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 0.7, 8), fur.M(0x7a7a78)); v.position.set(cx + drnd(-w / 2.5, w / 2.5), ry + 0.35, cz + drnd(-d / 2.5, d / 2.5)); group.add(v); }
     }
     for (const r of rooms) {
       prop(0.5, 0.05, 0.5, 0xd8d8c8, (r.x0 + r.x1) / 2, WALL_H - 0.03, (r.z0 + r.z1) / 2); // ceiling light
@@ -906,7 +913,7 @@ export function buildWorld(scene, seed) {
     if (kind.home || kindName === 'house') {
       for (const r of rooms) {
         const P = roomPlacer(r, bDoors, wins);
-        if (r.type === 'kitchen' || r.type === 'bathroom') floorPatch(r, r.type === 'kitchen' ? pick([0xb8b4a8, 0x8a8478, 0xc8c0b0]) : pick([0xd8dcd8, 0xa8b8c0, 0xe0d8d0]), true);
+        if (r.type === 'kitchen' || r.type === 'bathroom') floorPatch(r, r.type === 'kitchen' ? pick([0xb8b4a8, 0x8a8478, 0xc8c0b0]) : pick([0xd8dcd8, 0xa8b8c0, 0xe0d8d0]), true); // (layout sequence, as before)
         else if (r.type.startsWith('bedroom')) floorPatch(r, pick([0x6a5a4a, 0x5a4a5a, 0x7a6a5a, 0x4a5a6a]));
         if (r.type === 'living' || r.type === 'living_kitchen' || r.type === 'studio') furnishLiving(P, r.type !== 'living');
         else if (r.type === 'kitchen') furnishKitchen(P, false);
@@ -1376,6 +1383,18 @@ export function buildWorld(scene, seed) {
     buildingAt(x, z) { return buildings.find((b) => !b.area && x > b.x0 && x < b.x1 && z > b.z0 && z < b.z1) || null; },
     dispose: () => scene.remove(group),
   };
+}
+
+// A fingerprint of the layout: where every building, door and generated
+// container is. Saves store these things by index, so if an update moves
+// them, the saved world state no longer lines up with the town.
+export function layoutPrint(W) {
+  let h = 2166136261;
+  const add = (v) => { h = Math.imul(h ^ Math.round(v * 10), 16777619) >>> 0; };
+  for (const b of W.buildings) { add(b.x0); add(b.z0); add(b.x1); add(b.z1); }
+  for (const d of W.doors) { add(d.x); add(d.z); }
+  for (const c of W.containers.slice(0, W.generatedContainers)) { add(c.x); add(c.z); }
+  return `${W.buildings.length}.${W.doors.length}.${W.generatedContainers}.${h.toString(36)}`;
 }
 
 // Window states: closed (glass), open (pane slid up), broken (no glass).

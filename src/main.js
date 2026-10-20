@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { buildWorld, setDoor, setWindow, WORLD_VERSION } from './world.js';
+import { buildWorld, setDoor, setWindow, WORLD_VERSION, layoutPrint } from './world.js';
 import { Zombies } from './zombies.js';
 import { Player } from './player.js';
 import { Input } from './input.js';
@@ -253,6 +253,16 @@ class Game {
       s.worldVersion = WORLD_VERSION;
     }
     this.world = buildWorld(this.scene, s.seed);
+    // The same check by fingerprint, for layout changes that came without a
+    // WORLD_VERSION bump (saves from before the fingerprint: their traders
+    // must still stand in their buildings, and the counts must match).
+    const layout = layoutPrint(this.world);
+    if (s.world && (s.layout ? s.layout !== layout : !this.savedWorldFits(s.world))) {
+      this.worldRegenerated = true;
+      s.world = null;
+      s.safehouse = this.safehouse = null;
+    }
+    s.layout = layout;
     this.ragdolls = new RagdollSystem(this);
     const w = s.world;
     this.weather = new Weather(this, w?.weather || null);
@@ -367,6 +377,15 @@ class Game {
     m.position.set(x, 0.1, z);
     this.world.group.add(m);
     return m;
+  }
+
+  savedWorldFits(w) {
+    const W = this.world;
+    if (w.containers.length !== W.generatedContainers || w.doors.length !== W.doors.length) return false;
+    return (w.traders || []).every((t) => {
+      const b = W.buildings[t.b];
+      return b && t.spot && t.spot.x > b.x0 && t.spot.x < b.x1 && t.spot.z > b.z0 && t.spot.z < b.z1;
+    });
   }
 
   saveGame() {
