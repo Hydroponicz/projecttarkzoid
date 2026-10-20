@@ -217,7 +217,8 @@ export class Weather {
   }
   clothing() {
     const e = this.game.profile.equip, c = e.clothing && ITEMS[e.clothing.key];
-    return { warmth: BASE_WARMTH + (c?.warmth || 0) + (e.armor ? 1 : 0) + (e.helmet ? 0.5 : 0), rain: c?.rainproof || 0 };
+    const r = e.rig && ITEMS[e.rig.key];
+    return { warmth: BASE_WARMTH + (c?.warmth || 0) + (r?.warmth || 0) + (e.armor ? 1 : 0) + (e.helmet ? 0.5 : 0), rain: c?.rainproof || 0 };
   }
 
   updatePlayer(dt) {

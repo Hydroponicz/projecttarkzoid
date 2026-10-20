@@ -636,6 +636,8 @@ class Survivor {
 // ---------------------------------------------------------------------------
 // Manager
 // ---------------------------------------------------------------------------
+const _ray = new THREE.Raycaster(), _hits = [];
+
 export class Survivors {
   constructor(game) {
     this.game = game;
@@ -817,14 +819,19 @@ export class Survivors {
       const ox = s.pos.x - origin.x, oz = s.pos.z - origin.z;
       const hd = Math.hypot(dir.x, dir.z) || 1e-6;
       const tA = (ox * dir.x + oz * dir.z) / (hd * hd);
-      if (tA < 0 || tA > maxDist) continue;
+      if (tA < -1 || tA > maxDist + 1) continue;
       const cx = origin.x + dir.x * tA - s.pos.x, cz = origin.z + dir.z * tA - s.pos.z;
-      const off = Math.hypot(cx, cz);
-      if (off > 0.32) continue;
-      const tHit = tA - Math.sqrt(0.32 * 0.32 - off * off) / hd;
-      const y = origin.y + dir.y * tA;
-      if (y < 0 || y > 1.85) continue;
-      if (!best || tHit < best.t) best = { s, t: Math.max(0, tHit), head: y > 1.5 };
+      // Rough reject, then the ray against the body you actually see
+      if (Math.hypot(cx, cz) > 1.1) continue;
+      s.mesh.updateMatrixWorld(true);
+      _hits.length = 0;
+      _ray.set(origin, dir); _ray.near = 0; _ray.far = maxDist;
+      _ray.intersectObject(s.mesh, true, _hits);
+      const h = _hits.find((x) => x.object.isMesh && !x.object.userData.noHit);
+      if (!h || (best && h.distance >= best.t)) continue;
+      let head = false;
+      for (let o = h.object; o && o !== s.mesh; o = o.parent) if (o === s.head) head = true;
+      best = { s, t: h.distance, head };
     }
     return best;
   }

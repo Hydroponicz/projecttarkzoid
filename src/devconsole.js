@@ -484,7 +484,7 @@ export class DevConsole {
     const look = g.lookTarget?.grid;
     if (target === 'look' && !look) { this.log('Not looking at a container — dropping instead', 'warn'); dest = 'drop'; }
     let dropped = 0;
-    const slots = { weapon: 'weapon', melee: 'melee', armor: 'armor', helmet: 'helmet', backpack: 'backpack', clothing: 'clothing' };
+    const slots = { weapon: 'weapon', melee: 'melee', armor: 'armor', helmet: 'helmet', backpack: 'backpack', clothing: 'clothing', rig: 'rig' };
     for (const it of items) {
       // Fill an empty equipment slot first (weapon, armor, backpack...).
       const slot = slots[def.type];

@@ -109,7 +109,7 @@ Most zombies are in town; the countryside is quieter. Everything far away is hid
   - Freezing slows you, tires you and hurts. Hypothermia can kill.
   - Summer heat makes you thirsty. Overheating in heavy clothes can lead to heatstroke.
   - The HUD shows WET, SOAKED, COLD, FREEZING, HYPOTHERMIA, OVERHEATING or HEATSTROKE with your body temperature.
-- **Clothing slot.** Hoodie (everyone starts with one), raincoat, winter coat and military parka, each with warmth and rain protection. Find them in wardrobes, dressers, police lockers, farm shelves, hunting lockers and military duffels.
+- **Clothing slot.** Hoodie (everyone starts with one), work jacket, raincoat, winter coat and military parka, each with warmth and rain protection. Find them in wardrobes, dressers, police lockers, farm shelves, workbenches, hunting lockers and military duffels. Clothing and vests also carry things: see **Clothing storage** below.
 - **Zombies.**
   - Rain and wind drown out noise (footsteps, doors, even some gunfire carries less).
   - Fog, rain and snow cut how far zombies see.
@@ -122,6 +122,25 @@ Most zombies are in town; the countryside is quieter. Everything far away is hid
   - Frost damages crops, and nothing grows in the cold. Foraged plants barely regrow in winter.
   - **Rain barrels** (build item 7, Carpentry 1) collect rainwater to drink and to fill watering cans.
 - **Saved:** the calendar, the current front and the next one, snow cover, wet ground, your wetness and body temperature.
+
+## Clothing storage
+
+What you wear adds inventory space. Each pocket or pouch is its own small grid, Tarkov-style, so its shape matters: an AK magazine needs a tall 1×2 pouch, a can of beans fits anywhere. When you open your inventory, the pockets show up under the jacket's and vest's names, and things stay in them if you take the garment off.
+
+| Slot | Item | Pockets |
+| --- | --- | --- |
+| Clothing | Hoodie | one 2×2 front pouch |
+| Clothing | Work Jacket | two 1×2 and a 2×1 chest pocket |
+| Clothing | Raincoat | two 1×2 |
+| Clothing | Winter Coat | two 2×2 |
+| Clothing | Military Parka | two 2×2 and two 1×2 |
+| Vest / Rig | Fishing Vest | six 1×1 and two 1×2 |
+| Vest / Rig | Hunting Vest | four 1×2 (hunting lockers, crates) |
+| Vest / Rig | Police Duty Vest | two 1×2 and four 1×1 (police lockers) |
+| Vest / Rig | Scav Chest Rig | four 1×2 and two 1×1 (crates, soldiers) |
+| Vest / Rig | Tactical Assault Rig | four 1×2, two 2×2 and two 1×1 (military crates and duffels) |
+
+Reloads, ammo and every other "do you have it" check look through your pockets, vest, jacket and backpack. Backpacks and garments with pockets can't be put inside a pouch. Vests add a little warmth.
 
 ## Farming
 

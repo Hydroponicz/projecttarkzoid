@@ -59,6 +59,8 @@ const smooth = (t) => t * t * (3 - 2 * t);
 const eyeGeo = new THREE.BoxGeometry(0.05, 0.03, 0.02);
 const pickArr = (a) => a[Math.floor(Math.random() * a.length)];
 
+const _ray = new THREE.Raycaster(), _hits = [];
+
 export class Zombies {
   constructor(scene, world) {
     this.scene = scene;
@@ -521,8 +523,9 @@ export class Zombies {
       const dist = Math.hypot(dx, dz);
       nearest = Math.min(nearest, pdist);
 
-      // Hidden beyond what the fog lets you see (saves draw calls).
-      zb.mesh.visible = pdist < (game.isNight ? 70 : 110);
+      // Hidden beyond what the fog lets you see (saves draw calls); in clear
+      // daylight that's far enough to pick them off through a scope.
+      zb.mesh.visible = pdist < Math.min(game.camera.far, game.isNight ? 80 : 200);
       // Too far away: cheap sleep update.
       if (pdist > 90 && !prey && zb.state === 'wander') continue;
 
@@ -754,24 +757,29 @@ export class Zombies {
   }
 
   // 3D ray test against zombies. Returns { zb, t, head } for the closest hit.
+  // Bullets hit the body you see (leaning, lunging, staggering), not an
+  // upright cylinder: a generous cylinder rejects most zombies cheaply, then
+  // the ray is tested against the actual body-part meshes.
   raycast(origin, dir, maxDist) {
     let best = null;
+    _ray.set(origin, dir); _ray.near = 0; _ray.far = maxDist;
     for (const zb of this.list) {
       if (zb.down) continue; // knocked-down bodies are hit through their ragdoll
       const ox = zb.pos.x - origin.x, oz = zb.pos.z - origin.z;
       const hd = Math.hypot(dir.x, dir.z) || 1e-6;
       // closest approach in XZ
       const tAlong = (ox * dir.x + oz * dir.z) / (hd * hd);
-      if (tAlong < 0 || tAlong > maxDist) continue;
+      if (tAlong < -1 || tAlong > maxDist + 1) continue;
       const cx = origin.x + dir.x * tAlong - zb.pos.x, cz = origin.z + dir.z * tAlong - zb.pos.z;
-      const off = Math.hypot(cx, cz);
-      const r = zb.radius * 1.05;
-      if (off > r) continue;
-      const tHit = tAlong - Math.sqrt(r * r - off * off) / hd;
-      const y = origin.y + dir.y * tAlong;
-      const s = zb.def.scale;
-      if (y < 0 || y > zb.height) continue;
-      if (!best || tHit < best.t) best = { zb, t: Math.max(0, tHit), head: y > 1.5 * s };
+      if (Math.hypot(cx, cz) > 1.1 * zb.def.scale) continue;
+      zb.mesh.updateMatrixWorld(true);
+      _hits.length = 0;
+      _ray.intersectObject(zb.mesh, true, _hits);
+      const h = _hits[0];
+      if (!h || (best && h.distance >= best.t)) continue;
+      let head = false;
+      for (let o = h.object; o && o !== zb.mesh; o = o.parent) if (o === zb.parts.head) head = true;
+      best = { zb, t: h.distance, head, point: h.point };
     }
     return best;
   }

@@ -4,8 +4,12 @@ import { ITEMS, itemValue, makeItem } from './items.js';
 import { canPlace, removeItem, addItem, itemSize } from './inventory.js';
 
 const CELL = 42;
-const SLOT_TYPES = { weapon: 'weapon', melee: 'melee', armor: 'armor', helmet: 'helmet', backpack: 'backpack', clothing: 'clothing' };
-const SLOT_LABELS = { weapon: 'Primary', melee: 'Melee', helmet: 'Helmet', armor: 'Body Armor', backpack: 'Backpack', clothing: 'Clothing' };
+const SLOT_TYPES = { weapon: 'weapon', melee: 'melee', armor: 'armor', helmet: 'helmet', backpack: 'backpack', clothing: 'clothing', rig: 'rig' };
+const SLOT_LABELS = { weapon: 'Primary', melee: 'Melee', helmet: 'Helmet', armor: 'Body Armor', backpack: 'Backpack', clothing: 'Clothing', rig: 'Vest / Rig' };
+// Items that hold other items (backpacks, clothing and vests with pockets)
+const hasStorage = (it) => !!(it.grid || it.grids);
+// All the plain grids in a list of sections (pocket groups are flattened)
+const flatGrids = (secs) => secs.flatMap((s) => (s.kind === 'grids' ? s.subs || [] : s.kind === 'grid' ? [s] : []));
 
 export class InventoryUI {
   constructor(root) {
@@ -55,6 +59,15 @@ export class InventoryUI {
     h.textContent = s.title;
     box.appendChild(h);
     if (s.kind === 'grid') box.appendChild(this.renderGrid(s));
+    else if (s.kind === 'grids') {
+      // A garment's pockets: separate little grids side by side, each its own
+      // drop target (like the pouches on a chest rig)
+      const row = document.createElement('div');
+      row.className = 'pockets';
+      s.subs = s.subs || s.grids.map((grid) => ({ kind: 'grid', grid, noStore: true, owner: s.owner }));
+      for (const sub of s.subs) row.appendChild(this.renderGrid(sub));
+      box.appendChild(row);
+    }
     else if (s.kind === 'equip') box.appendChild(this.renderEquip(s));
     else if (s.kind === 'shop') box.appendChild(this.renderShop(s));
     else if (s.kind === 'sell') {
@@ -141,6 +154,7 @@ export class InventoryUI {
     else if (def.type === 'fuel') badge = `${(it.fuel || 0).toFixed(1)} L`;
     else if (def.waterCap) badge = `${(it.water || 0).toFixed(1)} L`;
     else if (it.grid) badge = `${it.grid.items.length}`;
+    else if (it.grids) badge = `${it.grids.reduce((n, g) => n + g.items.length, 0)}`;
     if (loading) { badge = '⟳ ' + badge; el.classList.add('loading'); }
     const mods = it.mods ? Object.values(it.mods).filter(Boolean).map((m) => ITEMS[m.key].short) : [];
     const modTag = mods.length ? `<span class="imods">${mods.join(' · ')}</span>` : '';
@@ -168,11 +182,13 @@ export class InventoryUI {
 
   // Shift+click: move to the first grid in the opposite column that has room.
   quickMove(it, src) {
-    const fromLeft = this.curLeft.some((s) => (src.grid && s.grid === src.grid) || (src.equip && s.equip === src.equip));
-    const targets = (fromLeft ? this.curRight : this.curLeft).filter((s) => s.kind === 'grid');
+    const fromLeft = flatGrids(this.curLeft).some((s) => src.grid && s.grid === src.grid) || this.curLeft.some((s) => src.equip && s.equip === src.equip);
+    const targets = flatGrids(fromLeft ? this.curRight : this.curLeft);
     const prevRot = it.rot;
     for (const t of targets) {
       if (t.noNest && ITEMS[it.key].type === 'backpack') continue;
+      if (t.noStore && hasStorage(it)) continue;
+      if (it.grids?.includes(t.grid)) continue;
       if (t.grid === src.grid) continue;
       this.detach(it, src);
       if (addItem(t.grid, it)) { this.changed(); return; }
@@ -254,7 +270,9 @@ export class InventoryUI {
     if (gridEl) {
       const sec = this.grids.get(gridEl.dataset.grid);
       if (sec.noNest && def.type === 'backpack') return revert();
+      if (sec.noStore && hasStorage(item)) return revert(); // no vests inside pockets
       if (item.grid && item.grid === sec.grid) return revert();
+      if (item.grids?.includes(sec.grid)) return revert();
       const r = gridEl.getBoundingClientRect();
       const x = Math.floor((e.clientX - r.left - CELL / 2) / CELL + 0.5);
       const y = Math.floor((e.clientY - r.top - CELL / 2) / CELL + 0.5);
@@ -327,7 +345,7 @@ export class InventoryUI {
   }
 
   firstGrid() {
-    for (const s of [...this.curLeft, ...this.curRight]) if (s.kind === 'grid') return s.grid;
+    for (const s of flatGrids([...this.curLeft, ...this.curRight])) return s.grid;
     return null;
   }
 

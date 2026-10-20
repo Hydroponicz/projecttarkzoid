@@ -88,7 +88,9 @@ export class Player {
   get weapon() { return this.equip.weapon; }
   get melee() { return this.equip.melee; }
   ammoGrids() {
+    // Pockets, then vest pouches and jacket pockets, then the backpack
     const g = [this.game.profile.pockets];
+    for (const slot of ['rig', 'clothing']) if (this.equip[slot]?.grids) g.push(...this.equip[slot].grids);
     if (this.equip.backpack) g.push(this.equip.backpack.grid);
     return g;
   }

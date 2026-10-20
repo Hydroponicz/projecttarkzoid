@@ -30,7 +30,7 @@ const FIRST = ['Kate', 'Bob', 'Marcus', 'Elena', 'Dmitri', 'Jo', 'Sam', 'Alex', 
 const LAST = ['Smith', 'Petrov', 'Hale', 'Moreno', 'Kowalski', 'Reyes', 'Novak', 'Grant', 'Volkov', 'Baker', 'Lindqvist', 'Okafor', 'Price', 'Doyle'];
 export const randomName = () => `${FIRST[Math.floor(Math.random() * FIRST.length)]} ${LAST[Math.floor(Math.random() * LAST.length)]}`;
 
-const SLOT_FOR_TYPE = { weapon: 'weapon', melee: 'melee', armor: 'armor', helmet: 'helmet', backpack: 'backpack', clothing: 'clothing' };
+const SLOT_FOR_TYPE = { weapon: 'weapon', melee: 'melee', armor: 'armor', helmet: 'helmet', backpack: 'backpack', clothing: 'clothing', rig: 'rig' };
 
 export function makeCharacter(name, profKey, bought) {
   const prof = PROFESSIONS[profKey];
@@ -38,19 +38,20 @@ export function makeCharacter(name, profKey, bought) {
   for (const k in STATS) stats[k] = Math.min(MAX_SKILL, (prof.bonus[k] || 0) + (bought[k] || 0));
   const ch = {
     name, profession: profKey, professionName: prof.name, stats,
-    equip: { weapon: null, melee: null, armor: null, helmet: null, backpack: null, clothing: null },
+    equip: { weapon: null, melee: null, armor: null, helmet: null, backpack: null, clothing: null, rig: null },
     pockets: makeGrid(4, 2),
     daysSurvived: 0, kills: 0,
   };
   const kit = [...prof.kit, 'water', 'crackers', 'hoodie'];
-  // Backpacks first so later items have room.
-  kit.sort((a, b) => (b === 'bp_scav') - (a === 'bp_scav'));
+  // Backpacks and clothing with pockets first so later items have room.
+  kit.sort((a, b) => (b === 'bp_scav' || b === 'hoodie') - (a === 'bp_scav' || a === 'hoodie'));
   for (const entry of kit) {
     const [key, opts] = Array.isArray(entry) ? entry : [entry, {}];
     const it = makeItem(key, opts);
     const slot = SLOT_FOR_TYPE[ITEMS[key].type];
     if (slot && !ch.equip[slot]) { ch.equip[slot] = it; continue; }
     if (addItem(ch.pockets, it)) continue;
+    if ([ch.equip.rig, ch.equip.clothing].some((c) => c?.grids?.some((g) => addItem(g, it)))) continue;
     if (ch.equip.backpack) addItem(ch.equip.backpack.grid, it);
   }
   return ch;

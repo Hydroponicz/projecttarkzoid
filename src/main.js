@@ -303,6 +303,7 @@ class Game {
     const ch = s.character;
     if (ch) {
       if (!('clothing' in ch.equip)) ch.equip.clothing = null; // slot added with the weather
+      if (!('rig' in ch.equip)) ch.equip.rig = null;
       for (const k in ch.equip) if (ch.equip[k]) migrateItem(ch.equip[k]);
       ch.pockets.items.forEach(migrateItem);
     }
@@ -479,6 +480,11 @@ class Game {
       { kind: 'equip', title: `${p.name} — Equipment`, equip: p.equip },
       { kind: 'grid', title: 'Pockets', grid: p.pockets },
     ];
+    // Pockets of what you're wearing: vest / rig first, then the jacket
+    for (const slot of ['rig', 'clothing']) {
+      const it = p.equip[slot];
+      if (it?.grids?.length) s.push({ kind: 'grids', title: `${ITEMS[it.key].name} — pockets`, grids: it.grids, owner: it });
+    }
     if (p.equip.backpack) s.push({ kind: 'grid', title: ITEMS[p.equip.backpack.key].name, grid: p.equip.backpack.grid, noNest: true });
     return s;
   }

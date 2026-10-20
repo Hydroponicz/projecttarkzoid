@@ -309,3 +309,5 @@ button.small:not(.danger) { background: #1c1d15; color: #ccc; border: 1px solid 
 /* Farming panel (reuses the vehicle panel layout) */
 .fm-skill { display: grid; grid-template-columns: 90px 1fr; gap: 8px; align-items: center; font-size: 12px; color: #a8c86a; }
 .blue { color: #8ac8f0; }
+.pockets { display: flex; flex-wrap: wrap; gap: 6px; align-items: flex-start; max-width: 400px; }
+.pockets .grid { border-color: #4a4b3a; }
