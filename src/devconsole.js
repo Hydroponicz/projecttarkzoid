@@ -117,7 +117,7 @@ export class DevConsole {
       setTimeout(() => this.cmd.focus(), 0);
     } else {
       this.cmd.blur();
-      if (this.game.state === 'play' && !this.game.invOpen && !this.game.hud.mapOpen) this.game.input.lock();
+      if (this.game.state === 'play' && !this.game.invOpen && !this.game.hud.mapOpen) this.game.resume();
     }
     this.game.updatePause();
   }

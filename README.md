@@ -73,6 +73,23 @@ Guns work much like Tarkov's. Each firearm is a detailed procedural model, and i
   - Also a muzzle brake and a vertical foregrip.
 - **Lean** with **Q** / **E**.
 
+## Hits, ragdolls and gore
+
+Zombies and survivors react physically to what hits them.
+
+- **Hit reactions.** A body rocks away from the hit, and a headshot snaps the head back. Leg shots and heavy blows (shotgun at close range, axe, crowbar) can knock a target off its feet. It goes ragdoll, tumbles, and climbs back up once it settles. You can keep shooting it while it's down.
+- **Death.** Every death is a ragdoll: 15 joints with joint limits, colliding with the ground, walls, cars and furniture.
+  - The killing blow pushes where it lands, and a running body keeps its momentum.
+  - A headshot drops the body limp on the spot. A body shot buckles the knees first, then the body crumples, sometimes with a few death twitches.
+  - Survivors drop their gun as they fall.
+- **Corpses.** Settled corpses are merged into a single static mesh to keep draw calls low. Shooting a corpse moves it again. Corpses are saved in their final pose, and a body's loot sits where the body ends up.
+- **Blood.**
+  - A spray exits along the bullet's path, and a fine mist puffs back toward the shooter.
+  - Splatter lands on the wall behind the target and drips onto the floor.
+  - Pools spread under bodies.
+  - Bullet holes are oriented decals on whatever surface they hit.
+- **Feedback.** Different sounds for body hits, headshots, armor hits, kills and bodies hitting the ground. A red hit marker pops on kills.
+
 ## Controls
 
 | Key | Action |
@@ -131,7 +148,9 @@ god / noclip / invis / freeze / freebuild                    js player.skill
 | `src/player.js` | First-person controller, leaning, melee, body-part health, status effects |
 | `src/weapons.js` | Firearms: weapon/optic models, PIP scopes, sway/recoil physics, animations, magazines, attachments |
 | `src/survivors.js` | AI survivors: dispositions and trust, A* pathfinding, combat, following, dialogue, trading |
-| `src/zombies.js` | Zombie spawning, perception, flow-field pathing, attacks, corpses |
+| `src/zombies.js` | Zombie spawning, perception, flow-field pathing, attacks, hit reactions, knockdowns, corpses |
+| `src/ragdoll.js` | Verlet ragdolls (death, knockdown, get-up), dropped weapons, corpse freezing |
+| `src/fx.js` | Instanced particles (blood, dust, sparks), brass, decals (bullet holes, splatter, blood pools) |
 | `src/collision.js` | 2D spatial hash, circle-vs-box movement, raycasts |
 | `src/items.js` | Item definitions, loot tables, container types |
 | `src/inventory.js` / `src/invui.js` | Grid inventory logic and drag-and-drop UI |

@@ -25,6 +25,10 @@ button { font-family: inherit; cursor: pointer; }
 #hitmarker { position: absolute; left: 50%; top: 50%; width: 22px; height: 22px; margin: -11px; display: none;
   background: linear-gradient(45deg, transparent 45%, #fff 45%, #fff 55%, transparent 55%), linear-gradient(-45deg, transparent 45%, #fff 45%, #fff 55%, transparent 55%); }
 #hitmarker.show { display: block; }
+#hitmarker.show.kill { width: 30px; height: 30px; margin: -15px; animation: killpop .45s ease-out forwards;
+  background: linear-gradient(45deg, transparent 43%, #e22 43%, #e22 57%, transparent 57%), linear-gradient(-45deg, transparent 43%, #e22 43%, #e22 57%, transparent 57%);
+  filter: drop-shadow(0 0 3px #000); }
+@keyframes killpop { 0% { transform: scale(1.5); opacity: 1; } 25% { transform: scale(1); } 100% { transform: scale(1.05); opacity: 0; } }
 #hitmarker.head { filter: drop-shadow(0 0 2px red) hue-rotate(0deg); background: linear-gradient(45deg, transparent 42%, #f44 42%, #f44 58%, transparent 58%), linear-gradient(-45deg, transparent 42%, #f44 42%, #f44 58%, transparent 58%); }
 #vignette { position: absolute; inset: 0; opacity: 0; background: radial-gradient(ellipse at center, transparent 45%, #7a0000cc 100%); }
 #prompt { position: absolute; left: 50%; top: 58%; transform: translateX(-50%); padding: 4px 10px; background: #000a; border: 1px solid #fff3; display: none; }
@@ -197,3 +201,4 @@ button.small:not(.danger) { background: #1c1d15; color: #ccc; border: 1px solid 
 .dlg-opts { display: flex; flex-direction: column; gap: 4px; margin-bottom: 8px; }
 .dlg-opts button { text-align: left; background: #1c2014; color: #ddd; border: 1px solid #34402a; padding: 7px 10px; font-size: 13px; }
 .dlg-opts button:hover { background: #2a321e; }
+#relock { display: none; position: fixed; left: 50%; bottom: 120px; transform: translateX(-50%); z-index: 3; pointer-events: none; padding: 5px 12px; background: #000a; border: 1px solid #fff3; color: #ddd; font-size: 12px; }

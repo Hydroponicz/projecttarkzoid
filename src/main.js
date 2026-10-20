@@ -1,10 +1,11 @@
 import * as THREE from 'three';
-import { buildWorld, corpseMesh, setDoor, WORLD_VERSION } from './world.js';
+import { buildWorld, setDoor, WORLD_VERSION } from './world.js';
 import { Zombies } from './zombies.js';
 import { Player } from './player.js';
 import { Input } from './input.js';
 import { HUD } from './hud.js';
 import { FX } from './fx.js';
+import { RagdollSystem, lookMats } from './ragdoll.js';
 import { InventoryUI } from './invui.js';
 import { ITEMS, makeItem, migrateItem, itemValue } from './items.js';
 import { combineItems, weaponActions, loadStep } from './weapons.js';
@@ -66,7 +67,11 @@ class Game {
     this.canvas.addEventListener('click', () => {
       if (this.state === 'play' && !this.invOpen && !this.hud.mapOpen) this.input.lock();
     });
-    document.addEventListener('pointerlockchange', () => this.updatePause());
+    document.addEventListener('pointerlockchange', () => {
+      if (this.input.locked) { this.awaitingRelock = false; this.input.softLive = false; }
+      this.updatePause();
+    });
+    this.input.onLockFail = () => this.updatePause();
     $('pause').addEventListener('click', (e) => { if (e.target.tagName !== 'BUTTON') this.input.lock(); });
     $('btn-save-quit').onclick = () => this.quitToMenu();
     $('btn-fullscreen').onclick = () => { if (document.fullscreenElement) this.exitFullscreen(); else this.enterFullscreen(); };
@@ -198,6 +203,7 @@ class Game {
       s.worldVersion = WORLD_VERSION;
     }
     this.world = buildWorld(this.scene, s.seed);
+    this.ragdolls = new RagdollSystem(this);
     const w = s.world;
     if (w) {
       w.containers.forEach((grid, i) => { if (this.world.containers[i]) this.world.containers[i].grid = grid; });
@@ -214,6 +220,7 @@ class Game {
     this.zombies = this.player = null;
     if (w) this.builder.restore(w.structures);
     this.zombies = new Zombies(this.scene, this.world);
+    this.zombies.game = this;
     this.player = new Player(this.camera, this.scene, this);
     const ch = this.profile;
     if (ch.player) this.player.restore(ch.player);
@@ -274,8 +281,22 @@ class Game {
     ct.name = c.name;
     ct.grid = c.grid;
     ct.color = c.color;
-    if (c.type === 'drop') ct.mesh = this.dropMesh(c.x, c.z);
-    else ct.mesh = corpseMesh(this.world.group, c.x, c.z, c.color ?? 0x4a4a3a);
+    if (c.type === 'drop') { ct.mesh = this.dropMesh(c.x, c.z); return ct; }
+    // Bodies are ragdolls: a fresh one handed over by whoever died, or one
+    // rebuilt from its saved pose (older saves: dropped and settled in place).
+    ct.look = c.look || { kind: 'survivor', skin: 0x8a7a6a, top: c.color ?? 0x4a4a3a, bottom: 0x2a2a2a };
+    if (c.ragdoll) ct.ragdoll = c.ragdoll;
+    else {
+      const look = ct.look, spec = { kind: look.kind, look, mats: lookMats(look) };
+      if (c.pose) spec.pose = c.pose;
+      else {
+        spec.matrix = new THREE.Matrix4().makeRotationY(Math.random() * Math.PI * 2).setPosition(c.x, 0, c.z);
+        spec.vel = new THREE.Vector3(Math.random() - 0.5, 0, Math.random() - 0.5);
+        spec.tone = 0.6;
+        spec.settleNow = true;
+      }
+      ct.ragdoll = this.ragdolls.create(spec);
+    }
     return ct;
   }
 
@@ -296,7 +317,10 @@ class Game {
     this.save.character = this.profile;
     this.save.world = {
       containers: W.containers.slice(0, W.generatedContainers).map((c) => c.grid),
-      extra: W.containers.slice(W.generatedContainers).map((c) => ({ type: c.type, name: c.name, x: c.x, z: c.z, grid: c.grid, color: c.color })),
+      extra: W.containers.slice(W.generatedContainers).map((c) => ({
+        type: c.type, name: c.name, x: +c.x.toFixed(2), z: +c.z.toFixed(2), grid: c.grid, color: c.color, look: c.look,
+        pose: c.ragdoll && !c.ragdoll.dead && c.ragdoll.sleeping ? c.ragdoll.pose() : undefined,
+      })),
       doors: W.doors.map((d) => ({ open: d.open, hp: d.hp, broken: d.broken || undefined })),
       felled: [...W.felled],
       structures: this.builder.serialize(),
@@ -312,9 +336,13 @@ class Game {
     this.hud.toggleMap(false);
     this.builder.toggle(false);
     this.input.unlock();
+    this.awaitingRelock = false;
+    this.input.softLive = false;
     this.zombies?.dispose();
     this.survivors?.dispose();
     this.survivors = null;
+    this.ragdolls?.dispose();
+    this.ragdolls = null;
     this.world?.dispose();
     this.fx.clear();
     for (const c of [...this.camera.children]) this.camera.remove(c);
@@ -336,7 +364,7 @@ class Game {
     const grid = makeGrid(10, 10);
     for (const k in ch.equip) if (ch.equip[k]) addItem(grid, ch.equip[k]) || (grid.h += 4, addItem(grid, ch.equip[k]));
     for (const it of ch.pockets.items) addItem(grid, it);
-    const corpse = this.addExtraContainer({ type: 'body', name: `${ch.name}'s corpse`, x: p.pos.x, z: p.pos.z, grid, color: 0x2a3020 });
+    const corpse = this.addExtraContainer({ type: 'body', name: `${ch.name}'s corpse`, x: p.pos.x, z: p.pos.z, grid, color: 0x2a3020, look: { kind: 'survivor', skin: 0xc09070, top: 0x2a3020, bottom: 0x2a3a4a, pack: 0x3a3a2a } });
     corpse.grid = grid;
     const days = Math.floor((this.time - ch.spawnTime) / 1440);
     this.save.graveyard = this.save.graveyard || [];
@@ -355,9 +383,22 @@ class Game {
     $('death-stats').innerHTML = `Survived ${days} day${days === 1 ? '' : 's'}<br>Zombies killed: ${p.kills}<br>Profession: ${ch.professionName}`;
   }
 
+  // Return control to the game after closing a menu. If the browser won't
+  // give the mouse back (e.g. the menu was closed with Esc), keep playing
+  // with keyboard control and a "click to look around" hint instead of pausing.
+  resume() {
+    if (this.state !== 'play') return;
+    this.awaitingRelock = true;
+    this.input.softLive = true;
+    this.input.lock();
+    this.updatePause();
+  }
+
   updatePause() {
-    const show = this.state === 'play' && !this.input.locked && !this.invOpen && !this.hud.mapOpen && !this.dev.open && !this.dialogOpen;
+    const ui = this.invOpen || this.hud.mapOpen || this.dev.open || this.dialogOpen;
+    const show = this.state === 'play' && !this.input.locked && !ui && !this.awaitingRelock;
     $('pause').style.display = show ? 'flex' : 'none';
+    $('relock').style.display = this.state === 'play' && this.awaitingRelock && !this.input.locked && !ui ? 'block' : 'none';
   }
 
   // ---------- inventory ----------
@@ -437,7 +478,7 @@ class Game {
     this.inv.cancelDrag();
     this.inv.closeMenu();
     $('invwrap').style.display = 'none';
-    if (this.state === 'play') { this.input.lock(); this.updatePause(); }
+    this.resume();
   }
 
   // Trade with a survivor: their backpack opens next to yours. What you take
@@ -644,10 +685,15 @@ class Game {
       // With Esc captured in fullscreen the browser won't release the mouse,
       // so Esc pauses explicitly.
       this.input.unlock();
+    } else if (pressed('Escape') && this.awaitingRelock && !this.hud.mapOpen) {
+      // Esc again (after closing a menu with Esc) really pauses.
+      this.awaitingRelock = false;
+      this.input.softLive = false;
+      this.updatePause();
     }
-    if (inp.map) { this.hud.toggleMap(); if (this.hud.mapOpen) this.input.unlock(); else this.input.lock(); this.updatePause(); }
-    if (this.hud.mapOpen && pressed('Escape')) { this.hud.toggleMap(false); this.input.lock(); }
-    const paused = !this.input.locked && !this.invOpen && !this.hud.mapOpen && !this.dev.open && !this.dialogOpen;
+    if (inp.map) { this.hud.toggleMap(); if (this.hud.mapOpen) this.input.unlock(); else this.resume(); this.updatePause(); }
+    if (this.hud.mapOpen && pressed('Escape')) { this.hud.toggleMap(false); this.resume(); }
+    const paused = !this.input.locked && !this.invOpen && !this.hud.mapOpen && !this.dev.open && !this.dialogOpen && !this.awaitingRelock;
     if (paused || this.sleeping) return;
     if (this.dev.open && this.dev.pauseWhileOpen) {
       // Simulation paused, but keep the view in sync with console edits.
@@ -680,6 +726,7 @@ class Game {
     if (this.state !== 'play') return;
     if (!this.dev.freeze) this.survivors.update(dt);
     if (this.state !== 'play') return;
+    this.ragdolls.update(dt);
     this.fx.update(dt);
     this.builder.flicker(now);
 

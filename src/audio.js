@@ -73,6 +73,22 @@ export const sfx = {
   reload() { tone(900, 0.05, 0.15, 'square'); setTimeout(() => tone(600, 0.06, 0.15, 'square'), 180); },
   swing() { noise(0.15, 900, 1, 0.25, 'bandpass', 0.15); },
   hitFlesh() { noise(0.12, 400, 1, 0.5, 'lowpass', 0.12); tone(80, 0.1, 0.3); },
+  // Bullet into a body: a wet slap with a low thump; headshots add a hard crack.
+  hitBody(vol = 1) { noise(0.1, 650, 1.2, 0.55 * vol, 'lowpass', 0.09); noise(0.05, 2400, 2, 0.18 * vol, 'bandpass', 0.04); tone(70, 0.12, 0.35 * vol, 'sine', -30); },
+  hitHead(vol = 1) { noise(0.04, 3200, 3, 0.5 * vol, 'bandpass', 0.035); noise(0.14, 500, 1, 0.55 * vol, 'lowpass', 0.13); tone(160, 0.06, 0.25 * vol, 'square', -100); },
+  // Hitting something with armor (soldier zombies' vests, helmets)
+  hitArmor(vol = 1) { tone(1900 + Math.random() * 600, 0.07, 0.12 * vol, 'triangle', -500); noise(0.05, 3000, 4, 0.25 * vol, 'bandpass', 0.05); },
+  // Confirmed kill: a dull, final thud under the hit (felt more than heard).
+  kill() { tone(55, 0.28, 0.45, 'sine', -25); noise(0.2, 220, 0.8, 0.35, 'lowpass', 0.2); },
+  // A body hitting the ground: heavy thump plus gear rattle.
+  bodyFall(vol = 1) {
+    if (vol < 0.03) return;
+    tone(48 + Math.random() * 12, 0.25, 0.55 * vol, 'sine', -18);
+    noise(0.22, 300, 0.8, 0.6 * vol, 'lowpass', 0.2);
+    setTimeout(() => noise(0.08, 1200, 1.5, 0.15 * vol, 'bandpass', 0.07), 70 + Math.random() * 60);
+  },
+  // Meaty melee impact (blunt or blade)
+  meleeHit(heavy) { noise(0.14, heavy ? 300 : 600, 1, 0.65, 'lowpass', 0.13); tone(heavy ? 60 : 90, 0.14, 0.45, 'sine', -30); if (heavy) noise(0.04, 2200, 2, 0.25, 'bandpass', 0.04); },
   hurt() { tone(220, 0.25, 0.3, 'sawtooth', -120); noise(0.2, 500, 1, 0.3); },
   step(vol = 0.08) { noise(0.06, 300 + Math.random() * 200, 1, vol, 'lowpass', 0.06); },
   pickup() { tone(500, 0.06, 0.12, 'triangle'); },

@@ -12,6 +12,8 @@ import { HALF, setDoor } from './world.js';
 import { NAV_CELL, NAV_N } from './zombies.js';
 import { randomName } from './character.js';
 import { sfx } from './audio.js';
+import { lookMats, JOINT } from './ragdoll.js';
+const smooth = (t) => t * t * (3 - 2 * t);
 
 const MAX_SURVIVORS = 9;
 const DISP_LABEL = { friendly: 'Friendly', neutral: 'Wary', hostile: 'Hostile' };
@@ -86,6 +88,9 @@ class Survivor {
     this.percT = Math.random() * 0.3; this.aggroPlayer = 0; this.aimWatch = 0; this.warned = false;
     this.say_ = null; this.sayT = 0; this.speechCd = 0;
     this.phase = 0; this.hitFlash = 0; this.regen = 0;
+    // Hit reactions, knockdowns and getting back up (see Zombies)
+    this.lean = { x: 0, z: 0, vx: 0, vz: 0 }; this.headKick = { x: 0, v: 0 };
+    this.vx = 0; this.vz = 0; this.down = null; this.rise = 0; this.riseSide = 1;
     this.buildMesh();
   }
 
@@ -119,8 +124,11 @@ class Survivor {
     this.muzzle.position.set(0, 0, len);
     this.gunMesh.add(this.muzzle);
     g.position.copy(this.pos);
+    g.rotation.order = 'YXZ';
     g.rotation.y = this.dir;
     this.mesh = g;
+    this.gunLen = len;
+    this.lookMats = { skin, top: shirt, bottom: pants };
     this.mats = [shirt, pants];
     this.mgr.scene.add(g);
   }
@@ -152,7 +160,8 @@ class Survivor {
     }
   }
 
-  hurt(dmg, source, attacker) {
+  // hit: { point, dir, force } of the bullet or blow, for reactions and the ragdoll
+  hurt(dmg, source, attacker, hit = null) {
     if (this.dead) return;
     this.hp -= dmg;
     this.hitFlash = 0.15;
@@ -174,26 +183,108 @@ class Survivor {
     } else if (source === 'zombie' && attacker) {
       this.target = attacker;
     }
-    if (this.hp <= 0) this.die(source);
+    if (this.hp <= 0) this.die(source, hit);
+    else if (hit) this.react(hit);
   }
 
-  die(source) {
+  // Flinch away from the hit; leg hits and heavy blows can knock them down.
+  react(hit) {
+    if (this.down) { this.down.impulse(hit.point, hit.dir, hit.force); return; }
+    const s = Math.sin(this.dir), c = Math.cos(this.dir);
+    const lz = hit.dir.x * s + hit.dir.z * c, lx = hit.dir.x * c - hit.dir.z * s;
+    this.lean.vx += lz * hit.force * 0.9;
+    this.lean.vz -= lx * hit.force * 0.9;
+    if (hit.point.y > 1.5) this.headKick.v += lz * hit.force * 3;
+    if (this.rise > 0) return;
+    const chance = (hit.point.y < 0.85 ? 0.3 : 0.04) + Math.max(0, (hit.force - 3.5) * 0.12) + (hit.knock || 0);
+    if (Math.random() < chance) this.knockDown(hit);
+  }
+
+  ragdollSpec(extra) {
+    const L = this.look;
+    const look = { kind: 'survivor', skin: L.skin, top: L.shirt, bottom: L.pants, pack: L.pack, ...(L.hat ? { hat: L.hat } : { hair: L.hair }) };
+    const mats = lookMats(look);
+    Object.assign(mats, this.lookMats);
+    this.mesh.updateMatrixWorld(true);
+    return { matrix: this.mesh.matrixWorld, kind: 'survivor', mats, look, vel: new THREE.Vector3(this.vx, 0, this.vz), owner: this, ...extra };
+  }
+
+  knockDown(hit) {
+    const rd = this.mgr.game.ragdolls;
+    if (!rd) return;
+    const r = rd.create(this.ragdollSpec({ alive: true, tone: 0.7, toneDecay: 1.4 }));
+    r.impulse(hit.point, hit.dir, hit.force * 1.3);
+    this.down = r;
+    this.downT = 1 + Math.random() * 2;
+    this.mesh.visible = false;
+    this.path = [];
+    this.lean.x = this.lean.z = this.lean.vx = this.lean.vz = 0;
+    if (Math.random() < 0.6) this.say(pick(HURT_LINES), 0.7);
+  }
+
+  getUp() {
+    const r = this.down, P = r.p;
+    const yaw = r.yaw, faceDown = r.faceDown;
+    this.pos.set((P[JOINT.FTL].x + P[JOINT.FTR].x) / 2, 0, (P[JOINT.FTL].z + P[JOINT.FTR].z) / 2);
+    moveCircle(this.mgr.world.hash, this.pos, this.radius, 0, 0);
+    this.mgr.game.ragdolls.remove(r);
+    this.down = null;
+    this.dir = faceDown ? yaw : yaw + Math.PI;
+    this.riseSide = faceDown ? 1 : -1;
+    this.rise = 1;
+    this.mesh.visible = true;
+  }
+
+  // Body lean, head snap and the get-up pivot applied to the model.
+  applyPose(dt) {
+    const L = this.lean, K = this.headKick;
+    L.vx += (-70 * L.x - 10 * L.vx) * dt; L.vz += (-70 * L.z - 10 * L.vz) * dt;
+    L.x += L.vx * dt; L.z += L.vz * dt;
+    K.v += (-90 * K.x - 9 * K.v) * dt; K.x += K.v * dt;
+    this.mesh.position.copy(this.pos);
+    this.mesh.rotation.y = this.dir;
+    this.mesh.rotation.x = L.x + (this.rise > 0 ? this.riseSide * (Math.PI / 2) * smooth(Math.min(1, this.rise)) : 0);
+    this.mesh.rotation.z = L.z;
+    this.head.rotation.x = K.x;
+  }
+
+  die(source, hit) {
     this.dead = true;
-    this.mgr.scene.remove(this.mesh);
     const game = this.mgr.game;
+    // The body goes limp (or buckles, if not shot in the head) and keeps
+    // whatever momentum it had; the gun falls out of their hands.
+    const head = hit && hit.point.y > 1.5;
+    let r = this.down;
+    const wasDown = !!r;
+    if (r) { r.alive = false; r.tone = 0; }
+    else if (game.ragdolls) r = game.ragdolls.create(this.ragdollSpec({ tone: head ? 0 : 0.85, toneDecay: 1.2 + Math.random(), spasms: head ? 0 : 1 + Math.floor(Math.random() * 3) }));
+    if (r) {
+      r.owner = null;
+      if (hit) r.impulse(hit.point, hit.dir, hit.force * (head ? 0.8 : 1.2));
+      if (!wasDown && this.mesh.visible) this.dropGun(r);
+    }
+    this.mgr.scene.remove(this.mesh);
     // Drop everything they carried as a lootable body.
     const grid = makeGrid(8, 8);
     for (const it of this.inv.items) addItem(grid, it);
     if (this.weapon) addItem(grid, this.weapon);
     if (this.melee) addItem(grid, makeItem(this.melee));
     if (this.weapon && this.reserve > 0) addItem(grid, makeItem(ITEMS[this.weapon.key].ammo, { count: this.reserve }));
-    game.addExtraContainer({ type: 'body', name: `${this.name}'s body`, x: this.pos.x, z: this.pos.z, grid, color: this.look.shirt });
+    const body = game.addExtraContainer({ type: 'body', name: `${this.name}'s body`, x: this.pos.x, z: this.pos.z, grid, color: this.look.shirt, look: r?.look, ragdoll: r });
+    if (r) {
+      r.onSettle = (rr) => {
+        body.x = rr.pelvis.x; body.z = rr.pelvis.z;
+        if (!rr.pooled) { rr.pooled = true; game.fx.pool((rr.pelvis.x + rr.p[JOINT.CHE].x) / 2, (rr.pelvis.z + rr.p[JOINT.CHE].z) / 2, 1 + Math.random() * 0.6); }
+      };
+      if (r.sleeping) { r.onSettle(r); r.freeze(); }
+    }
     const near = this.mgr.distToPlayer(this) < 40;
     if (source === 'player') game.hud.message(`You killed ${this.met ? this.name : 'a survivor'}.`, 3);
     else if (near && this.met) game.hud.message(`${this.name} is dead.`, 3);
     // Bitten survivors can come back as one of them.
     if (source === 'zombie' && Math.random() < 0.45) {
       setTimeout(() => {
+        if (r && !r.dead) { game.ragdolls?.remove(r); body.ragdoll = null; }
         if (!game.zombies) return;
         const z = game.zombies.spawn(this.pos.x, this.pos.z, 'walker');
         z.state = 'wander';
@@ -202,10 +293,32 @@ class Survivor {
     }
   }
 
+  dropGun(r) {
+    const rd = this.mgr.game.ragdolls;
+    const src = this.gunMesh.children[0];
+    if (!src) return;
+    this.mesh.updateMatrixWorld(true);
+    const a = new THREE.Vector3(), b = new THREE.Vector3();
+    this.gunMesh.getWorldPosition(a);
+    this.muzzle.getWorldPosition(b);
+    const m = src.clone();
+    m.castShadow = true;
+    const vel = new THREE.Vector3(this.vx, 1 + Math.random(), this.vz).add(new THREE.Vector3(Math.random() - 0.5, 0, Math.random() - 0.5).multiplyScalar(2));
+    rd.dropProp(m, a, b, vel);
+  }
+
   // ---------------------------------------------------------------------
   update(dt, game) {
     const p = game.player;
     const hash = this.mgr.world.hash;
+    if (this.down) {
+      // On the ground: follow the ragdoll, get up once it has settled.
+      const r = this.down;
+      this.pos.x = r.pelvis.x; this.pos.z = r.pelvis.z;
+      if (r.sleeping || r.age > 6) { this.downT -= dt; if (this.downT <= 0) this.getUp(); }
+      return;
+    }
+    if (this.rise > 0) { this.rise -= dt / 1.5; this.vx = this.vz = 0; this.applyPose(dt); return; }
     const dP = this.pos.distanceTo(p.pos);
     if (this.sayT > 0) this.sayT -= dt;
     this.speechCd -= dt; this.fireCd -= dt; this.aggroPlayer -= dt;
@@ -278,7 +391,7 @@ class Survivor {
         else if (this.fireCd <= 0) {
           this.fireCd = 1.1;
           const dmg = AI_MELEE[this.melee] || 15;
-          this.mgr.hitTarget(this, t, dmg * (0.7 + Math.random() * 0.6));
+          this.mgr.hitTarget(this, t, dmg * (0.7 + Math.random() * 0.6), true);
           sfx.swing();
         }
       }
@@ -370,8 +483,8 @@ class Survivor {
     const reach = 0.5;
     this.gunMesh.position.set(0.12, 1.42 - Math.sin(armX) * reach, Math.cos(armX) * reach * 0.8 + 0.05);
     this.gunMesh.rotation.x = this.weapon ? armX * 0.9 : armX - 1.2;
-    this.mesh.position.copy(this.pos);
-    this.mesh.rotation.y = this.dir;
+    this.vx = moved / dt * Math.sin(this.dir); this.vz = moved / dt * Math.cos(this.dir);
+    this.applyPose(dt);
     this.mesh.visible = dP < (game.isNight ? 70 : 110);
   }
 
@@ -653,11 +766,16 @@ export class Survivors {
     return best ? { s: best, d: bd } : null;
   }
 
-  hitTarget(from, t, dmg) {
+  hitTarget(from, t, dmg, melee = false) {
     const g = this.game;
-    if (t === g.player) g.player.takeBulletHit(dmg, from.met ? from.name : 'a survivor');
-    else if (t.kind === 'survivor') t.hurt(dmg, 'survivor', from);
-    else if (t.def) { g.fx.blood(new THREE.Vector3(t.pos.x, 1.3, t.pos.z)); g.zombies.damage(t, dmg, from.pos.x, from.pos.z); }
+    if (t === g.player) { g.player.takeBulletHit(dmg, from.met ? from.name : 'a survivor'); return; }
+    const head = !melee && Math.random() < 0.12;
+    const point = new THREE.Vector3(t.pos.x, head ? 1.62 : 0.6 + Math.random() * 0.8, t.pos.z);
+    const dir = new THREE.Vector3(t.pos.x - from.pos.x, (point.y - 1.35) * 0.2, t.pos.z - from.pos.z).normalize();
+    const hit = { point, dir, force: Math.min(6, dmg * 0.075) };
+    g.fx.blood(point, dir, { head, power: hit.force / 3, exit: !melee });
+    if (t.kind === 'survivor') t.hurt(dmg * (head ? 2.5 : 1), 'survivor', from, hit);
+    else if (t.def) g.zombies.damage(t, dmg * (head ? 3 : 1), from.pos.x, from.pos.z, head, hit);
   }
 
   fireFx(s, tx, tz) {
@@ -677,7 +795,7 @@ export class Survivors {
   raycast(origin, dir, maxDist) {
     let best = null;
     for (const s of this.list) {
-      if (s.dead) continue;
+      if (s.dead || s.down) continue;
       const ox = s.pos.x - origin.x, oz = s.pos.z - origin.z;
       const hd = Math.hypot(dir.x, dir.z) || 1e-6;
       const tA = (ox * dir.x + oz * dir.z) / (hd * hd);
@@ -696,7 +814,7 @@ export class Survivors {
   meleeTarget(pos, fx, fz, range) {
     let best = null, bd = range + 0.35;
     for (const s of this.list) {
-      if (s.dead) continue;
+      if (s.dead || s.down) continue;
       const dx = s.pos.x - pos.x, dz = s.pos.z - pos.z, d = Math.hypot(dx, dz);
       if (d < bd && (dx * fx + dz * fz) / (d || 1) > 0.6) { bd = d; best = s; }
     }
@@ -827,7 +945,7 @@ export class Survivors {
     g.dialogOpen = false;
     this.dialogFor = null;
     document.getElementById('dialog').style.display = 'none';
-    if (g.state === 'play' && !g.invOpen) g.input.lock();
+    if (!g.invOpen) g.resume();
     g.updatePause();
   }
 

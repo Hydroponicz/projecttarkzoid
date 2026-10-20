@@ -2,8 +2,9 @@
 // field (so they find doors), attack, die, and leave lootable corpses.
 import * as THREE from 'three';
 import { moveCircle, hasLOS } from './collision.js';
-import { HALF, corpseMesh } from './world.js';
+import { HALF } from './world.js';
 import { sfx } from './audio.js';
+import { lookMats, JOINT } from './ragdoll.js';
 
 export const NAV_CELL = 0.6;
 export const NAV_N = Math.ceil((HALF * 2) / NAV_CELL);
@@ -29,6 +30,8 @@ geo.leg.translate(0, -0.4, 0);
 const skinMats = [0x7d8a6a, 0x8a8a70, 0x6f7a62, 0x998a7a].map((c) => new THREE.MeshStandardMaterial({ color: c, roughness: 0.9 }));
 const clothMats = [0x3a3f4a, 0x5a3a2a, 0x4a4a3a, 0x6a6a6a, 0x2a3a4a, 0x5a2a2a, 0x3a4a2a].map((c) => new THREE.MeshStandardMaterial({ color: c, roughness: 1 }));
 const eyeMat = new THREE.MeshBasicMaterial({ color: 0xffdd88 });
+const deadEyeMat = new THREE.MeshStandardMaterial({ color: 0x2a2010, roughness: 0.4 });
+const smooth = (t) => t * t * (3 - 2 * t);
 const eyeGeo = new THREE.BoxGeometry(0.05, 0.03, 0.02);
 const pickArr = (a) => a[Math.floor(Math.random() * a.length)];
 
@@ -42,6 +45,7 @@ export class Zombies {
     this.fieldOrigin = [0, 0];
     this.fieldTimer = 0;
     this.spawnTimer = 0;
+    this.game = null; // set by the game (ragdolls, effects)
   }
 
   buildNav() {
@@ -168,6 +172,7 @@ export class Zombies {
     }
     g.traverse((o) => { o.castShadow = true; });
     g.scale.setScalar(t.scale);
+    g.rotation.order = 'YXZ'; // lean (x, z) is applied in the body's own frame
     g.position.set(x, 0, z);
     this.scene.add(g);
     const zb = {
@@ -176,6 +181,10 @@ export class Zombies {
       phase: Math.random() * 10, attackCd: 0, losTimer: Math.random() * 0.3, canSee: false,
       groanTimer: 3 + Math.random() * 10, wanderTimer: 0, dir: Math.random() * Math.PI * 2,
       radius: 0.32 * t.scale, height: 1.85 * t.scale, stagger: 0, dead: false, stuck: 0,
+      // Hit reactions: body lean and head snap springs, current velocity,
+      // knocked-down ragdoll and the get-up animation.
+      lean: { x: 0, z: 0, vx: 0, vz: 0 }, headKick: { x: 0, v: 0 }, vx: 0, vz: 0, down: null, rise: 0, riseSide: 1,
+      look: { kind: 'zombie', skin: skin.color.getHex(), top: cloth.color.getHex(), bottom: pants.color.getHex(), ...(t.helmet ? { helmet: 0x3e4a30, vest: 0x3a4430 } : {}) },
     };
     this.list.push(zb);
     return zb;
@@ -220,13 +229,14 @@ export class Zombies {
   // A noise at (x,z) with radius r draws zombies that hear it.
   noise(x, z, r) {
     for (const zb of this.list) {
-      if (zb.dead || zb.state === 'chase') continue;
+      if (zb.dead || zb.down || zb.state === 'chase') continue;
       const d = Math.hypot(zb.pos.x - x, zb.pos.z - z);
       if (d < r) { zb.state = 'investigate'; zb.target = { x: x + (Math.random() - 0.5) * 3, z: z + (Math.random() - 0.5) * 3 }; }
     }
   }
 
-  damage(zb, amount, fromX, fromZ, head = false) {
+  // hit: { point, dir, force } from the bullet or blow (for reactions and ragdolls)
+  damage(zb, amount, fromX, fromZ, head = false, hit = null) {
     if (zb.dead) return false;
     // Armored zombies (soldiers) shrug off body shots; headshots go through.
     if (zb.def.armor && !head) amount *= 1 - zb.def.armor;
@@ -234,23 +244,104 @@ export class Zombies {
     zb.stagger = 0.25;
     zb.state = 'chase';
     zb.lastSeen = 3;
+    if (zb.hp <= 0) { this.kill(zb, hit, head); return true; }
+    if (zb.down) { if (hit) zb.down.impulse(hit.point, hit.dir, hit.force); return false; }
     // knockback
     const dx = zb.pos.x - fromX, dz = zb.pos.z - fromZ, l = Math.hypot(dx, dz) || 1;
     moveCircle(this.world.hash, zb.pos, zb.radius, (dx / l) * 0.15, (dz / l) * 0.15);
-    if (zb.hp <= 0) { this.kill(zb); return true; }
+    if (hit) this.react(zb, hit, head);
     return false;
   }
 
-  kill(zb) {
+  // Flinch: the body rocks away from the hit, the head snaps on headshots.
+  // Leg hits and heavy blows can take a zombie off its feet.
+  react(zb, hit, head) {
+    const s = Math.sin(zb.dir), c = Math.cos(zb.dir);
+    const lz = hit.dir.x * s + hit.dir.z * c, lx = hit.dir.x * c - hit.dir.z * s;
+    const f = hit.force * (zb.type === 'brute' ? 0.4 : 1);
+    zb.lean.vx += lz * f * 0.9;
+    zb.lean.vz -= lx * f * 0.9;
+    if (head) zb.headKick.v += lz * f * 3 + (Math.random() - 0.5) * f;
+    if (zb.rise > 0) return;
+    const legHit = hit.point.y < 0.85 * zb.def.scale;
+    let chance = (legHit ? 0.3 : 0) + Math.max(0, (f - 3.5) * 0.12) + (hit.knock || 0);
+    if (zb.type === 'brute') chance *= 0.3;
+    if (Math.random() < chance) this.knockDown(zb, hit);
+  }
+
+  ragdollSpec(zb, extra) {
+    const look = zb.look;
+    const mats = lookMats(look);
+    mats.skin = zb.parts.head.material; mats.top = zb.parts.torso.material; mats.bottom = zb.parts.legL.material;
+    mats.extra.push({ size: [0.05, 0.03, 0.02], off: [-0.06, 0.03, 0.13], on: 'head', mat: extra.dead ? deadEyeMat : eyeMat },
+      { size: [0.05, 0.03, 0.02], off: [0.06, 0.03, 0.13], on: 'head', mat: extra.dead ? deadEyeMat : eyeMat });
+    zb.mesh.updateMatrixWorld(true);
+    return {
+      matrix: zb.mesh.matrixWorld, kind: 'zombie', scale: zb.def.scale, mats, look,
+      vel: new THREE.Vector3(zb.vx, 0, zb.vz), owner: zb, ...extra,
+    };
+  }
+
+  knockDown(zb, hit) {
+    const rd = this.game?.ragdolls;
+    if (!rd) return;
+    const r = rd.create(this.ragdollSpec(zb, { alive: true, tone: 0.7, toneDecay: 1.4 }));
+    r.impulse(hit.point, hit.dir, hit.force * 1.3);
+    zb.down = r;
+    zb.downT = 0.8 + Math.random() * 1.6;
+    zb.mesh.visible = false;
+    zb.lean.x = zb.lean.z = zb.lean.vx = zb.lean.vz = 0;
+  }
+
+  // Knocked down: the body follows its ragdoll until it has settled, then
+  // the zombie climbs back to its feet.
+  updateDown(zb, dt) {
+    const r = zb.down;
+    zb.pos.x = r.pelvis.x; zb.pos.z = r.pelvis.z;
+    if (r.sleeping || r.age > 5) { zb.downT -= dt; if (zb.downT <= 0) this.getUp(zb); }
+  }
+
+  getUp(zb) {
+    const r = zb.down, P = r.p;
+    const fx = (P[JOINT.FTL].x + P[JOINT.FTR].x) / 2, fz = (P[JOINT.FTL].z + P[JOINT.FTR].z) / 2;
+    const yaw = r.yaw, faceDown = r.faceDown;
+    this.game.ragdolls.remove(r);
+    zb.down = null;
+    zb.pos.set(fx, 0, fz);
+    moveCircle(this.world.hash, zb.pos, zb.radius, 0, 0);
+    // Lying along the body, then pivoting up on the feet.
+    zb.dir = faceDown ? yaw : yaw + Math.PI;
+    zb.riseSide = faceDown ? 1 : -1;
+    zb.rise = 1;
+    zb.mesh.visible = true;
+    zb.vx = zb.vz = 0;
+  }
+
+  kill(zb, hit, head) {
     zb.dead = true;
+    const game = this.game;
     this.scene.remove(zb.mesh);
-    const cloth = zb.parts.torso.material.color.getHex();
     const c = this.world.addContainer(zb.def.loot || 'body', zb.pos.x, zb.pos.z);
     c.type = 'body';
     c.name = zb.def.loot === 'soldier' ? 'Dead Soldier' : 'Zombie';
+    c.color = zb.look.top;
+    c.look = zb.look;
     if (!zb.def.loot && Math.random() < 0.65) c.grid.items.length = 0; // most zombies carry nothing
-    c.mesh = corpseMesh(this.world.group, zb.pos.x, zb.pos.z, cloth);
     this.list.splice(this.list.indexOf(zb), 1);
+    if (!game?.ragdolls) return;
+    // The body keeps its momentum, takes the killing blow, and crumples:
+    // headshots drop it limp on the spot, body shots buckle the knees first.
+    let r = zb.down;
+    if (r) { r.alive = false; r.tone = 0; r.owner = null; }
+    else r = game.ragdolls.create(this.ragdollSpec(zb, { dead: true, tone: head ? 0 : 0.85, toneDecay: 1.3 + Math.random(), spasms: head ? 0 : 2 + Math.floor(Math.random() * 3) }));
+    r.owner = null;
+    if (hit) r.impulse(hit.point, hit.dir, hit.force * (head ? 0.8 : 1.2));
+    c.ragdoll = r;
+    r.onSettle = (rr) => {
+      c.x = rr.pelvis.x; c.z = rr.pelvis.z;
+      if (!rr.pooled) { rr.pooled = true; game.fx.pool((rr.pelvis.x + rr.p[JOINT.CHE].x) / 2, (rr.pelvis.z + rr.p[JOINT.CHE].z) / 2, 0.9 + Math.random() * 0.7); }
+    };
+    if (r.sleeping) { r.onSettle(r); r.freeze(); }
   }
 
   update(dt, player, game) {
@@ -273,6 +364,7 @@ export class Zombies {
 
     let nearest = Infinity;
     for (const zb of this.list) {
+      if (zb.down) { this.updateDown(zb, dt); continue; }
       // A zombie hunts either the player or an AI survivor ("prey").
       if (zb.prey && zb.prey.dead) { zb.prey = null; if (zb.state === 'chase') zb.state = 'wander'; }
       const prey = zb.prey;
@@ -331,11 +423,12 @@ export class Zombies {
       }
 
       if (zb.stagger > 0) { zb.stagger -= dt; speed *= 0.2; }
+      if (zb.rise > 0) { zb.rise -= dt / 1.4; speed = 0; }
 
       // Separation from other zombies (only nearby ones matter)
       if (speed > 0) {
         for (const o of this.list) {
-          if (o === zb) continue;
+          if (o === zb || o.down) continue;
           const ox = zb.pos.x - o.pos.x, oz = zb.pos.z - o.pos.z;
           const d2 = ox * ox + oz * oz;
           if (d2 < 0.5 && d2 > 1e-6) { const d = Math.sqrt(d2); mx += (ox / d) * 0.8; mz += (oz / d) * 0.8; }
@@ -345,7 +438,7 @@ export class Zombies {
       // Attack
       zb.attackCd -= dt;
       const reach = 1.0 * zb.def.scale;
-      if (dist < reach + 0.1 && zb.state === 'chase') {
+      if (dist < reach + 0.1 && zb.state === 'chase' && !(zb.rise > 0)) {
         speed = 0;
         if (zb.attackCd <= 0) {
           zb.attackCd = 1.3;
@@ -365,6 +458,7 @@ export class Zombies {
         const minD = zb.radius + player.radius;
         if (pd < minD && pd > 1e-4) { zb.pos.x = px + (pdx / pd) * minD; zb.pos.z = pz + (pdz / pd) * minD; }
         const moved = Math.hypot(zb.pos.x - before.x, zb.pos.z - before.z);
+        zb.vx = (zb.pos.x - before.x) / dt; zb.vz = (zb.pos.z - before.z) / dt;
         // Blocked while chasing → bash whatever player-made obstacle is in the way.
         if (zb.state === 'chase' && moved < speed * dt * 0.3) {
           zb.stuck += dt;
@@ -380,13 +474,21 @@ export class Zombies {
         dd = Math.atan2(Math.sin(dd), Math.cos(dd));
         zb.dir += dd * Math.min(1, dt * 6);
         zb.phase += moved * 3.2;
-      } else if (zb.state === 'chase') {
-        zb.dir = Math.atan2(dx, dz);
+      } else {
+        zb.vx = zb.vz = 0;
+        if (zb.state === 'chase' && !(zb.rise > 0)) zb.dir = Math.atan2(dx, dz);
       }
 
       // Animate
       const p = zb.parts;
       zb.mesh.rotation.y = zb.dir;
+      // Hit reaction springs; while getting up the body pivots up from the ground.
+      const L = zb.lean, K = zb.headKick;
+      L.vx += (-70 * L.x - 10 * L.vx) * dt; L.vz += (-70 * L.z - 10 * L.vz) * dt;
+      L.x += L.vx * dt; L.z += L.vz * dt;
+      K.v += (-90 * K.x - 9 * K.v) * dt; K.x += K.v * dt;
+      zb.mesh.rotation.x = L.x + (zb.rise > 0 ? zb.riseSide * (Math.PI / 2) * smooth(Math.min(1, zb.rise)) : 0);
+      zb.mesh.rotation.z = L.z;
       const swing = Math.sin(zb.phase) * 0.6;
       p.legL.rotation.x = swing; p.legR.rotation.x = -swing;
       const reachUp = zb.state === 'chase' ? -0.15 : 0.5;
@@ -395,6 +497,8 @@ export class Zombies {
       if (zb.attackCd > 1.0) { p.armL.rotation.x = -0.6; p.armR.rotation.x = -0.6; }
       p.torso.rotation.x = zb.state === 'chase' ? 0.18 : 0.08;
       p.head.rotation.z = Math.sin(zb.phase * 0.3 + zb.groanTimer) * 0.25;
+      p.head.rotation.x = K.x;
+      if (zb.rise > 0.3) { p.armL.rotation.x = p.armR.rotation.x = 1.2; p.legL.rotation.x = p.legR.rotation.x = 0; }
 
       // Groans
       zb.groanTimer -= dt;
@@ -420,6 +524,7 @@ export class Zombies {
   raycast(origin, dir, maxDist) {
     let best = null;
     for (const zb of this.list) {
+      if (zb.down) continue; // knocked-down bodies are hit through their ragdoll
       const ox = zb.pos.x - origin.x, oz = zb.pos.z - origin.z;
       const hd = Math.hypot(dir.x, dir.z) || 1e-6;
       // closest approach in XZ

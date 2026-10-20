@@ -9,6 +9,8 @@ export class Input {
     this.mouse = [false, false];
     this.mousePressed = false;
     this.wheel = 0;
+    this.softLive = false; // keyboard works while waiting for a click to recapture the mouse
+    document.addEventListener('pointerlockerror', () => this.onLockFail?.());
     window.addEventListener('keydown', (e) => {
       if (e.repeat) return;
       // Typing into a text field (e.g. the dev console) shouldn't drive the game.
@@ -35,7 +37,12 @@ export class Input {
     canvas.addEventListener('wheel', (e) => { if (document.pointerLockElement === canvas) { this.wheel += Math.sign(e.deltaY); e.preventDefault(); } }, { passive: false });
   }
 
-  lock() { this.canvas.requestPointerLock?.()?.catch?.(() => {}); }
+  // Browsers refuse pointer lock from an Escape key press (it isn't a user
+  // activation), so a failed lock is reported instead of silently ignored.
+  lock() {
+    const p = this.canvas.requestPointerLock?.();
+    if (p?.catch) p.catch(() => this.onLockFail?.());
+  }
   unlock() { if (document.pointerLockElement) document.exitPointerLock(); }
   get locked() { return document.pointerLockElement === this.canvas; }
 
@@ -43,9 +50,10 @@ export class Input {
     const k = (c) => this.keys.has(c);
     const p = (c) => this.pressed.has(c);
     const live = this.locked;
+    const keys = live || this.softLive;
     return {
-      f: live && k('KeyW') ? 1 : 0, b: live && k('KeyS') ? 1 : 0,
-      l: live && k('KeyA') ? 1 : 0, r: live && k('KeyD') ? 1 : 0,
+      f: keys && k('KeyW') ? 1 : 0, b: keys && k('KeyS') ? 1 : 0,
+      l: keys && k('KeyA') ? 1 : 0, r: keys && k('KeyD') ? 1 : 0,
       sprint: k('ShiftLeft') || k('ShiftRight'),
       crouchToggle: p('KeyC'), prone: p('KeyX'), jump: p('Space'),
       wheel: live ? this.wheel : 0,

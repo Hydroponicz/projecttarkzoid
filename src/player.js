@@ -339,37 +339,73 @@ export class Player {
     // World hit: walls (full height) or low obstacles if the ray is low enough.
     const hash = this.game.world.hash;
     const boxes = hash.query(Math.min(origin.x, end.x), Math.min(origin.z, end.z), Math.max(origin.x, end.x), Math.max(origin.z, end.z), []);
-    let tw = 1;
+    let tw = 1, wallBox = null;
     for (const b of boxes) {
       if (!b.blocksShot) continue;
       const t = segBox(origin.x, origin.z, end.x, end.z, b);
       if (t < 0 || t >= tw) continue;
       const y = origin.y + dir.y * t * maxD;
       if (y > (b.h ?? 3)) continue;
-      tw = t;
+      tw = t; wallBox = b;
     }
     let wallD = tw * maxD;
-    if (dir.y < 0) wallD = Math.min(wallD, -origin.y / dir.y);
-    const z = this.game.zombies.raycast(origin, dir, wallD);
-    // AI survivors can be shot too (closest hit wins).
-    const sv = this.game.survivors?.raycast(origin, dir, z ? z.t : wallD);
-    if (sv) {
-      const falloff = sv.t > def.range ? Math.max(0.3, 1 - (sv.t - def.range) / def.range) : 1;
-      this.game.fx.blood(origin.clone().addScaledVector(dir, sv.t));
-      sfx.hitFlesh();
-      this.game.hud.hitmarker(sv.head);
-      sv.s.hurt(def.damage * falloff * (sv.head ? 3 : 1), 'player');
-    } else if (z) {
-      const falloff = z.t > def.range ? Math.max(0.3, 1 - (z.t - def.range) / def.range) : 1;
-      const dmg = def.damage * falloff * (z.head ? 3 : 1);
-      const point = origin.clone().addScaledVector(dir, z.t);
-      this.game.fx.blood(point);
-      sfx.hitFlesh();
-      this.game.hud.hitmarker(z.head);
-      if (this.game.zombies.damage(z.zb, dmg, this.pos.x, this.pos.z, z.head)) this.onKill();
-    } else if (wallD < maxD) {
-      this.game.fx.impact(origin.clone().addScaledVector(dir, wallD - 0.02));
+    if (dir.y < 0 && -origin.y / dir.y < wallD) { wallD = -origin.y / dir.y; wallBox = null; }
+    const wallPoint = origin.clone().addScaledVector(dir, wallD - 0.01);
+    // Surface normal of what the bullet stops in (for holes and splatter).
+    let normal = new THREE.Vector3(0, 1, 0);
+    if (wallBox) {
+      const b = wallBox, p = wallPoint;
+      const d = [[p.x - b.minX, -1, 0], [b.maxX - p.x, 1, 0], [p.z - b.minZ, 0, -1], [b.maxZ - p.z, 0, 1]].sort((a, c) => Math.abs(a[0]) - Math.abs(c[0]))[0];
+      normal = new THREE.Vector3(d[1], 0, d[2]);
+      if (Math.abs(p.y - (b.h ?? 3)) < 0.03) normal.set(0, 1, 0);
     }
+    const g = this.game;
+    const z = g.zombies.raycast(origin, dir, wallD);
+    // AI survivors and bodies on the ground can be shot too (closest hit wins).
+    const sv = g.survivors?.raycast(origin, dir, z ? z.t : wallD);
+    const rd = g.ragdolls?.raycast(origin, dir, sv ? sv.t : z ? z.t : wallD);
+    const tHit = rd ? rd.t : sv ? sv.t : z ? z.t : null;
+    if (tHit == null) {
+      if (wallD < maxD) g.fx.impact(wallPoint, normal);
+      return;
+    }
+    const range = rd ? rd.t : tHit;
+    const falloff = range > def.range ? Math.max(0.3, 1 - (range - def.range) / def.range) : 1;
+    const point = origin.clone().addScaledVector(dir, tHit);
+    // Impulse the bullet gives a body (game-feel, not physics): heavier
+    // rounds shove harder; buckshot pellets each push a little.
+    const force = Math.min(7, def.damage * 0.075 * (def.pellets > 1 ? 0.55 : 1)) * (0.6 + 0.4 * falloff);
+    const hit = { point, dir: dir.clone(), force };
+    const head = rd ? rd.head : sv ? sv.head : z.head;
+    // Blood on the wall behind the target if it's close enough
+    const behind = wallD - tHit;
+    const bloodOpts = { head, power: force / 3, wall: behind < 2.6 && wallD < maxD ? { point: wallPoint, normal } : null };
+    g.fx.blood(point, dir, bloodOpts);
+    const dmgMul = falloff * (head ? 3 : 1);
+    if (rd) {
+      // A body on the ground: knocked-down (still alive) or dead.
+      rd.ragdoll.impulse(point, dir, force * 1.3);
+      const o = rd.ragdoll.alive ? rd.ragdoll.owner : null;
+      if (o?.def) { this.hitFeedback(head, g.zombies.damage(o, def.damage * dmgMul, this.pos.x, this.pos.z, head, hit)); }
+      else if (o?.kind === 'survivor') { o.hurt(def.damage * dmgMul, 'player', null, hit); this.hitFeedback(head, o.dead); }
+      else if (performance.now() - (this.lastHitSfx || 0) > 40) { this.lastHitSfx = performance.now(); sfx.hitBody(0.6); }
+    } else if (sv) {
+      sv.s.hurt(def.damage * dmgMul, 'player', null, hit);
+      this.hitFeedback(head, sv.s.dead);
+    } else {
+      const armored = z.zb.def.armor && !head;
+      if (armored) sfx.hitArmor();
+      this.hitFeedback(head, g.zombies.damage(z.zb, def.damage * dmgMul, this.pos.x, this.pos.z, head, hit));
+    }
+  }
+
+  // Sound and hit marker for a confirmed hit; kills get a heavier marker.
+  hitFeedback(head, killed) {
+    // Buckshot lands several pellets at once: one sound for the volley.
+    const now = performance.now();
+    if (now - (this.lastHitSfx || 0) > 40 || killed) { this.lastHitSfx = now; if (head) sfx.hitHead(); else sfx.hitBody(); }
+    this.game.hud.hitmarker(head, killed);
+    if (killed) { sfx.kill(); this.onKill(); }
   }
 
   meleeAttack() {
@@ -380,25 +416,57 @@ export class Player {
     this.swing = 1;
     sfx.swing();
     const fx = -Math.sin(this.yaw), fz = -Math.cos(this.yaw);
+    const heavy = def.damage >= 60;
+    // A blow pushes along the swing (forward and across).
+    const blowDir = (tx, tz) => new THREE.Vector3(tx - this.pos.x, 0, tz - this.pos.z).normalize().multiplyScalar(0.8).add(new THREE.Vector3(fz, 0, -fx).multiplyScalar(0.5)).normalize();
+    const force = 1.5 + def.damage * 0.03 * (1 + 0.1 * this.skill.strength);
     let hit = false;
     for (const zb of [...this.game.zombies.list]) {
+      if (zb.down) continue;
       const dx = zb.pos.x - this.pos.x, dz = zb.pos.z - this.pos.z;
       const d = Math.hypot(dx, dz);
       if (d > def.range + zb.radius) continue;
       if ((dx * fx + dz * fz) / (d || 1) < 0.6) continue;
       const head = this.pitch > -0.15 && Math.random() < 0.35;
       const dmg = def.damage * (head ? 1.8 : 1) * (1 + 0.12 * this.skill.strength);
-      this.game.fx.blood(new THREE.Vector3(zb.pos.x, head ? 1.6 : 1.2, zb.pos.z));
-      if (this.game.zombies.damage(zb, dmg, this.pos.x, this.pos.z, head)) this.onKill();
+      const point = new THREE.Vector3(zb.pos.x, (head ? 1.6 : 1.2) * zb.def.scale, zb.pos.z);
+      const dir = blowDir(zb.pos.x, zb.pos.z);
+      this.game.fx.blood(point, dir, { head, power: heavy ? 1 : 0.5, exit: false });
+      const killed = this.game.zombies.damage(zb, dmg, this.pos.x, this.pos.z, head, { point, dir, force, knock: heavy ? 0.25 : 0.05 });
+      sfx.meleeHit(heavy);
+      this.game.hud.hitmarker(head, killed);
+      if (killed) { sfx.kill(); this.onKill(); }
       hit = true;
       if (!this.melee || this.melee.key !== 'axe') break; // axes cleave
     }
     if (!hit) {
+      // Bodies on the ground (knocked down or dead) can be hit too.
+      const look = new THREE.Vector3(fx * Math.cos(this.pitch), Math.sin(this.pitch), fz * Math.cos(this.pitch));
+      const eye = this.camera.getWorldPosition(new THREE.Vector3());
+      const rd = this.game.ragdolls?.raycast(eye, look, def.range + 0.4);
       const sv = this.game.survivors?.meleeTarget(this.pos, fx, fz, def.range);
-      if (sv) { sv.hurt(def.damage * (1 + 0.12 * this.skill.strength), 'player'); this.game.fx.blood(new THREE.Vector3(sv.pos.x, 1.3, sv.pos.z)); hit = true; }
+      if (sv) {
+        const point = new THREE.Vector3(sv.pos.x, 1.3, sv.pos.z), dir = blowDir(sv.pos.x, sv.pos.z);
+        sv.hurt(def.damage * (1 + 0.12 * this.skill.strength), 'player', null, { point, dir, force, knock: heavy ? 0.3 : 0.08 });
+        this.game.fx.blood(point, dir, { power: heavy ? 1 : 0.5, exit: false });
+        sfx.meleeHit(heavy);
+        this.game.hud.hitmarker(false, sv.dead);
+        hit = true;
+      } else if (rd) {
+        const point = eye.clone().addScaledVector(look, rd.t), dir = look.clone().add(new THREE.Vector3(0, -0.5, 0)).normalize();
+        rd.ragdoll.impulse(point, dir, force);
+        this.game.fx.blood(point, dir, { power: 0.5, exit: false });
+        const o = rd.ragdoll.alive ? rd.ragdoll.owner : null;
+        const dmg = def.damage * (rd.head ? 1.8 : 1) * (1 + 0.12 * this.skill.strength);
+        let killed = false;
+        if (o?.def) killed = this.game.zombies.damage(o, dmg, this.pos.x, this.pos.z, rd.head, { point, dir, force });
+        else if (o?.kind === 'survivor') { o.hurt(dmg, 'player', null, { point, dir, force }); killed = o.dead; }
+        sfx.meleeHit(heavy);
+        if (o) { this.game.hud.hitmarker(rd.head, killed); if (killed) { sfx.kill(); this.onKill(); } }
+        hit = true;
+      }
     }
-    if (hit) sfx.hitFlesh();
-    else this.game.meleeWorld?.(this.melee?.key);
+    if (!hit) this.game.meleeWorld?.(this.melee?.key);
     this.game.zombies.noise(this.pos.x, this.pos.z, 3);
   }
 

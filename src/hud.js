@@ -38,10 +38,11 @@ export class HUD {
     while (this.msgs.children.length > 5) this.msgs.firstChild.remove();
   }
 
-  hitmarker(head) {
+  hitmarker(head, kill) {
     const h = $('hitmarker');
-    h.className = head ? 'show head' : 'show';
-    this.hitTimer = 0.15;
+    h.className = 'show' + (head ? ' head' : '') + (kill ? ' kill' : '');
+    void h.offsetWidth; // restart the pop animation
+    this.hitTimer = kill ? 0.45 : 0.15;
   }
 
   update(dt, game) {

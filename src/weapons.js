@@ -1014,7 +1014,7 @@ export class GunController {
     if (armsBroken) spread += 0.05;
     const origin = this.camera.position.clone();
     const q = new THREE.Quaternion().setFromEuler(new THREE.Euler(p.pitch + this.offPitch, p.yaw + this.offYaw, 0, 'YXZ'));
-    const dmgDef = { damage: def.damage, range: def.range };
+    const dmgDef = { damage: def.damage, range: def.range, pellets: def.pellets };
     for (let i = 0; i < def.pellets; i++) {
       const sp = def.pellets > 1 ? cfg.pelletSpread + spread : spread;
       const a = Math.random() * Math.PI * 2, rr = Math.sqrt(Math.random()) * sp;
