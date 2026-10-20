@@ -487,6 +487,8 @@ export class GunController {
   }
 
   setVisible(v) { this.root.visible = v; }
+  // Lower / raise without the key (e.g. when you start talking to someone)
+  lower(v = true) { this.lowered = v; if (v) this.ads = 0; }
 
   // Rebuild the model if the weapon or its configuration changed.
   rebuild(force) {
@@ -550,8 +552,16 @@ export class GunController {
     this.retract += (retractTarget - this.retract) * Math.min(1, dt * 10);
     const blocked = this.retract > 0.55;
 
+    // --- lowered weapon (G): pointed at the ground, nobody feels threatened.
+    // Aiming or pulling the trigger brings it back up (that click doesn't fire).
+    let raising = false;
+    if (input.lower && !this.busy) { this.lowered = !this.lowered; if (this.lowered) this.ads = Math.min(this.ads, 0.3); }
+    if (this.lowered && (input.firePressed || input.aim)) { this.lowered = false; raising = true; }
+    this.lowerK = (this.lowerK || 0) + ((this.lowered ? 1 : 0) - (this.lowerK || 0)) * Math.min(1, dt * 7);
+    const down = this.lowerK > 0.15;
+
     // --- ADS ---
-    const canAim = input.aim && !ctx.sprinting && !this.busy && !blocked;
+    const canAim = input.aim && !ctx.sprinting && !this.busy && !blocked && !down;
     const adsSpeed = cfg.adsSpeed * (0.8 + 0.2 * ergo) * (1 + 0.04 * aimSkill);
     this.ads += ((canAim ? 1 : 0) - this.ads) * Math.min(1, dt * adsSpeed);
 
@@ -643,6 +653,9 @@ export class GunController {
     pose.position.x -= 0.05 * sb; pose.position.y -= 0.06 * sb; pose.position.z += 0.05 * sb;
     pose.rotation.x -= 0.45 * sb; pose.rotation.y += 0.65 * sb; pose.rotation.z += 0.25 * sb;
     pose.position.z += this.retract * 0.18; pose.rotation.x += this.retract * 0.7; pose.position.y -= this.retract * 0.04;
+    const lk = this.lowerK || 0;
+    pose.position.y -= 0.02 * lk; pose.position.z += 0.02 * lk; pose.position.x -= 0.02 * lk;
+    pose.rotation.x -= 0.42 * lk; pose.rotation.y += 0.22 * lk; pose.rotation.z += 0.15 * lk;
     pose.position.z += this.kick.x;
     pose.rotation.x += this.kick.x * 2.2;
     // Momentum: the gun swings out to the side and rolls, lurches forward or back
@@ -707,7 +720,7 @@ export class GunController {
     if (input.firePressed && this.fireCd > 0 && this.fireCd < 0.15) this.queuedShot = true;
     let trigger = w.mode === 'auto' ? input.fire : input.firePressed;
     if (this.queuedShot && this.fireCd <= 0) { trigger = true; this.queuedShot = false; }
-    if (trigger && !this.busy && !blocked && sb < 0.3 && this.fireCd <= 0) this.fire(w, def, cfg, ctx);
+    if (trigger && !this.busy && !blocked && !down && !raising && sb < 0.3 && this.fireCd <= 0) this.fire(w, def, cfg, ctx);
     if (this.check.t > 0) this.check.t -= dt;
   }
 
@@ -1051,8 +1064,10 @@ export class GunController {
     // Bullets travel along the barrel (camera direction + weapon offset), from
     // where you were aiming when the shot broke: the recoil comes after.
     const armsBroken = (p.hp.armL <= 0 || p.hp.armR <= 0) && p.painkiller <= 0;
-    let spread = cfg.accuracy + (1 - this.ads) * cfg.hipSpread * (1 - 0.06 * p.skill.aiming);
-    if (ctx.moving) spread += 0.012 * (1 - this.ads * 0.6);
+    // Hip fire is as accurate as aiming once your Guns skill is maxed
+    const gunsK = Math.min(1, (p.skill.guns || 0) / 8), steady = Math.max(this.ads, gunsK);
+    let spread = cfg.accuracy + (1 - this.ads) * cfg.hipSpread * (1 - gunsK);
+    if (ctx.moving) spread += 0.012 * (1 - steady * 0.6);
     if (armsBroken) spread += 0.05;
     const origin = this.camera.position.clone();
     const q = new THREE.Quaternion().setFromEuler(new THREE.Euler(p.pitch + this.offPitch, p.yaw + this.offYaw, 0, 'YXZ'));
@@ -1144,7 +1159,7 @@ export class GunController {
       mag: def.tube ? '' : w.mag ? ITEMS[w.mag.key].short : 'NO MAG',
       spare: def.tube ? null : spare,
       mods: Object.values(w.mods).filter(Boolean).map((m) => ITEMS[m.key].short),
-      state: this.anim?.type === 'reload' ? 'RELOADING' : this.anim?.type === 'shell' ? 'LOADING' : this.retract > 0.55 ? 'BLOCKED' : this.holding ? 'HOLDING BREATH' : '',
+      state: this.anim?.type === 'reload' ? 'RELOADING' : this.anim?.type === 'shell' ? 'LOADING' : this.retract > 0.55 ? 'BLOCKED' : this.lowered ? 'LOWERED (G to raise)' : this.holding ? 'HOLDING BREATH' : '',
     };
   }
 }

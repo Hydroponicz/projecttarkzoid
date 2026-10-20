@@ -512,6 +512,7 @@ class Game {
     else if (!container) this.progress?.event('inv');
     this.invOpen = true;
     this.openContainer = container || null;
+    if (container?.vehicleTrunk) this.vehicles?.setTrunk(container, true);
     this.input.unlock();
     const right = container ? () => [{ kind: 'grid', title: container.name, grid: container.grid }] : () => [];
     const title = () => { $('invtitle').textContent = `${container ? container.name : 'Inventory'} — carrying ${this.player.carryWeight().toFixed(1)} kg`; };
@@ -570,6 +571,7 @@ class Game {
     this.invOpen = false;
     const trader = this.openContainer?.survivor;
     if (trader && this.survivors) this.survivors.endTrade(trader, this.tradeBefore);
+    if (this.openContainer?.vehicleTrunk) this.vehicles?.setTrunk(this.openContainer, false);
     this.openContainer = null;
     this.loader = null;
     this.inv.cancelDrag();
@@ -659,9 +661,11 @@ class Game {
       this.builder.toggleDoor(t);
       sfx.door();
     } else if (t.kind === 'survivor' && t.trader) {
+      this.player.gun.lower(true); // weapon down when you walk up to talk
       t.met = true;
       this.traders.openFor(t);
     } else if (t.kind === 'survivor') {
+      this.player.gun.lower(true);
       this.survivors.openDialog(t);
     } else if (t.kind === 'bed' || t.type === 'bed') {
       this.sleep();
@@ -786,7 +790,7 @@ class Game {
   // Beaten doors darken and splinter as they lose hit points.
   doorTint(d) {
     const panel = d.mesh.children[0];
-    if (panel?.material) panel.material.color.setHex(d.w < 1.6 ? 0x7a5a3a : 0x5a3a22).lerp(new THREE.Color(0x1e140c), 1 - Math.max(0, d.hp) / d.maxHp);
+    if (panel?.material) panel.material.color.setHex(d.w < 1.6 ? 0x9a7048 : 0x7a4e2c).lerp(new THREE.Color(0x1e140c), 1 - Math.max(0, d.hp) / d.maxHp);
   }
 
   // Glass gone: shards, noise, and the window can be climbed through.

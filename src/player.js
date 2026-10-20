@@ -1,5 +1,7 @@
 // First-person player: movement, mouselook, weapons (hitscan + melee),
 // Tarkov-style body-part health, hunger/thirst, bleeding and infection.
+import { UseAnimator } from './useanim.js';
+import { gainXp } from './skills.js';
 import * as THREE from 'three';
 import { moveCircle, segBox, raycast } from './collision.js';
 import { ITEMS, itemWeight } from './items.js';
@@ -32,6 +34,7 @@ export class Player {
     // Character skills (0..8) from character creation.
     const st = game.profile.stats;
     if (st.farming == null) st.farming = 0; // characters from before farming
+    if (st.guns == null) st.guns = Math.min(4, st.aiming || 0); // from before the Guns skill
     this.skill = st;
     this.stealthMul = 1 - 0.07 * st.stealth;
     this.hp = {};
@@ -64,6 +67,7 @@ export class Player {
 
     camera.rotation.order = 'YXZ';
     this.gun = new GunController(this);
+    this.useAnim = new UseAnimator(this); // eating, drinking, bandaging...
     if (!this.weapon) this.active = 'melee';
     this.buildViewmodel();
 
@@ -138,6 +142,7 @@ export class Player {
     if (this.vehicle) {
       // Driving: the vehicle moves you and the camera; no weapons in hand.
       g.vehicles.drive(dt, input);
+      this.useAnim.update(dt);
       this.gun.setVisible(false);
       this.vm.visible = false;
       this.speed = 0;
@@ -182,7 +187,7 @@ export class Player {
     const fwd = input.f - input.b, side = input.r - input.l;
     if (this.stamina <= 0.5) this.exhausted = true;
     if (this.exhausted && this.stamina > 25) this.exhausted = false;
-    const wantSprint = input.sprint && fwd > 0 && !aimHeld && !legsBroken && !this.exhausted && canSprintWeight && grounded;
+    const wantSprint = input.sprint && fwd > 0 && !aimHeld && !legsBroken && !this.exhausted && canSprintWeight && grounded && !this.useAnim.busy;
     if (wantSprint && this.stance !== 'stand') this.stance = 'stand', this.crouch = this.prone = false;
     this.sprinting = wantSprint;
 
@@ -198,6 +203,7 @@ export class Player {
     if (legsBroken) maxSpeed *= 0.5;
     if (this.fatigue > 80) maxSpeed *= 0.88;
     if (gunActive && this.gun.busy) maxSpeed *= 0.85;
+    if (this.useAnim?.busy) maxSpeed *= 0.6; // eating, bandaging...
     if (Math.abs(this.lean) > 0.3) maxSpeed *= 0.7;
     maxSpeed *= 1 - 0.35 * over;
     if (kg > 60) maxSpeed = Math.min(maxSpeed, 0.8);
@@ -338,7 +344,12 @@ export class Player {
     if (input.slot1) this.setActive('gun');
     if (input.slot2) this.setActive('melee');
 
-    if (this.active === 'gun' && this.weapon) {
+    if (this.useAnim.busy) {
+      // Hands are busy with an item: the weapon is put away meanwhile
+      this.gun.setVisible(false);
+      this.vm.visible = false;
+      this.useAnim.update(dt);
+    } else if (this.active === 'gun' && this.weapon) {
       this.vm.visible = false;
       this.gun.setVisible(true);
       this.gun.update(dt, input, { moving, sprinting: wantSprint && moving, speed });
@@ -351,6 +362,11 @@ export class Player {
       vm.position.x += Math.sin(this.bob * 0.5) * bobAmt * 0.4;
       vm.position.y += Math.abs(Math.cos(this.bob * 0.5)) * bobAmt * 0.3 - (wantSprint && moving ? 0.08 : 0);
       vm.rotation.set(wantSprint && moving ? -0.3 : 0, wantSprint && moving ? 0.5 : 0, 0);
+      // Lowered (G): the blade or fists held down at your side
+      if (input.lower) this.gun.lowered = !this.gun.lowered;
+      if (this.gun.lowered && input.firePressed) { this.gun.lowered = false; input.firePressed = false; }
+      this.meleeLowK = (this.meleeLowK || 0) + ((this.gun.lowered ? 1 : 0) - (this.meleeLowK || 0)) * Math.min(1, dt * 7);
+      vm.position.y -= 0.16 * this.meleeLowK; vm.rotation.x -= 0.6 * this.meleeLowK;
       if (this.swing > 0) {
         const s = this.swing;
         vm.rotation.set(-0.6 + (1 - s) * 1.6, 0.6 - (1 - s) * 1.2, -0.4);
@@ -449,6 +465,8 @@ export class Player {
 
   // Sound and hit marker for a confirmed hit; kills get a heavier marker.
   hitFeedback(head, killed, target) {
+    // Shooting trains the Guns skill: hits count, hip-fire hits and kills more
+    if (this.active === 'gun') gainXp(this.game, 'guns', (this.gun.ads < 0.5 ? 1.5 : 0.6) + (killed ? 1.5 : 0));
     // Buckshot lands several pellets at once: one sound for the volley.
     const now = performance.now();
     if (now - (this.lastHitSfx || 0) > 40 || killed) { this.lastHitSfx = now; if (head) sfx.hitHead(); else sfx.hitBody(); }
@@ -638,7 +656,31 @@ export class Player {
     this.hurtFlash = Math.max(0, this.hurtFlash - dt * 2);
   }
 
+  // Using an item plays its animation; the effect lands when it's done.
+  // Returns true if the item is used up (so the inventory can take it).
   use(item) {
+    const why = this.cantUse(item);
+    if (why) { this.game.hud.message(why); return false; }
+    if (this.useAnim.busy) { this.game.hud.message('Your hands are busy.', 1.5); return false; }
+    return this.useAnim.play(item, () => { if (!this.dead) this.applyUse(item); });
+  }
+
+  // Why an item can't be used right now (or null)
+  cantUse(item) {
+    const def = ITEMS[item.key];
+    if (def.type === 'food') return null;
+    if (def.type !== 'med') return "You can't use that.";
+    if (def.cure) return this.infected ? null : 'Not infected.';
+    if (def.slowInfection) return this.infected ? null : "You're not infected.";
+    if (def.surgery) return Object.keys(PARTS).some((p) => this.hp[p] <= 0 && !PARTS[p].vital) ? null : 'No destroyed limbs to operate on.';
+    if (def.painkiller) return null;
+    if (def.stopBleed && this.bleeding.size) return null;
+    if (def.heal && Object.keys(PARTS).some((k) => this.hp[k] > 0 && this.hp[k] < PARTS[k].max)) return null;
+    if (def.stopBleed && def.heal && Object.keys(PARTS).some((k) => this.hp[k] <= 0 && !PARTS[k].vital)) return null;
+    return 'Nothing to treat.';
+  }
+
+  applyUse(item) {
     const def = ITEMS[item.key];
     if (def.type === 'food') {
       this.game.progress?.event('use', item);

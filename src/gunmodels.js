@@ -256,7 +256,7 @@ export function buildMag(key) {
 // A gloved hand: palm, four curled fingers, thumb, and a camo sleeve running
 // back down out of view. `grip`: fingers wrap round a handle in front (the
 // trigger hand); `support`: fingers wrap over the left side of a handguard.
-function hand(kind, sleeveDir, mirror = 1) {
+export function hand(kind, sleeveDir, mirror = 1) {
   const H = new THREE.Group();
   const gl = MAT.glove;
   if (kind === 'grip') {

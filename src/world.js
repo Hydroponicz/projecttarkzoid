@@ -8,6 +8,7 @@ import { CONTAINER_TYPES, rollLoot } from './items.js';
 import { makeGrid, addItem } from './inventory.js';
 import { createFurnisher, FOOT, footRect } from './furniture.js';
 import { buildCountryside, plantTrees } from './countryside.js';
+import { worldTextures, wallMaterial, WALL, worldUV, mergeableMaterial } from './worldtex.js';
 
 export const HALF = 220;      // map half-size (town in the middle, countryside around it)
 // Bump when generation changes so old saves don't map loot onto new layouts.
@@ -58,19 +59,24 @@ export function buildWorld(scene, seed) {
   };
 
   // --- ground & roads ---
-  const ground = new THREE.Mesh(new THREE.PlaneGeometry(HALF * 2 + 80, HALF * 2 + 80),
-    new THREE.MeshStandardMaterial({ color: 0x3d4a2c, roughness: 1 }));
+  const WT = worldTextures();
+  const gsize = HALF * 2 + 80;
+  const grassTex = WT.grass.clone(); grassTex.needsUpdate = true; grassTex.repeat.set(gsize / 6, gsize / 6); // a tile every 6 m
+  const ground = new THREE.Mesh(new THREE.PlaneGeometry(gsize, gsize), new THREE.MeshStandardMaterial({ map: grassTex, roughness: 1 }));
   ground.rotation.x = -Math.PI / 2;
   ground.receiveShadow = true;
   group.add(ground);
 
-  const roadMat = new THREE.MeshStandardMaterial({ color: 0x2b2b2d, roughness: 0.95 });
+  // Asphalt: one texture tile per 8 m (a material for each road direction)
+  const asph = (rx, ry) => { const t = WT.asphalt.clone(); t.needsUpdate = true; t.repeat.set(rx, ry); return new THREE.MeshStandardMaterial({ map: t, roughness: 0.95 }); };
+  const roadMats = { x: asph(ROAD / 8, (200 + ROAD) / 8), z: asph((200 + ROAD) / 8, ROAD / 8) };
+  const walkMat = mergeableMaterial('slab', 0xb0aca4, 0.5, 0.9), curbMat = mergeableMaterial('concrete', 0x9a9890, 1, 0.9);
   const lineMat = new THREE.MeshBasicMaterial({ color: 0x8a8460 });
   const roads = [];
   for (let k = -100; k <= 100; k += BLOCK) {
     for (const axis of ['x', 'z']) {
       const len = 200 + ROAD;
-      const m = new THREE.Mesh(new THREE.PlaneGeometry(axis === 'x' ? ROAD : len, axis === 'x' ? len : ROAD), roadMat);
+      const m = new THREE.Mesh(new THREE.PlaneGeometry(axis === 'x' ? ROAD : len, axis === 'x' ? len : ROAD), roadMats[axis]);
       m.rotation.x = -Math.PI / 2;
       m.position.set(axis === 'x' ? k : 0, 0.01, axis === 'x' ? 0 : k);
       m.receiveShadow = true;
@@ -85,12 +91,28 @@ export function buildWorld(scene, seed) {
     }
   }
 
+  // Sidewalks with curbs along every town street, broken at the junctions
+  for (const k of [-100, -60, -20, 20, 60, 100]) for (const axis of ['x', 'z']) for (const side of [-1, 1]) {
+    for (let c = -100; c < 100; c += BLOCK) {
+      const a0 = c + ROAD / 2 + 0.2, a1 = c + BLOCK - ROAD / 2 - 0.2, len = a1 - a0, mid = (a0 + a1) / 2;
+      const off = k + side * (ROAD / 2 + 0.85);
+      const walk = new THREE.Mesh(new THREE.BoxGeometry(axis === 'x' ? 1.6 : len, 0.1, axis === 'x' ? len : 1.6), walkMat);
+      walk.position.set(axis === 'x' ? off : mid, 0.05, axis === 'x' ? mid : off);
+      walk.receiveShadow = true;
+      group.add(walk);
+      const coff = k + side * (ROAD / 2 + 0.05);
+      const curb = new THREE.Mesh(new THREE.BoxGeometry(axis === 'x' ? 0.14 : len, 0.14, axis === 'x' ? len : 0.14), curbMat);
+      curb.position.set(axis === 'x' ? coff : mid, 0.07, axis === 'x' ? mid : coff);
+      group.add(curb);
+    }
+  }
+
   function addDoor(x, z, ax, closed, width = DOOR) {
     const pivot = new THREE.Group();
     const half = width / 2;
     // Hinge at one end of the gap; the panel swings 90 degrees when opened.
     pivot.position.set(ax === 'x' ? x - half : x, 0, ax === 'x' ? z : z - half);
-    const panel = new THREE.Mesh(new THREE.BoxGeometry(width - 0.04, 2.15, 0.07), new THREE.MeshStandardMaterial({ color: width < 1.6 ? 0x7a5a3a : 0x5a3a22, roughness: 0.8 }));
+    const panel = new THREE.Mesh(new THREE.BoxGeometry(width - 0.04, 2.15, 0.07), new THREE.MeshStandardMaterial({ map: WT.planks, color: width < 1.6 ? 0x9a7048 : 0x7a4e2c, roughness: 0.8 }));
     panel.position.set(half, 1.08, 0);
     const knob = new THREE.Mesh(new THREE.SphereGeometry(0.04, 6, 4), new THREE.MeshStandardMaterial({ color: 0xccaa55, metalness: 0.8 }));
     knob.position.set(width - 0.15, 1.0, 0.06);
@@ -121,8 +143,10 @@ export function buildWorld(scene, seed) {
     beds.push({ kind: 'bed', name: 'Bed', x, z });
   }
 
+  // Finish for walls being built (set per building: outside vs inside)
+  let curPattern = WALL.concrete;
   function addWall(minX, minZ, maxX, maxZ, color) {
-    walls.push({ minX, maxX, minZ, maxZ, y0: 0, y1: WALL_H, color });
+    walls.push({ minX, maxX, minZ, maxZ, y0: 0, y1: WALL_H, color, pattern: curPattern });
     addBox(minX, minZ, maxX, maxZ, {});
   }
 
@@ -165,7 +189,7 @@ export function buildWorld(scene, seed) {
   const STORE_WIN = { w: 1.3, gap: 3.4, sill: 0.9, top: 2.1, skip: 0.35, front: { w: 2.6, gap: 3.3, sill: 0.45, top: 2.25 } };
   const CORRIDOR_WIN = { w: 1.4, gap: 2.75, sill: 0.9, top: 2.1, sides: ['n', 's'], skip: 0.05 };
   const KINDS = {
-    house: { floor: 0x6b5a45, wall: [0xb8a68a, 0x9c8b77, 0xa7a29a, 0x8c7a6a], interior: [0xd8d0c0, 0xc8d0c8, 0xd8c8b8, 0xe0dcd0, 0xc0c8d0] },
+    house: { roof: { type: 'gable', color: [0x4a3a32, 0x3a3a3c, 0x5a2a22, 0x2a3a4a] }, floor: 0x6b5a45, wall: [0xb8a68a, 0x9c8b77, 0xa7a29a, 0x8c7a6a], interior: [0xd8d0c0, 0xc8d0c8, 0xd8c8b8, 0xe0dcd0, 0xc0c8d0] },
     shop: { floor: 0x55585a, wall: [0x7a8a9a, 0x8a7a6a], sign: { text: 'GENERAL STORE', bg: '#6a5a3a' }, windows: STORE_WIN, checkout: true, wallLoot: ['cabinet', 'foodshelf', 'fridge', 'crate', 'toolbox'] },
     clinic: { floor: 0xc8c8c0, wall: [0xd8d8d0], sign: { text: 'CLINIC', bg: '#2a6a9a', cross: true }, wallLoot: ['medbox', 'medbox', 'medcab', 'pc', 'pillshelf'], zombies: { type: 'patient', n: 3 } },
     warehouse: { floor: 0x4a4a48, wall: [0x6a6a5a, 0x5a6050], windows: { w: 1.6, gap: 4.5, sill: 1.9, top: 2.6, skip: 0.3 }, open: true, wallLoot: ['crate', 'toolbox', 'cabinet', 'lumber', 'lumber', 'toolshelf', 'parts_shelf', 'toolbench'] },
@@ -257,7 +281,7 @@ export function buildWorld(scene, seed) {
     const seg = (s0, s1, y0 = 0, y1 = WALL_H, box) => {
       if (s1 - s0 < 0.02) return;
       const r = ax === 'x' ? { minX: s0, maxX: s1, minZ: fixed - WALL_T / 2, maxZ: fixed + WALL_T / 2 } : { minX: fixed - WALL_T / 2, maxX: fixed + WALL_T / 2, minZ: s0, maxZ: s1 };
-      walls.push({ ...r, y0, y1, color });
+      walls.push({ ...r, y0, y1, color, pattern: curPattern });
       if (box) addBox(r.minX, r.minZ, r.maxX, r.maxZ, box);
     };
     let cur = a0;
@@ -743,12 +767,15 @@ export function buildWorld(scene, seed) {
     }
   }
 
-  function floorPatch(r, color) {
-    prop(r.x1 - r.x0 - WALL_T, 0.012, r.z1 - r.z0 - WALL_T, color, (r.x0 + r.x1) / 2, 0.066, (r.z0 + r.z1) / 2);
+  // Kitchen and bathroom tiles; carpet (plain) elsewhere
+  function floorPatch(r, color, tiled = false) {
+    const m = prop(r.x1 - r.x0 - WALL_T, 0.012, r.z1 - r.z0 - WALL_T, color, (r.x0 + r.x1) / 2, 0.066, (r.z0 + r.z1) / 2);
+    if (tiled) m.material = mergeableMaterial('tiles', color, 3, 0.4);
   }
 
   function building(cx, cz, w, d, kindName) {
     const kind = KINDS[kindName];
+    curPattern = WALL.plaster; // inside walls
     const color = pick(kind.wall);
     const interiorColor = kind.interior ? pick(kind.interior) : color;
     const x0 = cx - w / 2, x1 = cx + w / 2, z0 = cz - d / 2, z1 = cz + d / 2;
@@ -821,7 +848,9 @@ export function buildWorld(scene, seed) {
         ext[side].push({ c, w: ww, type: 'window', sill: big ? win.front.sill : win.sill, top: big ? win.front.top : win.top });
       }
     }
-    // Build the outside walls
+    // Build the outside walls (brick, clapboard or concrete by building type)
+    const finish = { house: rand() < 0.5 ? 'brick' : 'siding', farmhouse: 'siding', barn: 'siding', cabin: 'siding', shop: 'brick', grocery: 'brick', hardware: 'brick', pharmacy: rand() < 0.5 ? 'brick' : 'concrete', gas: 'concrete' }[kindName] || 'concrete';
+    curPattern = WALL[finish];
     const outerDoors = [];
     for (const [side, ax, a0, a1, fixed] of [['n', 'x', x0, x1, z0], ['s', 'x', x0, x1, z1], ['w', 'z', z0, z1, x0], ['e', 'z', z0, z1, x1]]) {
       const made = wallWithOpenings(ax, a0, a1, fixed, ext[side], color);
@@ -831,9 +860,11 @@ export function buildWorld(scene, seed) {
       b.windows.push(...made.windows);
     }
     const wins = b.windows;
+    curPattern = WALL.concrete;
 
     // Floor, ceiling/roof, upper storeys, tower
-    const floor = new THREE.Mesh(new THREE.BoxGeometry(w, 0.06, d), fur.M(kind.floor, 0.9));
+    const floorKind = kind.home || kindName === 'house' || kindName === 'cabin' ? 'planks' : ['warehouse', 'mechanic', 'barn', 'military'].includes(kindName) ? 'slab' : 'tiles';
+    const floor = new THREE.Mesh(new THREE.BoxGeometry(w, 0.06, d), mergeableMaterial(floorKind, kind.floor, floorKind === 'tiles' ? 2 : 1, 0.85));
     floor.position.set(cx, 0.03, cz);
     floor.receiveShadow = true;
     group.add(floor);
@@ -850,6 +881,20 @@ export function buildWorld(scene, seed) {
       prop(1.2, 4, 1.2, 0x555555, cx + w / 4, h + 2, cz); // rooftop antenna mast
     }
     if (kind.roof) roof(cx, cz, w, d, kind.roof.type, pick(kind.roof.color), color);
+    else if (!kind.tower) {
+      // Flat roof: a parapet round the edge, AC units and vent pipes
+      const ry = roofY + 0.25;
+      prop(w + 0.6, 0.4, 0.2, 0x5a5a58, cx, ry + 0.2, z0 - 0.2); prop(w + 0.6, 0.4, 0.2, 0x5a5a58, cx, ry + 0.2, z1 + 0.2);
+      prop(0.2, 0.4, d + 0.2, 0x5a5a58, x0 - 0.2, ry + 0.2, cz); prop(0.2, 0.4, d + 0.2, 0x5a5a58, x1 + 0.2, ry + 0.2, cz);
+      const n = 1 + Math.floor(rand() * Math.min(3, (w * d) / 80));
+      for (let i = 0; i < n; i++) {
+        const ax = cx + rnd(-w / 3, w / 3), az = cz + rnd(-d / 3, d / 3);
+        prop(1.1, 0.8, 0.9, 0x9a9c9e, ax, ry + 0.4, az);
+        const fan = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.32, 0.04, 14), fur.M(0x3a3a3a));
+        fan.position.set(ax, ry + 0.82, az); group.add(fan);
+      }
+      for (let i = 0; i < 2; i++) { const v = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 0.7, 8), fur.M(0x7a7a78)); v.position.set(cx + rnd(-w / 2.5, w / 2.5), ry + 0.35, cz + rnd(-d / 2.5, d / 2.5)); group.add(v); }
+    }
     for (const r of rooms) {
       prop(0.5, 0.05, 0.5, 0xd8d8c8, (r.x0 + r.x1) / 2, WALL_H - 0.03, (r.z0 + r.z1) / 2); // ceiling light
     }
@@ -858,7 +903,7 @@ export function buildWorld(scene, seed) {
     if (kind.home || kindName === 'house') {
       for (const r of rooms) {
         const P = roomPlacer(r, bDoors, wins);
-        if (r.type === 'kitchen' || r.type === 'bathroom') floorPatch(r, r.type === 'kitchen' ? pick([0xb8b4a8, 0x8a8478, 0xc8c0b0]) : pick([0xd8dcd8, 0xa8b8c0, 0xe0d8d0]));
+        if (r.type === 'kitchen' || r.type === 'bathroom') floorPatch(r, r.type === 'kitchen' ? pick([0xb8b4a8, 0x8a8478, 0xc8c0b0]) : pick([0xd8dcd8, 0xa8b8c0, 0xe0d8d0]), true);
         else if (r.type.startsWith('bedroom')) floorPatch(r, pick([0x6a5a4a, 0x5a4a5a, 0x7a6a5a, 0x4a5a6a]));
         if (r.type === 'living' || r.type === 'living_kitchen' || r.type === 'studio') furnishLiving(P, r.type !== 'living');
         else if (r.type === 'kitchen') furnishKitchen(P, false);
@@ -970,6 +1015,12 @@ export function buildWorld(scene, seed) {
       if (dr) {
         const side = dr.ax === 'x' ? (Math.abs(dr.z - z0) < 0.01 ? 'n' : 's') : (Math.abs(dr.x - x0) < 0.01 ? 'w' : 'e');
         sign(name, kind.sign.bg, kind.sign.cross, dr.x, dr.z, side);
+        // A canvas awning over the shop door
+        if (kind.checkout) {
+          const out = { n: [0, -1], s: [0, 1], w: [-1, 0], e: [1, 0] }[side];
+          const aw = prop(dr.ax === 'x' ? 3.2 : 1.1, 0.06, dr.ax === 'x' ? 1.1 : 3.2, new THREE.Color(kind.sign.bg).getHex(), dr.x + out[0] * 0.65, 2.32, dr.z + out[1] * 0.65);
+          if (dr.ax === 'x') aw.rotation.x = 0.35 * out[1]; else aw.rotation.z = -0.35 * out[0];
+        }
       }
       const labels = { shop: 'General Store', police: 'Police Station', grocery: 'Grocery Store', hardware: 'Hardware Store', gas: 'Gas Station', military: 'Command Post', mechanic: 'Auto Repair' };
       landmarks.push({ x: cx, z: cz, name: kind.sign.company ? name : labels[kindName] || name[0] + name.slice(1).toLowerCase(), kind: kindName });
@@ -1225,7 +1276,7 @@ export function buildWorld(scene, seed) {
 
   // Walls → instanced meshes (the town, and one per countryside chunk)
   const wallGeo = new THREE.BoxGeometry(1, 1, 1);
-  const wallMat = new THREE.MeshStandardMaterial({ roughness: 0.95 });
+  const wallMat = wallMaterial(); // brick / clapboard / concrete / plaster in world space
   const m4 = new THREE.Matrix4();
   const colr = new THREE.Color();
   const wallRegions = new Map();
@@ -1235,7 +1286,9 @@ export function buildWorld(scene, seed) {
     wallRegions.get(k).push(w);
   }
   for (const list of wallRegions.values()) {
-    const wallMesh = new THREE.InstancedMesh(wallGeo, wallMat, list.length);
+    const geo = wallGeo.clone();
+    geo.setAttribute('pattern', new THREE.InstancedBufferAttribute(new Float32Array(list.map((w) => w.pattern ?? WALL.concrete)), 1));
+    const wallMesh = new THREE.InstancedMesh(geo, wallMat, list.length);
     list.forEach((w, i) => {
       const y0 = w.y0 ?? 0, y1 = w.y1 ?? WALL_H;
       m4.makeScale(w.maxX - w.minX, y1 - y0, w.maxZ - w.minZ);
@@ -1376,24 +1429,26 @@ function mergeStatic(group) {
   group.traverse((o) => {
     if (!o.isMesh || o.isInstancedMesh || Array.isArray(o.material)) return;
     const m = o.material;
-    if (m.map || m.transparent || m.emissiveMap) return;
+    const texMerge = m.map && m.userData.mergeUV; // shared textured material (sidewalks, floors)
+    if ((m.map && !texMerge) || m.transparent || m.emissiveMap) return;
     for (let p = o; p && p !== group; p = p.parent) if (p.userData.dynamic) return;
     // Plain materials merge regardless of colour (it goes into vertex
     // colours), so all the furniture of one finish is a single draw call.
     const plain = !m.emissive || m.emissive.getHex() === 0;
     const rough = Math.round(m.roughness * 10) / 10, metal = Math.round(m.metalness * 10) / 10;
     o.getWorldPosition(_mp);
-    const key = regionOf(_mp.x, _mp.z) + (o.castShadow ? '|' : '|ns|') + (plain ? ['vc', rough, metal, m.side].join('|') : [m.type, m.color.getHex(), m.roughness, m.metalness, m.emissive.getHex(), m.side].join('|'));
+    const key = regionOf(_mp.x, _mp.z) + (o.castShadow ? '|' : '|ns|') + (texMerge ? 'tex|' + m.uuid : plain ? ['vc', rough, metal, m.side].join('|') : [m.type, m.color.getHex(), m.roughness, m.metalness, m.emissive.getHex(), m.side].join('|'));
     let geo = o.geometry.index ? o.geometry.toNonIndexed() : o.geometry.clone();
     for (const name of Object.keys(geo.attributes)) if (!['position', 'normal', 'uv'].includes(name)) geo.deleteAttribute(name);
     if (!geo.attributes.uv || !geo.attributes.normal) return;
     geo.applyMatrix4(o.matrixWorld);
-    if (plain) {
+    if (texMerge) worldUV(geo, m.userData.mergeUV);
+    else if (plain) {
       const n = geo.attributes.position.count, col = new Float32Array(n * 3);
       for (let i = 0; i < n; i++) { col[i * 3] = m.color.r; col[i * 3 + 1] = m.color.g; col[i * 3 + 2] = m.color.b; }
       geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
     }
-    if (!buckets.has(key)) buckets.set(key, { mat: plain ? new THREE.MeshStandardMaterial({ vertexColors: true, roughness: rough, metalness: metal, side: m.side }) : m, geos: [], shadow: o.castShadow });
+    if (!buckets.has(key)) buckets.set(key, { mat: plain && !texMerge ? new THREE.MeshStandardMaterial({ vertexColors: true, roughness: rough, metalness: metal, side: m.side }) : m, geos: [], shadow: o.castShadow });
     // (ground patches and furrows don't cast shadows: they'd only shade themselves)
     buckets.get(key).geos.push(geo);
     victims.push(o);

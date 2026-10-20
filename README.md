@@ -181,12 +181,18 @@ Reloads, ammo and every other "do you have it" check look through your pockets, 
   - **What they do:** survivors scavenge between buildings (opening doors as they go) and fight zombies. Zombies hunt them as well as you, and a survivor bitten to death may get back up.
   - **Bandits** shout, keep their distance and shoot you. They flee when badly hurt.
   - **Wary survivors** warn you off. Point a gun at them and they'll turn on you.
+  - **Lower your weapon** with **G** to show you mean no harm. A lowered gun points at the ground and nobody feels threatened by it. Talking to a survivor or trader lowers it for you. Aiming or clicking fire brings it back up (that click doesn't fire).
   - **Talking:** press **F** on a friendly or wary survivor to talk. You can ask who they are, ask for rumors about where loot is, or trade. Friendly survivors who trust you will follow you as a companion who fights alongside you; you can also tell them to wait or go their own way.
   - **Trust:** it goes up with fair trades, gifts and reassurance. Stealing during a trade, shooting them or aiming at them lowers it, and other survivors who see you shoot someone lose trust in you too. Enough trust turns a wary survivor friendly; too little turns anyone hostile.
   - **On the map:** survivors you've met are marked green (friendly), yellow (wary) or red (hostile). When they die, their body keeps everything they carried.
 - **Doors.** Every building has real doors. Open and close them with **F**. An open door's panel is solid, so you and zombies go around it. Bullet holes and blood on a door swing with it.
   - Zombies after something on the other side of a closed door beat on it: it shakes, splinters and darkens, then bursts into flying planks. A few walkers get through in about ten seconds.
   - You can hack doors down with an axe or crowbar, and barricade over a doorway.
+- **Using items takes time.** Eating, drinking and treating yourself are animated, and you can't use another item until you've finished:
+  - You tip back a bottle or can, spoon beans out of a tin, or bite into fruit.
+  - You wind a bandage round your forearm, open a medkit and press dressings on, shake out pills, or jab an injector.
+  - Surgery is a long, careful job over the open kit.
+  - You move slower and can't sprint or shoot while your hands are busy. Tired or hurt hands take longer.
 - **Health.** Seven body parts. Bleeding, broken limbs and spreading damage work like Tarkov's. Painkillers mask limb damage. Bites can infect you, and you have about 6 minutes to find an antiviral before you turn.
 - **Needs.** Hunger, thirst, stamina and fatigue. When you're exhausted you move slower and shoot worse.
 - **Movement.** You're an average person, not a super-soldier:
@@ -224,6 +230,7 @@ Guns work much like Tarkov's. Each firearm is a detailed procedural model, and i
   - **Injured arms:** slower still, held lower, with a tremor. A destroyed arm without painkillers is much slower.
   - Shaky hands can **fumble** the magazine: it knocks the edge of the well, comes back out and goes in on the second try.
   - All of this stays out of your sight picture when aiming. The steadiness there comes from the sway system.
+- **Guns skill.** Hip fire gets more accurate as your Guns skill rises. At 0 a hip-fired round can land anywhere in a wide cone; at 8, hip fire is as accurate as aiming down the sights, and moving costs you less accuracy. The skill rises as you hit things with firearms, faster for hip-fire hits and kills. Police start with +1 and veterans with +2.
 - **No ammo counter.** Press **T** to check your magazine, which gives a rough "About half" reading. **Z** switches fire mode on the AK.
 - **Aiming physics.**
   - **Mouse lag:** the gun lags behind your mouse, more loosely at a run.
@@ -262,6 +269,13 @@ Every car and truck in town (about 50 sedans, pickups, police cruisers and milit
   - **Warehouses** carry parts shelves and workbenches.
   - **Car trunks** often hold a jack, a spare tire or a gas can.
 - **Saved:** where every vehicle is, its parts, its fuel, and whether you're in it.
+- **Models.** Each body type is shaped, not boxed:
+  - Sedans, police cruisers and pickups have wheel arches, a glasshouse with pillars, door seams and handles, mirrors, bumpers, grilles, plates and lights. Paint carries dirt, rust spots and scratches.
+  - Police cruisers add a stripe, push bar and lightbar; pickups an open bed and tailgate. Military trucks are cab-over trucks with a canvas tilt over the bed.
+  - Wheels have tread blocks, rims, spokes and hubs. From the driver's seat you see the dash, gauges and the steering wheel.
+- **Animations.**
+  - Doors swing open as you get in and out, the hood lifts while you work on the parts, and the trunk lid (or tailgate, or canvas flap) opens while you search it.
+  - Driving: the wheels turn and steer, the body pitches under braking and acceleration and rolls in corners, the engine shakes at idle, brake lights glow, a police lightbar flashes while its lights are on, and the exhaust puffs smoke.
 
 | In a vehicle | |
 | --- | --- |
@@ -327,6 +341,7 @@ Zombies and survivors react physically to what hits them.
 | R / double-tap R | Reload / quick reload (drops the mag) |
 | T / Z | Check magazine / switch fire mode |
 | Q / E | Lean left / right |
+| G | Lower / raise your weapon (survivors and traders relax) |
 | 1, 2 | Switch between firearm and melee |
 | F | Interact: open/close doors, search containers, sleep in beds, talk to survivors (1–9 picks a dialogue option), tend garden plots, pick fruit, drink at wells and ponds |
 | Tab or I | Inventory. Close it with Esc, Tab, F, the Close button, a click outside, or by walking off. |
@@ -366,6 +381,10 @@ tp farm              tp orchard           tp cabin            tp camp
 god / noclip / invis / freeze / freebuild                    js player.skill
 ```
 
+## The look of the town
+
+Buildings and streets are textured with generated maps: brick, wood siding, concrete panels, and plaster inside. Each wall gets a finish that fits the building. Houses are brick or siding, farm buildings are siding, shops are brick, and everything else is concrete. Wall textures are projected in world space, so every brick is the same size whatever the wall's shape. Floors are planks, with tiles in kitchens and bathrooms and concrete slab in commercial buildings. Roads are asphalt with sidewalks and curbs; dirt tracks are dirt. Houses have gable roofs. Flat roofs have parapets, AC units and vent pipes, and shops have awnings.
+
 ## Code layout
 
 | File | Purpose |
@@ -380,10 +399,14 @@ god / noclip / invis / freeze / freebuild                    js player.skill
 | `src/furniture.js` | Box-built furniture and container models (kitchens, beds, sofas, shelving, racks, desks…) |
 | `src/player.js` | First-person controller, leaning, melee, body-part health, status effects |
 | `src/weapons.js` | Firearms: optics, PIP scopes, sway/recoil physics, reload timelines and condition variants, magazines, attachments |
+| `src/skills.js` | XP and levelling for skills that rise with use (Guns) |
+| `src/useanim.js` | Item-use animations: eating, drinking, bandaging, medkits, pills, injections, surgery |
+| `src/worldtex.js` | Generated building, road, ground and grime textures; the world-space wall material |
+| `src/carmodels.js` | Vehicle models: body profiles, details, wheels, cockpit, hinged doors/hood/trunk |
 | `src/gunmodels.js` | Weapon, magazine and hand models; procedural wood, metal, polymer, fabric and camo textures |
 | `src/survivors.js` | AI survivors: dispositions and trust, A* pathfinding, combat, following, dialogue, trading |
 | `src/progress.js` | First-day tutorial, progression chapters and goals, the guide tracker and goals panel |
-| `src/vehicles.js` | Vehicles: models, parts and condition, driving physics, collisions and run-overs, the parts screen, fuel, saving |
+| `src/vehicles.js` | Vehicles: door/hood/trunk and driving animations, parts and condition, driving physics, collisions and run-overs, the parts screen, fuel, saving |
 | `src/traders.js` | Trading posts: placement, renovation props, barter offers, loyalty, quests, trader screen and quest tracker |
 | `src/zombies.js` | Zombie spawning, perception, flow-field pathing, attacks, hit reactions, knockdowns, corpses |
 | `src/ragdoll.js` | Verlet ragdolls (death, knockdown, get-up), dropped weapons, corpse freezing |

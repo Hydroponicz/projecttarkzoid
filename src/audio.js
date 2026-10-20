@@ -159,6 +159,13 @@ export const sfx = {
   horn() { tone(392, 0.45, 0.18, 'square'); tone(494, 0.45, 0.14, 'square'); },
   crank(dur = 1) { const n = Math.max(2, Math.round(dur / 0.14)); for (let i = 0; i < n; i++) setTimeout(() => { noise(0.09, 260, 1.5, 0.3, 'lowpass', 0.08); tone(55, 0.06, 0.12, 'square'); }, i * 140); },
   crash(vol = 1) { noise(0.35, 500, 0.8, 0.9 * vol, 'lowpass', 0.3); noise(0.2, 2800, 1, 0.35 * vol, 'bandpass', 0.18); tone(60, 0.25, 0.5 * vol, 'sine', -25); },
+  // Using items
+  eat() { noise(0.12, 900, 1.5, 0.25, 'bandpass', 0.1); setTimeout(() => noise(0.08, 1300, 2, 0.18, 'bandpass', 0.07), 90); },
+  gulp() { tone(180, 0.09, 0.2, 'sine', -60); noise(0.06, 400, 2, 0.12, 'lowpass', 0.06); },
+  rip() { noise(0.35, 2600, 1, 0.22, 'bandpass', 0.3); },
+  zip() { for (let i = 0; i < 6; i++) setTimeout(() => noise(0.03, 3200, 4, 0.12, 'bandpass', 0.03), i * 35); },
+  inject() { this.click(2400, 0.2); setTimeout(() => noise(0.4, 4000, 1, 0.08, 'highpass', 0.35), 60); },
+  pills() { for (let i = 0; i < 8; i++) setTimeout(() => noise(0.025, 4200, 5, 0.1, 'bandpass', 0.02), i * 45 + Math.random() * 20); },
   dig() { noise(0.18, 350, 1, 0.45, 'lowpass', 0.16); setTimeout(() => noise(0.12, 500, 1, 0.3, 'lowpass', 0.1), 220); },
   pour() { noise(0.8, 1800, 0.6, 0.09, 'bandpass', 0.7); },
   windowSlide() { noise(0.3, 1200, 2, 0.12, 'bandpass', 0.3); },

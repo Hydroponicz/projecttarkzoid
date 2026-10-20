@@ -342,19 +342,25 @@ class Survivor {
     // Slowly heal when nothing is going on
     if (!this.target) { this.regen += dt; if (this.regen > 4) { this.regen = 0; this.hp = Math.min(this.maxHp, this.hp + 2); } }
 
-    // --- watch the player's gun ---
-    if (this.disp !== 'hostile' && dP < 25 && p.ads > 0.6 && p.active === 'gun') {
+    // --- watch the player's gun: aiming at them (or a raised gun pointed
+    // their way up close) makes them nervous; a lowered weapon never does ---
+    const raised = p.active === 'gun' && p.weapon && !p.gun.lowered && (p.gun.lowerK || 0) < 0.3;
+    const threat = raised ? (p.ads > 0.6 ? 1 : dP < 10 ? 0.45 : 0) : 0;
+    let watched = false;
+    if (this.disp !== 'hostile' && dP < 25 && threat > 0) {
       const ang = Math.atan2(this.pos.x - p.pos.x, this.pos.z - p.pos.z);
       const aimAng = Math.atan2(-Math.sin(p.yaw), -Math.cos(p.yaw));
       const da = Math.abs(Math.atan2(Math.sin(ang - aimAng), Math.cos(ang - aimAng)));
-      if (da < 0.08) {
-        this.aimWatch += dt;
+      if (da < (p.ads > 0.6 ? 0.08 : 0.16)) {
+        watched = true;
+        this.aimWatch += dt * threat;
         if (this.aimWatch > 1.2) {
-          if (!this.warned) { this.warned = true; this.say(this.disp === 'friendly' ? "Hey! Lower your weapon!" : this.line('warn')); }
+          if (!this.warned) { this.warned = true; this.say(this.disp === 'friendly' ? "Hey! Lower your weapon!" : this.line('warn')); game.hud.message('Press G to lower your weapon', 3); }
           this.changeTrust(-12 * dt);
         }
-      } else this.aimWatch = Math.max(0, this.aimWatch - dt);
+      }
     }
+    if (!watched) { this.aimWatch = Math.max(0, this.aimWatch - dt); if (this.aimWatch <= 0) this.warned = false; }
 
     // --- decide what to do ---
     let moveTo = null, run = false, face = null;

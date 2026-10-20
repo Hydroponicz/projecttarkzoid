@@ -5,6 +5,7 @@
 // berry bushes. Farm loot is seeds, tools and food.
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
+import { mergeableMaterial } from './worldtex.js';
 
 const CELL = 40;
 const TOWN = 100;   // town lots end here (the outer town road runs along it)
@@ -161,8 +162,8 @@ export function buildCountryside(ctx) {
   const M = fur.M;
 
   // --- dirt roads: town streets continue out as farm tracks, plus a ring ---
-  const dirtMat = M(0x5a4a35, 1);
-  const rutMat = M(0x4a3c2a, 1);
+  const dirtMat = mergeableMaterial('dirt', 0xffffff, 0.3, 1);
+  const rutMat = mergeableMaterial('dirt', 0x8a7a68, 0.3, 1);
   function dirtRoad(axis, k, a0, a1) {
     const len = a1 - a0, mid = (a0 + a1) / 2;
     const m = new THREE.Mesh(new THREE.PlaneGeometry(axis === 'x' ? DIRT : len, axis === 'x' ? len : DIRT), dirtMat);

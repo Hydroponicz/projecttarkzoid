@@ -11,6 +11,7 @@ import { addItem, countItem, takeItem } from './inventory.js';
 import { mulberry32 } from './world.js';
 import { moveCircle } from './collision.js';
 import { sfx, engineSound } from './audio.js';
+import { buildCarModel } from './carmodels.js';
 
 const $ = (id) => document.getElementById(id);
 const TYPES = {
@@ -35,36 +36,6 @@ export const PARTS = [
 const TIRES = ['tire_fl', 'tire_fr', 'tire_rl', 'tire_rr'];
 const PART = Object.fromEntries(PARTS.map((p) => [p.id, p]));
 
-// One material for every car body: colours live in the vertex colours, so a
-// parked car is a single draw call.
-const BODY_MAT = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.55, metalness: 0.25 });
-const WHEEL_MAT = new THREE.MeshStandardMaterial({ color: 0x151515, roughness: 0.9 });
-const LIGHT_MAT = new THREE.MeshStandardMaterial({ color: 0xfff2c0, emissive: 0xfff2c0, emissiveIntensity: 2 });
-const _c = new THREE.Color();
-function part(list, w, h, d, x, y, z, color, rot) {
-  const g = new THREE.BoxGeometry(w, h, d).toNonIndexed();
-  if (rot) g.rotateX(rot);
-  g.translate(x, y, z);
-  const n = g.attributes.position.count, col = new Float32Array(n * 3);
-  _c.set(color);
-  for (let i = 0; i < n; i++) { col[i * 3] = _c.r; col[i * 3 + 1] = _c.g; col[i * 3 + 2] = _c.b; }
-  g.setAttribute('color', new THREE.BufferAttribute(col, 3));
-  list.push(g);
-}
-function wheelGeo(r, w, list, x, y, z) {
-  const g = new THREE.CylinderGeometry(r, r, w, 14).toNonIndexed();
-  g.rotateZ(Math.PI / 2);
-  g.translate(x, y, z);
-  const n = g.attributes.position.count, col = new Float32Array(n * 3).fill(0.06);
-  g.setAttribute('color', new THREE.BufferAttribute(col, 3));
-  list.push(g);
-  const hub = new THREE.CylinderGeometry(r * 0.5, r * 0.5, w + 0.02, 10).toNonIndexed();
-  hub.rotateZ(Math.PI / 2); hub.translate(x, y, z);
-  const n2 = hub.attributes.position.count, c2 = new Float32Array(n2 * 3).fill(0.45);
-  hub.setAttribute('color', new THREE.BufferAttribute(c2, 3));
-  list.push(hub);
-}
-
 class Vehicle {
   constructor(sys, spec, i, saved) {
     this.sys = sys;
@@ -77,6 +48,10 @@ class Vehicle {
     this.trunk = spec.trunk || null;
     this.x = spec.x; this.z = spec.z; this.rot = spec.rot;
     this.speed = 0; this.steer = 0; this.wheelSpin = 0;
+    // Hinged panels: how open each is (0..1), where it's heading, and the
+    // body's ride on the suspension (pitch, roll, bounce springs)
+    this.anim = { door: 0, hood: 0, trunk: 0 }; this.animTo = { door: 0, hood: 0, trunk: 0 }; this.doorT = 0;
+    this.susp = { p: 0, vp: 0, r: 0, vr: 0, y: 0, vy: 0 };
     this.running = false; this.lights = false;
     if (saved) {
       Object.assign(this, { x: saved.x, z: saved.z, rot: saved.rot, fuel: saved.fuel, lights: !!saved.lights });
@@ -113,97 +88,32 @@ class Vehicle {
   // local (x right-of-driver = +x is the car's left, z forward) → world
   toWorld(lx, lz) { const s = Math.sin(this.rot), c = Math.cos(this.rot); return { x: this.x + c * lx + s * lz, z: this.z - s * lx + c * lz }; }
 
-  buildMesh(split) {
-    for (const o of [...this.group.children]) { this.group.remove(o); o.geometry?.dispose(); }
-    const { L, W } = this.def, t = this.type, col = this.color, list = [];
-    const glass = 0x1a2228, dark = 0x1a1a1a, trim = 0x2a2a2a;
-    if (t === 'military') {
-      part(list, W, 0.9, L, 0, 0.95, 0, col);
-      part(list, W - 0.1, 1.05, 1.8, 0, 1.4, L / 2 - 1.1, 0x3e4c30);
-      if (!split) part(list, W - 0.06, 0.45, 0.05, 0, 1.75, L / 2 - 0.19, glass);
-      else for (const sx of [-1, 1]) part(list, 0.08, 0.5, 0.08, sx * (W / 2 - 0.1), 1.5, L / 2 - 0.2, 0x3e4c30);
-      part(list, W, 1.5, L - 2.2, 0, 1.4, -1.0, 0x5a6440);
-      part(list, W + 0.06, 0.2, 0.18, 0, 0.55, L / 2, dark);
-      for (const sx of [-0.85, 0.85]) part(list, 0.3, 0.16, 0.05, sx, 1.0, L / 2 + 0.01, this.parts.headlights == null ? dark : 0xd8d8c0);
-    } else {
-      const pickup = t === 'pickup';
-      part(list, W, 0.55, L, 0, 0.55, 0, col);                                // body
-      part(list, W - 0.04, 0.12, L - 0.4, 0, 0.32, 0, trim);                   // sills
-      const cabZ = pickup ? 0.45 : -0.2, cabL = pickup ? 1.7 : 2.1;
-      part(list, W - 0.14, 0.5, cabL, 0, 1.08, cabZ, col);                    // cabin
-      if (!split) {
-        part(list, W - 0.1, 0.36, cabL - 0.15, 0, 1.08, cabZ, glass);           // side windows
-        part(list, W - 0.22, 0.4, 0.05, 0, 1.08, cabZ + cabL / 2 + 0.01, glass); // windshield
-        part(list, W - 0.22, 0.36, 0.05, 0, 1.08, cabZ - cabL / 2 - 0.01, glass);
-      } else {
-        // From the driver's seat: pillars and door tops instead of tinted glass
-        for (const sx of [-1, 1]) {
-          part(list, 0.06, 0.48, 0.06, sx * (W / 2 - 0.1), 1.08, cabZ + cabL / 2 - 0.05, col);
-          part(list, 0.06, 0.48, 0.08, sx * (W / 2 - 0.1), 1.08, cabZ - cabL / 2 + 0.05, col);
-          part(list, 0.05, 0.08, cabL, sx * (W / 2 - 0.08), 0.86, cabZ, col);
-        }
-        part(list, W - 0.24, 0.015, cabL - 0.2, 0, 1.31, cabZ, 0xc8c0b0); // headliner
-      }
-      part(list, W - 0.18, 0.05, cabL - 0.2, 0, 1.35, cabZ, col);              // roof
-      for (const sz of [-1, 1]) part(list, W + 0.04, 0.16, 0.14, 0, 0.42, sz * L / 2, dark); // bumpers
-      part(list, 0.8, 0.14, 0.03, 0, 0.62, L / 2 + 0.01, 0x111111);           // grille
-      for (const sx of [-0.62, 0.62]) {
-        part(list, 0.34, 0.12, 0.05, sx, 0.72, L / 2 + 0.01, this.parts.headlights == null ? dark : 0xe8e8d0);
-        part(list, 0.3, 0.1, 0.05, sx, 0.74, -L / 2 - 0.01, 0x9a1a1a);
-        part(list, 0.06, 0.1, 0.16, Math.sign(sx) * (W / 2 + 0.05), 1.0, cabZ + cabL / 2 - 0.1, col); // mirrors
-      }
-      if (pickup) {
-        // open bed with sides
-        for (const sx of [-1, 1]) part(list, 0.08, 0.35, 1.9, sx * (W / 2 - 0.04), 0.98, -L / 2 + 1.05, col);
-        part(list, W, 0.35, 0.08, 0, 0.98, -L / 2 + 0.06, col);
-      }
-      if (t === 'police') {
-        part(list, W + 0.02, 0.16, L - 0.5, 0, 0.66, 0, 0x1a3a8a);
-        part(list, 0.5, 0.12, 0.25, -0.26, 1.42, cabZ, 0x2244ff);
-        part(list, 0.5, 0.12, 0.25, 0.26, 1.42, cabZ, 0xff2222);
-      }
-    }
-    // Wheels: part of the body mesh when parked, separate (to spin and
-    // steer) on the car you're driving.
-    this.wheels = [];
-    const wpos = this.wheelPositions();
-    wpos.forEach(([x, z, tire]) => {
-      if (this.parts[tire] == null) { part(list, 0.12, 0.3, 0.3, x, 0.34, z, 0x3a3a3a); return; } // bare hub
-      if (!split) wheelGeo(0.36, 0.26, list, x, 0.36, z);
-      else {
-        const wl = [];
-        wheelGeo(0.36, 0.26, wl, 0, 0, 0);
-        const m = new THREE.Mesh(mergeGeometries(wl), BODY_MAT);
-        m.position.set(x, 0.36, z);
-        m.castShadow = true;
-        m.userData.front = z > 0;
-        this.group.add(m);
-        this.wheels.push(m);
-      }
-    });
-    const body = new THREE.Mesh(mergeGeometries(list), BODY_MAT);
-    body.castShadow = body.receiveShadow = true;
-    this.group.add(body);
-    for (const g of list) g.dispose();
-    // Driving: the dash, wheel and lit headlights
-    if (split) {
-      const dash = new THREE.Mesh(new THREE.BoxGeometry(W - 0.25, 0.18, 0.4), new THREE.MeshStandardMaterial({ color: 0x1e1e20, roughness: 0.8 }));
-      dash.position.set(0, t === 'military' ? 1.55 : 0.82, (t === 'military' ? L / 2 - 0.45 : t === 'pickup' ? 0.45 + 0.7 : 0.75));
-      this.group.add(dash);
-      const wheel = new THREE.Mesh(new THREE.TorusGeometry(0.17, 0.02, 6, 16), new THREE.MeshStandardMaterial({ color: 0x111111 }));
-      wheel.position.set(t === 'military' ? 0.5 : 0.38, dash.position.y + 0.1, dash.position.z - 0.28);
-      wheel.rotation.x = -0.35;
-      this.group.add(wheel);
-      this.steeringWheel = wheel;
-      this.lightMeshes = [];
-      if (this.parts.headlights) for (const sx of [-0.62, 0.62]) {
-        const l = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.1, 0.02), LIGHT_MAT);
-        l.position.set(sx, t === 'military' ? 1.0 : 0.72, L / 2 + 0.04);
-        this.group.add(l);
-        this.lightMeshes.push(l);
-      }
-    } else { this.steeringWheel = null; this.lightMeshes = []; }
+  // mode: 'parked' (one merged mesh), 'anim' (panels and wheels in pieces),
+  // 'drive' (anim, seen from the driver's seat). true/false = drive/parked.
+  buildMesh(mode) {
+    if (mode === true) mode = 'drive'; else if (mode === false || mode == null) mode = 'parked';
+    for (const o of [...this.group.children]) { this.group.remove(o); o.traverse((c) => c.geometry?.dispose()); }
+    const m = buildCarModel(this, mode);
+    this.mode = mode;
+    this.group.add(m.root);
+    this.bodyG = m.body; this.wheels = m.wheels; this.steeringWheel = m.steeringWheel;
+    this.lightMeshes = m.lightMeshes; this.brakeMeshes = m.brakeMeshes; this.bar = m.bar;
+    this.pivots = m.pivots; this.exhaust = m.exhaust;
+    this.applyAnim();
   }
+
+  // Swing the hinged panels to their current openness
+  applyAnim() {
+    for (const [name, pv] of Object.entries(this.pivots || {})) {
+      if (!pv.node) continue;
+      const k = this.anim[name], e = k * k * (3 - 2 * k);
+      pv.node.rotation.set(0, 0, 0);
+      pv.node.rotation[pv.axis] = pv.open * e;
+    }
+  }
+
+  // Make sure the panels exist as separate pieces before animating them
+  ensureSplit() { if (this.mode === 'parked') this.buildMesh('anim'); }
 
   wheelPositions() {
     const { L, W } = this.def;
@@ -303,7 +213,9 @@ export class Vehicles {
     this.active = v;
     p.vehicle = v;
     p.lookYaw = 0; p.pitch = -0.05;
-    v.buildMesh(true);
+    v.buildMesh('drive');
+    v.anim.door = 1; v.animTo.door = 0; v.doorT = 0; // you swing in and pull the door shut
+    sfx.door();
     if (!this.engine) this.engine = engineSound();
     g.hud.message(`${v.name}: W to start and drive, S brake/reverse, A/D steer, Space handbrake, L lights, H horn, F to get out.`, 6);
     $('dash').style.display = 'block';
@@ -318,7 +230,9 @@ export class Vehicles {
     this.engine?.set(0, 0);
     this.active = null;
     p.vehicle = null;
-    v.buildMesh(false);
+    v.buildMesh('anim');
+    v.animTo.door = 1; v.doorT = 0.7; // door open, out you get, then it's shut
+    sfx.door();
     v.setColliders(true);
     this.headlight.intensity = 0;
     // Out the driver's side if there's room, else the other side
@@ -428,7 +342,33 @@ export class Vehicles {
     // --- visuals, camera, sound ---
     v.place();
     if (dist > 0 || v.rot !== prev.rot) v.setColliders(true); // they move with it
-    v.wheelSpin += v.speed * dt / 0.36;
+    // Body on its springs: squats under power, dives under braking, leans in corners
+    const accel = (v.speed - (v.lastSpeed ?? v.speed)) / Math.max(dt, 1e-3);
+    v.lastSpeed = v.speed;
+    const lat = v.speed * ((v.rot - prev.rot) / Math.max(dt, 1e-3));
+    const S = v.susp, kSpring = 60, damp = 9;
+    const tp = THREE.MathUtils.clamp(-accel * 0.006, -0.05, 0.05), tr = THREE.MathUtils.clamp(lat * 0.006, -0.07, 0.07);
+    S.vp += ((tp - S.p) * kSpring - S.vp * damp) * dt; S.p += S.vp * dt;
+    S.vr += ((tr - S.r) * kSpring - S.vr * damp) * dt; S.r += S.vr * dt;
+    S.vy += ((0 - S.y) * 90 - S.vy * 10) * dt; S.y += S.vy * dt;
+    if (hit && Math.abs(v.speed) > 1) S.vy -= 0.6; // jolt on impact
+    const idle = v.running ? (Math.random() - 0.5) * 0.004 : 0; // engine shake
+    if (v.bodyG) { v.bodyG.rotation.set(S.p + idle * 0.3, 0, S.r + idle); v.bodyG.position.y = S.y; }
+    // Brake lights; police lightbar flashing with the lights on
+    const braking = (brakeKey && v.speed > 0.4) || (input.jump && Math.abs(v.speed) > 0.4);
+    for (const b of v.brakeMeshes || []) b.visible = braking && P.battery > 0;
+    if (v.bar?.length) { const on = v.lights && P.battery > 0, ph = Math.floor(performance.now() / 180) % 2; v.bar[0].material.emissiveIntensity = on && ph ? 3 : 0; v.bar[1].material.emissiveIntensity = on && !ph ? 3 : 0; }
+    // Exhaust smoke: a thin trail at idle, puffs when you put your foot down
+    this.smokeT = (this.smokeT || 0) - dt;
+    if (v.running && v.exhaust && this.smokeT <= 0) {
+      this.smokeT = fwd ? 0.05 : 0.14;
+      const e = v.toWorld(v.exhaust[0], v.exhaust[2]);
+      const back = v.toWorld(v.exhaust[0], v.exhaust[2] - 1);
+      const vel = new THREE.Vector3((back.x - e.x) * 0.6 + (Math.random() - 0.5) * 0.3, 0.5 + Math.random() * 0.3, (back.z - e.z) * 0.6 + (Math.random() - 0.5) * 0.3);
+      const g2 = 0.35 + Math.random() * 0.15;
+      g.fx.particle(new THREE.Vector3(e.x, v.exhaust[1], e.z), vel, new THREE.Color(g2, g2, g2), fwd ? 0.09 : 0.06, fwd ? 1.2 : 0.8, { drag: 1.5, grav: -0.4, grow: 0.25 });
+    }
+    v.wheelSpin += v.speed * dt / (v.type === 'military' ? 0.5 : 0.36);
     for (const w of v.wheels) { w.rotation.set(v.wheelSpin, w.userData.front ? v.steer : 0, 0, 'YXZ'); }
     if (v.steeringWheel) v.steeringWheel.rotation.z = -v.steer * 3;
     const lightsOn = v.lights && P.headlights > 0 && P.battery > 0;
@@ -530,6 +470,28 @@ export class Vehicles {
       else if (this.dirty) { this.dirty = false; this.renderPanel(); }
     }
     if (!this.active) this.engine?.set(0, 0);
+    // Doors, hoods and trunk lids swinging; cars go back to one mesh when shut
+    for (const v of this.list) {
+      if (v.mode === 'parked') continue;
+      if (v.doorT > 0) { v.doorT -= dt; if (v.doorT <= 0) { v.animTo.door = 0; sfx.door(); } }
+      let moving = false;
+      for (const k of ['door', 'hood', 'trunk']) {
+        const to = v.animTo[k], cur = v.anim[k];
+        if (Math.abs(to - cur) > 1e-3) { v.anim[k] = cur + Math.sign(to - cur) * Math.min(Math.abs(to - cur), dt * (k === 'door' ? 2.6 : 1.4)); moving = true; }
+      }
+      v.applyAnim();
+      const shut = !moving && v.anim.door + v.anim.hood + v.anim.trunk < 1e-3 && v.doorT <= 0;
+      if (v.mode === 'anim' && shut && v !== this.active && v !== this.panel) v.buildMesh('parked');
+    }
+  }
+
+  // The trunk lid lifts while you're rummaging in it
+  setTrunk(container, open) {
+    const v = this.list.find((x) => x.trunk === container);
+    if (!v) return;
+    v.ensureSplit();
+    v.animTo.trunk = open ? 1 : 0;
+    if (open) sfx.door();
   }
 
   // ---------- the parts screen ----------
@@ -546,6 +508,9 @@ export class Vehicles {
   openPanel(v) {
     const g = this.game;
     this.panel = v;
+    // Pop the hood to look the car over
+    v.ensureSplit();
+    v.animTo.hood = 1;
     g.vehicleOpen = true;
     g.input.unlock();
     $('vehicle').style.display = 'flex';
@@ -556,6 +521,7 @@ export class Vehicles {
   closePanel() {
     const g = this.game;
     if (!this.panel) return;
+    this.panel.animTo.hood = 0;
     this.panel = null;
     g.vehicleOpen = false;
     $('vehicle').style.display = 'none';
@@ -592,7 +558,7 @@ export class Vehicles {
       sfx.hammer();
       g.hud.message(`Repaired ${part.name.toLowerCase()} → ${Math.round(P[partId])}%.`, 2);
     }
-    if (partId.startsWith('tire') || partId === 'headlights') { v.buildMesh(v === this.active); }
+    if (partId.startsWith('tire') || partId === 'headlights') { v.buildMesh(v === this.active ? 'drive' : 'anim'); }
     this.renderPanel();
   }
 
