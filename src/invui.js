@@ -226,6 +226,16 @@ export class InventoryUI {
       return this.changed();
     }
 
+    // Dropping onto another item (also the equipped weapon): load ammo into
+    // a magazine, insert a magazine, attach a mod... Checked before slots.
+    const onEl = target.closest('.item');
+    if (onEl && onEl.itemRef && onEl.itemRef !== item && onEl.itemRef.key !== item.key && this.opts.combine) {
+      if (this.opts.combine(item, onEl.itemRef, { detach: () => this.detach(item, src), src, targetSrc: onEl.srcRef })) {
+        item.rot = drag.origRot;
+        return this.changed();
+      }
+    }
+
     const slotEl = target.closest('[data-slot]');
     if (slotEl && this.equipSection) {
       const slot = slotEl.dataset.slot;
@@ -235,16 +245,6 @@ export class InventoryUI {
       item.rot = false;
       eq[slot] = item;
       return this.changed();
-    }
-
-    // Dropping onto another item: load ammo into a magazine, insert a
-    // magazine, attach a mod...
-    const onEl = target.closest('.item');
-    if (onEl && onEl.itemRef && onEl.itemRef !== item && onEl.itemRef.key !== item.key && this.opts.combine) {
-      if (this.opts.combine(item, onEl.itemRef, { detach: () => this.detach(item, src), src, targetSrc: onEl.srcRef })) {
-        item.rot = drag.origRot;
-        return this.changed();
-      }
     }
 
     const gridEl = target.closest('[data-grid]');

@@ -550,6 +550,14 @@ export function weaponActions(it, src, game) {
   const def = ITEMS[it.key];
   const out = [];
   const grid = src.grid;
+  // Attachments and magazines: fit them straight onto the weapon in your hands.
+  const held = game.profile.equip.weapon;
+  if (held && held !== it && ['optic', 'muzzle', 'grip', 'mag'].includes(def.type) && def.fits.includes(held.key)) {
+    const verb = def.type === 'mag' ? 'Insert into' : 'Attach to';
+    out.push([`${verb} ${ITEMS[held.key].name}`, () => combineItems(it, held, {
+      game, src, detach: () => { if (src.grid) removeItem(src.grid, it); else if (src.equip) src.equip[src.slot] = null; },
+    })]);
+  }
   if (def.type === 'mag') {
     const ammoName = ITEMS[def.ammo].name;
     if (it.rounds < def.cap) out.push([`Load ${ammoName}`, () => game.startLoading(it, false)]);

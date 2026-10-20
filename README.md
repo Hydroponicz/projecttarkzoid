@@ -51,7 +51,7 @@ Guns work much like Tarkov's. Each firearm is a detailed procedural model, and i
 - **No ammo counter.** Press **T** to check your magazine, which gives a rough "About half" reading. **Z** switches fire mode on the AK.
 - **Aiming physics.** The gun lags behind your mouse, and your breathing sways it in a figure-8. Sway grows when you're low on stamina, tired, or moving. Aiming drains arm stamina; hold **Shift** while aiming to hold your breath and steady the shot. Recoil kicks the weapon on springs and climbs the camera, which partly recovers. Bullets fire along the barrel, not the screen center.
 - **Animations.** Drawing, magazine swaps (tilt, mag out, hand to pouch, mag in, rack), mag checks, pumping, shell loading, fire-mode switching, bolt and slide cycling, ejected brass and shells, and muzzle flash. The gun pulls back when you face a wall.
-- **Attachments.** Drag them onto a weapon to fit them; right-click the weapon to detach. They change ergonomics, sway and recoil.
+- **Attachments.** Open the inventory (**Tab**). Drag an attachment onto your weapon (in your hands or in a bag), or right-click the attachment and choose **Attach to …**. Right-click the weapon to detach things. Each part only fits certain guns; hover an item to see what it fits. Attachments change ergonomics, sway and recoil.
   - Red dot and holographic sights project their reticle at infinity, like real reflex sights.
   - The **PSO-1 4×** and **Hunting 6×** are true picture-in-picture scopes: a magnified view renders onto the lens, with the PSO's chevron and rangefinder reticle and an eye-box shadow when the gun sways.
   - Suppressors cut gunshot noise by about 80%, which matters with zombies around.
