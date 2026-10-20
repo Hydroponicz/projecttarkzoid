@@ -365,7 +365,7 @@ export class Player {
 
   // ---------- combat ----------
   fireRay(origin, dir, def) {
-    const maxD = 120;
+    const maxD = 300; // scoped shots across the countryside
     const end = origin.clone().addScaledVector(dir, maxD);
     // World hit: walls (full height) or low obstacles if the ray is low enough.
     const hash = this.game.world.hash;

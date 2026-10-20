@@ -1029,18 +1029,8 @@ export class GunController {
     if (!suppressed) { this.flashT = 0.045; p.flash.intensity = 30; }
     else p.flash.intensity = 4;
 
-    // Recoil: weapon springs + camera climb
-    const rm = modMul(w, 'recoil') * (1 - 0.05 * p.skill.aiming) * (1 - this.ads * 0.25) * (p.prone ? 0.7 : p.crouch ? 0.85 : 1);
-    const r = cfg.recoil;
-    this.recP.v += r.v * 0.55 * rm;
-    this.recY.v += (Math.random() - 0.5) * r.h * 0.9 * rm;
-    this.kick.v += 0.5 * r.v * rm;
-    const climb = r.v * r.cam * 0.02 * rm;
-    p.pitch += climb;
-    p.yaw += (Math.random() - 0.5) * r.h * 0.006 * rm;
-    this.camDebt += climb;
-
-    // Bullets travel along the barrel (camera direction + weapon offset).
+    // Bullets travel along the barrel (camera direction + weapon offset), from
+    // where you were aiming when the shot broke: the recoil comes after.
     const armsBroken = (p.hp.armL <= 0 || p.hp.armR <= 0) && p.painkiller <= 0;
     let spread = cfg.accuracy + (1 - this.ads) * cfg.hipSpread * (1 - 0.06 * p.skill.aiming);
     if (ctx.moving) spread += 0.012 * (1 - this.ads * 0.6);
@@ -1054,6 +1044,17 @@ export class GunController {
       const dir = new THREE.Vector3(Math.cos(a) * rr, Math.sin(a) * rr, -1).normalize().applyQuaternion(q);
       p.fireRay(origin, dir, dmgDef);
     }
+    // Recoil: weapon springs + camera climb
+    const rm = modMul(w, 'recoil') * (1 - 0.05 * p.skill.aiming) * (1 - this.ads * 0.25) * (p.prone ? 0.7 : p.crouch ? 0.85 : 1);
+    const r = cfg.recoil;
+    this.recP.v += r.v * 0.55 * rm;
+    this.recY.v += (Math.random() - 0.5) * r.h * 0.9 * rm;
+    this.kick.v += 0.5 * r.v * rm;
+    const climb = r.v * r.cam * 0.02 * rm;
+    p.pitch += climb;
+    p.yaw += (Math.random() - 0.5) * r.h * 0.006 * rm;
+    this.camDebt += climb;
+
     p.game.zombies.noise(p.pos.x, p.pos.z, def.noise * (suppressed ? 0.22 : 1));
 
     // Cycle the action
