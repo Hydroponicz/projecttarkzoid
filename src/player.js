@@ -366,7 +366,11 @@ export class Player {
     const rd = g.ragdolls?.raycast(origin, dir, sv ? sv.t : z ? z.t : wallD);
     const tHit = rd ? rd.t : sv ? sv.t : z ? z.t : null;
     if (tHit == null) {
-      if (wallD < maxD) g.fx.impact(wallPoint, normal);
+      if (wallD < maxD) {
+        g.fx.impact(wallPoint, normal, wallBox?.decalParent, wallBox?.decalInset);
+        // Zombies near where it smacked in turn to look where it came from.
+        g.zombies.alertNear(wallPoint.x, wallPoint.z, 5, this.pos.x, this.pos.z);
+      }
       return;
     }
     const range = rd ? rd.t : tHit;
@@ -379,7 +383,7 @@ export class Player {
     const head = rd ? rd.head : sv ? sv.head : z.head;
     // Blood on the wall behind the target if it's close enough
     const behind = wallD - tHit;
-    const bloodOpts = { head, power: force / 3, wall: behind < 2.6 && wallD < maxD ? { point: wallPoint, normal } : null };
+    const bloodOpts = { head, power: force / 3, wall: behind < 2.6 && wallD < maxD ? { point: wallPoint, normal, parent: wallBox?.decalParent, inset: wallBox?.decalInset } : null };
     g.fx.blood(point, dir, bloodOpts);
     const dmgMul = falloff * (head ? 3 : 1);
     if (rd) {

@@ -2,13 +2,36 @@
 // field (so they find doors), attack, die, and leave lootable corpses.
 import * as THREE from 'three';
 import { moveCircle, hasLOS } from './collision.js';
+
+// Binary min-heap of grid indices keyed by f-score (for A*).
+class Heap {
+  constructor(n) { this.idx = new Int32Array(n); this.key = new Float32Array(n); this.n = 0; }
+  push(i, k) {
+    let c = this.n++;
+    while (c > 0) { const p = (c - 1) >> 1; if (this.key[p] <= k) break; this.idx[c] = this.idx[p]; this.key[c] = this.key[p]; c = p; }
+    this.idx[c] = i; this.key[c] = k;
+  }
+  pop() {
+    const top = this.idx[0], li = this.idx[--this.n], lk = this.key[this.n];
+    let c = 0;
+    for (;;) {
+      let m = c * 2 + 1;
+      if (m >= this.n) break;
+      if (m + 1 < this.n && this.key[m + 1] < this.key[m]) m++;
+      if (this.key[m] >= lk) break;
+      this.idx[c] = this.idx[m]; this.key[c] = this.key[m]; c = m;
+    }
+    this.idx[c] = li; this.key[c] = lk;
+    return top;
+  }
+}
 import { HALF } from './world.js';
 import { sfx } from './audio.js';
 import { lookMats, JOINT } from './ragdoll.js';
 
 export const NAV_CELL = 0.6;
 export const NAV_N = Math.ceil((HALF * 2) / NAV_CELL);
-export const FIELD_R = 60; // cells around the player covered by the flow field
+export const FIELD_R = 100; // cells around the player covered by the flow field (60 m)
 
 const TYPES = {
   walker: { hp: 100, speed: 1.3, chase: 2.1, dmg: [7, 13], scale: 1, weight: 70 },
@@ -47,6 +70,10 @@ export class Zombies {
     this.spawnTimer = 0;
     this.game = null; // set by the game (ragdolls, effects)
     this.noSpawn = []; // areas zombies never spawn in (trading posts)
+    // A* buffers (paths to noises and to targets the flow field doesn't reach)
+    const NN = NAV_N * NAV_N;
+    this.gScore = new Float32Array(NN); this.came = new Int32Array(NN); this.stamp = new Int32Array(NN);
+    this.heap = new Heap(NN); this.searchId = 0; this.pathBudget = 0;
   }
 
   buildNav() {
@@ -67,7 +94,8 @@ export class Zombies {
         const boxes = this.world.hash.query(x - r, z - r, x + r, z + r, tmp);
         let b = 0;
         for (const box of boxes) {
-          if (box.noCollide) continue;
+          // Doors count as walkable: zombies head for them and bash them down.
+          if (box.noCollide || box.door) continue;
           if (x > box.minX - r && x < box.maxX + r && z > box.minZ - r && z < box.maxZ + r) { b = 1; break; }
         }
         this.blocked[i * NAV_N + j] = b;
@@ -130,6 +158,103 @@ export class Zombies {
     const dx = tx - x, dz = tz - z;
     const l = Math.hypot(dx, dz) || 1;
     return [dx / l, dz / l];
+  }
+
+  // A* over the nav grid (8-way, no corner cutting). Returns waypoints, or a
+  // partial path toward the target if the search budget runs out.
+  findPath(sx, sz, tx, tz, budget = 4000) {
+    const N = NAV_N, cell = (x) => Math.max(0, Math.min(N - 1, Math.floor((x + HALF) / NAV_CELL)));
+    let si = cell(sx), sj = cell(sz), ti = cell(tx), tj = cell(tz);
+    const B = this.blocked;
+    if (B[ti * N + tj]) {
+      // Target inside an obstacle: use the nearest open cell.
+      let best = -1, bd = Infinity;
+      for (let di = -4; di <= 4; di++) for (let dj = -4; dj <= 4; dj++) {
+        const i = ti + di, j = tj + dj;
+        if (i < 0 || j < 0 || i >= N || j >= N || B[i * N + j]) continue;
+        const d = di * di + dj * dj;
+        if (d < bd) { bd = d; best = i * N + j; }
+      }
+      if (best < 0) return null;
+      ti = Math.floor(best / N); tj = best % N;
+    }
+    const id = ++this.searchId, g = this.gScore, came = this.came, st = this.stamp, heap = this.heap;
+    const start = si * N + sj, goal = ti * N + tj;
+    const h = (i, j) => { const a = Math.abs(i - ti), b = Math.abs(j - tj); return Math.max(a, b) + 0.414 * Math.min(a, b); };
+    heap.n = 0;
+    g[start] = 0; st[start] = id; came[start] = -1;
+    heap.push(start, h(si, sj));
+    let bestNode = start, bestH = h(si, sj), found = false;
+    while (heap.n && budget-- > 0) {
+      const cur = heap.pop();
+      if (cur === goal) { found = true; break; }
+      const ci = Math.floor(cur / N), cj = cur % N, gc = g[cur];
+      const hc = h(ci, cj);
+      if (hc < bestH) { bestH = hc; bestNode = cur; }
+      for (let di = -1; di <= 1; di++) {
+        for (let dj = -1; dj <= 1; dj++) {
+          if (!di && !dj) continue;
+          const ni = ci + di, nj = cj + dj;
+          if (ni < 0 || nj < 0 || ni >= N || nj >= N) continue;
+          const nIdx = ni * N + nj;
+          if (B[nIdx] && nIdx !== start) continue;
+          if (di && dj && (B[ci * N + nj] || B[ni * N + cj])) continue;
+          const ng = gc + (di && dj ? 1.414 : 1);
+          if (st[nIdx] === id && g[nIdx] <= ng) continue;
+          st[nIdx] = id; g[nIdx] = ng; came[nIdx] = cur;
+          heap.push(nIdx, ng + h(ni, nj));
+        }
+      }
+    }
+    let n = found ? goal : bestNode;
+    if (n === start) return null;
+    const out = [];
+    while (n !== -1 && n !== start) { out.push({ x: -HALF + (Math.floor(n / N) + 0.5) * NAV_CELL, z: -HALF + ((n % N) + 0.5) * NAV_CELL }); n = came[n]; }
+    out.reverse();
+    // Drop waypoints on straight runs
+    const thin = [];
+    for (let i = 0; i < out.length; i++) {
+      if (i > 0 && i < out.length - 1) {
+        const a = out[i - 1], b = out[i], c = out[i + 1];
+        if (Math.abs((b.x - a.x) * (c.z - b.z) - (b.z - a.z) * (c.x - b.x)) < 1e-6) continue;
+      }
+      thin.push(out[i]);
+    }
+    return thin;
+  }
+
+  // Steer along a cached A* path to (tx, tz); repaths when the target moves
+  // or the path goes stale. Returns a unit direction, or null.
+  pathDir(zb, tx, tz, dt) {
+    zb.pathT = (zb.pathT ?? 0) - dt;
+    const moved = zb.pathGoal ? Math.hypot(zb.pathGoal.x - tx, zb.pathGoal.z - tz) : Infinity;
+    if ((zb.pathT <= 0 || moved > 3 || !zb.path) && this.pathBudget > 0) {
+      this.pathBudget--;
+      zb.path = this.findPath(zb.pos.x, zb.pos.z, tx, tz);
+      zb.pathGoal = { x: tx, z: tz };
+      zb.pathT = 2.5 + Math.random();
+    }
+    const path = zb.path;
+    if (!path?.length) return null;
+    while (path.length > 1 && Math.hypot(path[0].x - zb.pos.x, path[0].z - zb.pos.z) < 0.45) path.shift();
+    const w = path[0];
+    const dx = w.x - zb.pos.x, dz = w.z - zb.pos.z, l = Math.hypot(dx, dz);
+    if (l < 0.2) { path.shift(); return null; }
+    return [dx / l, dz / l];
+  }
+
+  // Something happened near (x, z) that zombies close by would notice (a
+  // bullet smacking into a wall, a zombie dropping): they turn and come to
+  // look where it came from.
+  alertNear(x, z, r, srcX, srcZ) {
+    for (const zb of this.list) {
+      if (zb.dead || zb.down || zb.state === 'chase') continue;
+      if (Math.hypot(zb.pos.x - x, zb.pos.z - z) > r) continue;
+      zb.state = 'investigate';
+      zb.target = { x: srcX + (Math.random() - 0.5) * 4, z: srcZ + (Math.random() - 0.5) * 4 };
+      zb.path = null;
+      zb.hurry = 1;
+    }
   }
 
   randomOpenPoint(awayFrom, minDist, avoid) {
@@ -233,7 +358,7 @@ export class Zombies {
     for (const zb of this.list) {
       if (zb.dead || zb.down || zb.state === 'chase') continue;
       const d = Math.hypot(zb.pos.x - x, zb.pos.z - z);
-      if (d < r) { zb.state = 'investigate'; zb.target = { x: x + (Math.random() - 0.5) * 3, z: z + (Math.random() - 0.5) * 3 }; }
+      if (d < r) { zb.state = 'investigate'; zb.target = { x: x + (Math.random() - 0.5) * 3, z: z + (Math.random() - 0.5) * 3 }; zb.path = null; zb.hurry = d < r * 0.5 ? 1 : 0; }
     }
   }
 
@@ -243,14 +368,21 @@ export class Zombies {
     // Armored zombies (soldiers) shrug off body shots; headshots go through.
     if (zb.def.armor && !head) amount *= 1 - zb.def.armor;
     zb.hp -= amount;
-    zb.stagger = 0.25;
+    zb.stagger = 0.35;
+    // Shot from anywhere: it knows where you are now and comes for you.
     zb.state = 'chase';
-    zb.lastSeen = 3;
-    if (zb.hp <= 0) { this.kill(zb, hit, head); return true; }
+    zb.prey = null;
+    zb.lastSeen = 6;
+    zb.flail = 0.6;
+    if (zb.hp <= 0) {
+      this.kill(zb, hit, head);
+      this.alertNear(zb.pos.x, zb.pos.z, 9, fromX, fromZ);
+      return true;
+    }
     if (zb.down) { if (hit) zb.down.impulse(hit.point, hit.dir, hit.force); return false; }
     // knockback
     const dx = zb.pos.x - fromX, dz = zb.pos.z - fromZ, l = Math.hypot(dx, dz) || 1;
-    moveCircle(this.world.hash, zb.pos, zb.radius, (dx / l) * 0.15, (dz / l) * 0.15);
+    moveCircle(this.world.hash, zb.pos, zb.radius, (dx / l) * 0.25, (dz / l) * 0.25);
     if (hit) this.react(zb, hit, head);
     return false;
   }
@@ -261,8 +393,8 @@ export class Zombies {
     const s = Math.sin(zb.dir), c = Math.cos(zb.dir);
     const lz = hit.dir.x * s + hit.dir.z * c, lx = hit.dir.x * c - hit.dir.z * s;
     const f = hit.force * (zb.type === 'brute' ? 0.4 : 1);
-    zb.lean.vx += lz * f * 0.9;
-    zb.lean.vz -= lx * f * 0.9;
+    zb.lean.vx += lz * f * 1.4;
+    zb.lean.vz -= lx * f * 1.4 + (Math.random() - 0.5) * f * 0.6;
     if (head) zb.headKick.v += lz * f * 3 + (Math.random() - 0.5) * f;
     if (zb.rise > 0) return;
     const legHit = hit.point.y < 0.85 * zb.def.scale;
@@ -289,6 +421,7 @@ export class Zombies {
     if (!rd) return;
     const r = rd.create(this.ragdollSpec(zb, { alive: true, tone: 0.7, toneDecay: 1.4 }));
     r.impulse(hit.point, hit.dir, hit.force * 1.3);
+    if (hit.point.y < 0.9 * zb.def.scale) r.sweepLegs(hit.dir, 1.2 + hit.force * 0.5);
     zb.down = r;
     zb.downT = 0.8 + Math.random() * 1.6;
     zb.mesh.visible = false;
@@ -338,6 +471,7 @@ export class Zombies {
     else r = game.ragdolls.create(this.ragdollSpec(zb, { dead: true, tone: head ? 0 : 0.85, toneDecay: 1.3 + Math.random(), spasms: head ? 0 : 2 + Math.floor(Math.random() * 3) }));
     r.owner = null;
     if (hit) r.impulse(hit.point, hit.dir, hit.force * (head ? 0.8 : 1.2));
+    if (hit && hit.point.y < 0.9 * zb.def.scale) r.sweepLegs(hit.dir, 1 + hit.force * 0.4);
     c.ragdoll = r;
     r.onSettle = (rr) => {
       c.x = rr.pelvis.x; c.z = rr.pelvis.z;
@@ -365,6 +499,7 @@ export class Zombies {
     }
 
     let nearest = Infinity;
+    this.pathBudget = 3; // A* searches allowed this frame
     for (const zb of this.list) {
       if (zb.down) { this.updateDown(zb, dt); continue; }
       // A zombie hunts either the player or an AI survivor ("prey").
@@ -379,7 +514,7 @@ export class Zombies {
       // Hidden beyond what the fog lets you see (saves draw calls).
       zb.mesh.visible = pdist < (game.isNight ? 70 : 110);
       // Too far away: cheap sleep update.
-      if (pdist > 90 && !prey) continue;
+      if (pdist > 90 && !prey && zb.state === 'wander') continue;
 
       // Perception (staggered)
       zb.losTimer -= dt;
@@ -409,15 +544,23 @@ export class Zombies {
         zb.lastSeen -= dt;
         if (zb.lastSeen <= 0 && !zb.canSee) { zb.state = 'investigate'; zb.target = { x: tx0, z: tz0 }; zb.prey = null; }
         speed = zb.def.chase * (game.isNight ? 1.15 : 1);
-        // The flow field leads to the player; survivors are chased directly.
-        const flow = !prey && (!zb.canSee || dist > 6) ? this.flowDir(zb.pos.x, zb.pos.z) : null;
-        if (flow) { mx = flow[0]; mz = flow[1]; }
+        // The flow field leads to the player (through doors, which get
+        // bashed); beyond it, or after survivors out of sight, A* paths.
+        const direct = zb.canSee && dist < 6 && hasLOS(hash, zb.pos.x, zb.pos.z, tx0, tz0);
+        let dir = null;
+        if (!direct) dir = (!prey && this.flowDir(zb.pos.x, zb.pos.z)) || this.pathDir(zb, tx0, tz0, dt);
+        if (dir) { mx = dir[0]; mz = dir[1]; }
         else { mx = dx / (dist || 1); mz = dz / (dist || 1); }
       } else if (zb.state === 'investigate') {
         const tx = zb.target.x - zb.pos.x, tz = zb.target.z - zb.pos.z;
         const td = Math.hypot(tx, tz);
-        if (td < 1.2) { zb.state = 'wander'; zb.wanderTimer = 4; }
-        else { mx = tx / td; mz = tz / td; speed = zb.def.speed * 1.3; }
+        if (td < 1.2 || (zb.path && !zb.path.length && td < 3)) { zb.state = 'wander'; zb.wanderTimer = 4; zb.path = null; zb.hurry = 0; }
+        else {
+          // Walk (or hurry, if it was close) to the noise, finding a way round walls.
+          const dir = td < 12 && hasLOS(hash, zb.pos.x, zb.pos.z, zb.target.x, zb.target.z) ? null : this.pathDir(zb, zb.target.x, zb.target.z, dt);
+          if (dir) { mx = dir[0]; mz = dir[1]; } else { mx = tx / td; mz = tz / td; }
+          speed = zb.hurry ? Math.max(zb.def.speed * 1.5, zb.def.chase * 0.75) : zb.def.speed * 1.3;
+        }
       } else {
         zb.wanderTimer -= dt;
         if (zb.wanderTimer <= 0) { zb.wanderTimer = 3 + Math.random() * 6; zb.dir += (Math.random() - 0.5) * 2.5; zb.idle = Math.random() < 0.4; }
@@ -425,6 +568,8 @@ export class Zombies {
       }
 
       if (zb.stagger > 0) { zb.stagger -= dt; speed *= 0.2; }
+      // Stuck against something it can't bash: sidestep for a moment.
+      if (zb.detour > 0 && speed > 0) { zb.detour -= dt; const ds = zb.detourSide; const ox = mx; mx = mx * 0.3 - mz * ds; mz = mz * 0.3 + ox * ds; }
       if (zb.rise > 0) { zb.rise -= dt / 1.4; speed = 0; }
 
       // Separation from other zombies (only nearby ones matter)
@@ -440,7 +585,8 @@ export class Zombies {
       // Attack
       zb.attackCd -= dt;
       const reach = 1.0 * zb.def.scale;
-      if (dist < reach + 0.1 && zb.state === 'chase' && !(zb.rise > 0)) {
+      // Only with nothing in between (no clawing through closed doors or walls).
+      if (dist < reach + 0.1 && zb.state === 'chase' && !(zb.rise > 0) && hasLOS(hash, zb.pos.x, zb.pos.z, tx0, tz0)) {
         speed = 0;
         if (zb.attackCd <= 0) {
           zb.attackCd = 1.3;
@@ -461,12 +607,14 @@ export class Zombies {
         if (pd < minD && pd > 1e-4) { zb.pos.x = px + (pdx / pd) * minD; zb.pos.z = pz + (pdz / pd) * minD; }
         const moved = Math.hypot(zb.pos.x - before.x, zb.pos.z - before.z);
         zb.vx = (zb.pos.x - before.x) / dt; zb.vz = (zb.pos.z - before.z) / dt;
-        // Blocked while chasing → bash whatever player-made obstacle is in the way.
-        if (zb.state === 'chase' && moved < speed * dt * 0.3) {
+        // Blocked while chasing or following a noise: bash the door or
+        // barricade in the way; if it's a plain wall, sidestep and repath.
+        if (zb.state !== 'wander' && moved < speed * dt * 0.3) {
           zb.stuck += dt;
           if (zb.stuck > 0.6 && zb.attackCd <= 0) {
             const s = this.structureNear(zb);
             if (s) { zb.attackCd = 1.5; game.damageStructure(s, zb.def.dmg[1] * (zb.type === 'brute' ? 3 : 1)); }
+            else if (!(zb.detour > 0)) { zb.detour = 0.5 + Math.random() * 0.5; zb.detourSide = Math.random() < 0.5 ? 1 : -1; zb.pathT = 0; zb.stuck = 0; }
           }
         } else zb.stuck = 0;
         // stuck while wandering → turn around
@@ -500,6 +648,13 @@ export class Zombies {
       p.torso.rotation.x = zb.state === 'chase' ? 0.18 : 0.08;
       p.head.rotation.z = Math.sin(zb.phase * 0.3 + zb.groanTimer) * 0.25;
       p.head.rotation.x = K.x;
+      if (zb.flail > 0) {
+        // Arms thrown out by the hit
+        zb.flail -= dt;
+        const k = Math.max(0, zb.flail / 0.6);
+        p.armL.rotation.x -= k * 0.9; p.armR.rotation.x -= k * 0.7;
+        p.armL.rotation.z = k * 0.6; p.armR.rotation.z = -k * 0.5;
+      } else { p.armL.rotation.z = 0; p.armR.rotation.z = 0; }
       if (zb.rise > 0.3) { p.armL.rotation.x = p.armR.rotation.x = 1.2; p.legL.rotation.x = p.legR.rotation.x = 0; }
 
       // Groans

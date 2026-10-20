@@ -99,6 +99,8 @@ class DecalLayer {
   dispose(scene) { scene.remove(this.mesh); this.mesh.dispose(); }
 }
 const _m4 = new THREE.Matrix4(), _s = new THREE.Vector3(), _q = new THREE.Quaternion(), _p = new THREE.Vector3();
+const quadGeo = new THREE.PlaneGeometry(1, 1);
+const decalMat = (tex) => new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
 const UP = new THREE.Vector3(0, 1, 0);
 
 export class FX {
@@ -115,6 +117,25 @@ export class FX {
     this.splats = new DecalLayer(scene, splatTex, 260);
     this.pools = new DecalLayer(scene, poolTex, 60, 0.92);
     this.holes = new DecalLayer(scene, holeTex, 200);
+    // Decals on things that move (doors swing, built walls get torn down)
+    // are child meshes of that object instead of instances.
+    this.attached = [];
+    this.attachMats = { hole: decalMat(holeTex), splat: decalMat(splatTex) };
+  }
+
+  attach(parent, kind, pos, normal, size, inset = 0) {
+    const m = new THREE.Mesh(quadGeo, this.attachMats[kind]);
+    parent.updateMatrixWorld(true);
+    const inv = new THREE.Matrix4().copy(parent.matrixWorld).invert();
+    const wq = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 0, 1), normal).multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 0, 1), Math.random() * 6.28));
+    const pq = new THREE.Quaternion(); parent.getWorldQuaternion(pq);
+    m.quaternion.copy(pq.invert().multiply(wq));
+    m.position.copy(pos).addScaledVector(normal, 0.014 - inset).applyMatrix4(inv);
+    m.scale.set(size, size, 1);
+    m.renderOrder = 1;
+    parent.add(m);
+    this.attached.push(m);
+    if (this.attached.length > 120) { const o = this.attached.shift(); o.parent?.remove(o); }
   }
 
   // Ejected brass / shotgun shells that tumble and bounce on the ground.
@@ -164,7 +185,11 @@ export class FX {
       for (let i = 0; i < n * 0.7; i++) this.particle(p, jitter().multiplyScalar(2.6), BLOOD, 0.03 + Math.random() * 0.03, 0.6, { splat: Math.random() < 0.25 ? 0.15 : 0 });
     }
     // Splatter on the wall behind the target
-    if (opts.wall) this.splats.add(opts.wall.point, opts.wall.normal, 0.5 + Math.random() * 0.5 * power + (opts.head ? 0.35 : 0));
+    if (opts.wall) {
+      const size = 0.5 + Math.random() * 0.5 * power + (opts.head ? 0.35 : 0);
+      if (opts.wall.parent) this.attach(opts.wall.parent, 'splat', opts.wall.point, opts.wall.normal, size, opts.wall.inset);
+      else this.splats.add(opts.wall.point, opts.wall.normal, size);
+    }
     // Drips under the wound
     if (Math.random() < 0.7) this.splats.add(_p.set(p.x + d.x * 0.4 + (Math.random() - 0.5) * 0.3, GROUND_Y, p.z + d.z * 0.4 + (Math.random() - 0.5) * 0.3), UP, 0.25 + Math.random() * 0.35);
   }
@@ -174,11 +199,12 @@ export class FX {
     this.pools.add(new THREE.Vector3(x, GROUND_Y - 0.003, z), UP, size, 0.12);
   }
 
-  impact(p, normal) {
+  impact(p, normal, parent, inset) {
     const n = normal || UP;
     for (let i = 0; i < 7; i++) this.particle(p, n.clone().multiplyScalar(1 + Math.random() * 2).add(new THREE.Vector3(Math.random() - 0.5, Math.random() * 0.8, Math.random() - 0.5).multiplyScalar(1.6)), DUST, 0.03 + Math.random() * 0.04, 0.35 + Math.random() * 0.3, { drag: 2, grow: 0.15 });
     for (let i = 0; i < 3; i++) this.particle(p, n.clone().multiplyScalar(2).add(new THREE.Vector3(Math.random() - 0.5, Math.random(), Math.random() - 0.5).multiplyScalar(4)), SPARK, 0.015, 0.12);
-    this.holes.add(p, n, 0.07 + Math.random() * 0.03);
+    if (parent) this.attach(parent, 'hole', p, n, 0.07 + Math.random() * 0.03, inset);
+    else this.holes.add(p, n, 0.07 + Math.random() * 0.03);
   }
 
   update(dt) {
@@ -222,6 +248,8 @@ export class FX {
 
   clear() {
     for (const c of this.casings) this.scene.remove(c.m);
+    for (const m of this.attached) m.parent?.remove(m);
+    this.attached = [];
     this.casings = []; this.parts = []; this.pmesh.count = 0;
     this.splats.clear(); this.pools.clear(); this.holes.clear();
   }

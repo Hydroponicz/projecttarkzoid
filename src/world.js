@@ -95,8 +95,15 @@ export function buildWorld(scene, seed) {
     group.add(pivot);
     const t = 0.08;
     const box = addBox(ax === 'x' ? x - half : x - t, ax === 'x' ? z - t : z - half, ax === 'x' ? x + half : x + t, ax === 'x' ? z + t : z + half, { h: 2.2 });
-    const d = { kind: 'door', name: 'Door', x, z, ax, open: false, hp: 400, maxHp: 400, box, mesh: pivot, baseRot: pivot.rotation.y, index: doors.length };
+    // The open door panel is solid too: you (and zombies) go around it.
+    const r = pivot.rotation.y + Math.PI / 2, ex = Math.cos(r) * (DOOR - 0.1), ez = -Math.sin(r) * (DOOR - 0.1);
+    const hx = pivot.position.x + Math.cos(r) * 0.1, hz = pivot.position.z - Math.sin(r) * 0.1;
+    const leaf = addBox(Math.min(hx, hx + ex) - 0.05, Math.min(hz, hz + ez) - 0.05, Math.max(hx, hx + ex) + 0.05, Math.max(hz, hz + ez) + 0.05, { h: 2.2, blocksSight: false });
+    const d = { kind: 'door', name: 'Door', x, z, ax, open: false, hp: 400, maxHp: 400, box, leaf, mesh: pivot, baseRot: pivot.rotation.y, index: doors.length };
     box.structure = d;
+    box.door = true;
+    box.decalParent = leaf.decalParent = pivot;
+    box.decalInset = 0.064; leaf.decalInset = 0.034; // collider is thicker than the panel
     doors.push(d);
     setDoor(d, !closed);
     return d;
@@ -691,10 +698,18 @@ export function buildWorld(scene, seed) {
     g.rotation.y = rot;
     g.traverse((o) => { o.castShadow = true; o.receiveShadow = true; });
     group.add(g);
-    // collision approximated by AABB of rotated footprint
-    const c = Math.abs(Math.cos(rot)), s = Math.abs(Math.sin(rot));
-    const hw = (W * c + L * s) / 2, hd = (W * s + L * c) / 2;
-    addBox(x - hw * 0.9, z - hd * 0.9, x + hw * 0.9, z + hd * 0.9, { blocksSight: mil, h: mil ? 2.9 : 1.6 });
+    // Collision: the car's length is split into slices, each an AABB of its
+    // rotated footprint (tight even for cars parked at an angle), with the
+    // height of what's there (hood, cabin, cargo cover).
+    const SL = mil ? 5 : 4, fx = Math.sin(rot), fz = Math.cos(rot), c = Math.abs(Math.cos(rot)), sn = Math.abs(Math.sin(rot));
+    for (let i = 0; i < SL; i++) {
+      const a = -L / 2 + (i + 0.5) * (L / SL); // slice centre along the car
+      const sx = x + fx * a, sz = z + fz * a;
+      const hw = (W * 0.95 * c + (L / SL) * sn) / 2, hd = (W * 0.95 * sn + (L / SL) * c) / 2;
+      const inCab = mil ? a > L / 2 - 2.0 : a > -1.3 && a < 0.9;
+      const h = mil ? (inCab ? 2.5 : a < L / 2 - 2.2 ? 2.9 : 1.5) : inCab ? 1.6 : 1.0;
+      addBox(sx - hw, sz - hd, sx + hw, sz + hd, { blocksSight: mil, h });
+    }
     if (mil) {
       // Cargo bed: military supplies at the back of the truck
       const tc = addContainer(rand() < 0.6 ? 'milcrate' : 'duffel', x - Math.sin(rot) * (L / 2 + 0.6), z - Math.cos(rot) * (L / 2 + 0.6));
@@ -789,6 +804,7 @@ export function setDoor(d, open) {
   d.open = open;
   d.box.noCollide = open;
   d.box.blocksShot = d.box.blocksSight = !open;
+  if (d.leaf) { d.leaf.noCollide = !open; d.leaf.blocksShot = open; }
   d.mesh.rotation.y = d.baseRot + (open ? Math.PI / 2 : 0);
 }
 

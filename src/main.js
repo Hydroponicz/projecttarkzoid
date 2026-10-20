@@ -656,6 +656,8 @@ class Game {
     d.box.noCollide = true;
     d.box.blocksShot = d.box.blocksSight = false;
     d.box.structure = null;
+    d.box.decalParent = null;
+    if (d.leaf) { d.leaf.noCollide = true; d.leaf.blocksShot = false; d.leaf.decalParent = null; }
     this.world.group.remove(d.mesh);
     if (!silent) this.zombies.updateNavRegion(d.box.minX, d.box.minZ, d.box.maxX, d.box.maxZ);
   }

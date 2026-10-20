@@ -215,6 +215,7 @@ class Survivor {
     if (!rd) return;
     const r = rd.create(this.ragdollSpec({ alive: true, tone: 0.7, toneDecay: 1.4 }));
     r.impulse(hit.point, hit.dir, hit.force * 1.3);
+    if (hit.point.y < 0.85) r.sweepLegs(hit.dir, 1.2 + hit.force * 0.5);
     this.down = r;
     this.downT = 1 + Math.random() * 2;
     this.mesh.visible = false;
@@ -262,6 +263,7 @@ class Survivor {
     if (r) {
       r.owner = null;
       if (hit) r.impulse(hit.point, hit.dir, hit.force * (head ? 0.8 : 1.2));
+      if (hit && hit.point.y < 0.85) r.sweepLegs(hit.dir, 1 + hit.force * 0.4);
       if (!wasDown && this.mesh.visible) this.dropGun(r);
     }
     this.mgr.scene.remove(this.mesh);

@@ -36,7 +36,15 @@ New consumables: **vitamins**, **antibiotics** (slow a zombie infection, don't c
 
 ## Systems
 
-- **Zombies.** Walkers, runners and brutes. They hear noise (gunshots, sprinting, hammering) and need line of sight to spot you; Stealth and crouching make you harder to see. They follow a flow field to route through open doorways. Closed doors and anything you build block them, so they bash their way through instead (brutes do triple damage).
+- **Zombies.** Walkers, runners and brutes. They hear noise (gunshots, sprinting, hammering) and need line of sight to spot you; Stealth and crouching make you harder to see. Pathfinding:
+  - Chasing zombies follow a flow field around you (60 m). It routes them to doors, which they bash down if closed. Anything you build blocks them too, and brutes do triple damage when they bash.
+  - Zombies further out, and zombies heading for a noise, use A* paths around walls and through doorways.
+  - A zombie stuck on a wall sidesteps and finds a new route.
+
+  How they react:
+  - Shooting a zombie from any distance makes it flinch, then come for you.
+  - A bullet hitting a wall makes nearby zombies come to look where it came from. So does another zombie dropping dead.
+  - They can't attack through a closed door or a wall.
 - **Survivors.** Other people are trying to make it too. Each survivor has a name, a personality, a weapon with real ammo, a backpack of loot, and a disposition: **friendly** (about 45%), **wary** (30%) or **hostile** bandits (25%).
   - **What they do:** survivors scavenge between buildings (opening doors as they go) and fight zombies. Zombies hunt them as well as you, and a survivor bitten to death may get back up.
   - **Bandits** shout, keep their distance and shoot you. They flee when badly hurt.
@@ -44,7 +52,7 @@ New consumables: **vitamins**, **antibiotics** (slow a zombie infection, don't c
   - **Talking:** press **F** on a friendly or wary survivor to talk. You can ask who they are, ask for rumors about where loot is, or trade. Friendly survivors who trust you will follow you as a companion who fights alongside you; you can also tell them to wait or go their own way.
   - **Trust:** it goes up with fair trades, gifts and reassurance. Stealing during a trade, shooting them or aiming at them lowers it, and other survivors who see you shoot someone lose trust in you too. Enough trust turns a wary survivor friendly; too little turns anyone hostile.
   - **On the map:** survivors you've met are marked green (friendly), yellow (wary) or red (hostile). When they die, their body keeps everything they carried.
-- **Doors.** Every building has real doors. Open and close them with **F**. Zombies can break them down for good, and you can barricade over a doorway.
+- **Doors.** Every building has real doors. Open and close them with **F**. An open door's panel is solid, so you and zombies go around it. Bullet holes and blood on a door swing with it. Zombies can break doors down for good, and you can barricade over a doorway.
 - **Health.** Seven body parts. Bleeding, broken limbs and spreading damage work like Tarkov's. Painkillers mask limb damage. Bites can infect you, and you have about 6 minutes to find an antiviral before you turn.
 - **Needs.** Hunger, thirst, stamina and fatigue. When you're exhausted you move slower and shoot worse.
 - **Movement.** You're an average person, not a super-soldier:
@@ -100,7 +108,7 @@ Four or five survivors have moved into small houses, shops or gas stations aroun
 Zombies and survivors react physically to what hits them.
 
 - **Hit reactions.** A body rocks away from the hit, and a headshot snaps the head back. Leg shots and heavy blows (shotgun at close range, axe, crowbar) can knock a target off its feet. It goes ragdoll, tumbles, and climbs back up once it settles. You can keep shooting it while it's down.
-- **Death.** Every death is a ragdoll: 15 joints with joint limits, colliding with the ground, walls, cars and furniture.
+- **Death.** Every death is a ragdoll: 15 joints with joint limits, colliding with the ground, walls, cars and furniture. Knees only bend forward and limbs can't pass through the body, so bodies come to rest with their legs out instead of folded up. A shot to the legs sweeps the feet out from under the target.
   - The killing blow pushes where it lands, and a running body keeps its momentum.
   - A headshot drops the body limp on the spot. A body shot buckles the knees first, then the body crumples, sometimes with a few death twitches.
   - Survivors drop their gun as they fall.

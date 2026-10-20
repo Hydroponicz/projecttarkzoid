@@ -21,7 +21,11 @@ const STRUTS = [[SHL, PEL], [SHR, PEL], [HIL, CHE], [HIR, CHE], [SHL, HIL], [SHR
 // Joint limits as minimum distances, as a fraction of the fully extended
 // length through the middle joint (no knees/elbows folding flat, no hands
 // inside the chest, no feet through the hips).
-const LIMITS = [[SHL, ELL, HAL, 0.5], [SHR, ELR, HAR, 0.5], [HIL, KNL, FTL, 0.45], [HIR, KNR, FTR, 0.45], [CHE, SHL, HAL, 0.4], [CHE, SHR, HAR, 0.4]];
+const LIMITS = [[SHL, ELL, HAL, 0.5], [SHR, ELR, HAR, 0.5], [HIL, KNL, FTL, 0.66], [HIR, KNR, FTR, 0.66], [CHE, SHL, HAL, 0.4], [CHE, SHR, HAR, 0.4]];
+// Knees are hinges: they only bend forward (hip, knee, foot).
+const KNEES = [[HIL, KNL, FTL], [HIR, KNR, FTR]];
+// Limbs can't pass through the trunk or each other.
+const SELF = [[KNL, KNR], [FTL, FTR], [KNL, CHE], [KNR, CHE], [FTL, CHE], [FTR, CHE], [FTL, HEAD], [FTR, HEAD], [KNL, HEAD], [KNR, HEAD], [FTL, PEL], [FTR, PEL], [FTL, KNR], [FTR, KNL]];
 // Spans the muscles hold while the body still has tone (dying, stumbling):
 // shrinking the leg spans buckles the knees so the body crumples.
 const TONE = [[HIL, FTL, 1], [HIR, FTR, 1], [PEL, HEAD, 0], [SHL, HAL, 0], [SHR, HAR, 0], [PEL, KNL, 0], [PEL, KNR, 0]];
@@ -39,7 +43,7 @@ function restPose(kind) {
   return p;
 }
 
-const _v = new THREE.Vector3(), _a = new THREE.Vector3(), _b = new THREE.Vector3();
+const _v = new THREE.Vector3(), _a = new THREE.Vector3(), _b = new THREE.Vector3(), _f = new THREE.Vector3();
 const Y = new THREE.Vector3(0, 1, 0);
 const _m = new THREE.Matrix4();
 
@@ -238,7 +242,7 @@ class Ragdoll {
       if (this.tone > 0) {
         const t = this.tone;
         for (const [a, b, rest, buckle] of this.toneCons) {
-          const target = buckle ? rest * (0.55 + 0.45 * t) : rest;
+          const target = buckle ? rest * (0.72 + 0.28 * t) : rest;
           _v.subVectors(p[b], p[a]);
           const d = _v.length() || 1e-6;
           const wa = INV_MASS[a], wb = INV_MASS[b];
@@ -256,8 +260,58 @@ class Ragdoll {
         p[a].addScaledVector(_v, diff * wa);
         p[b].addScaledVector(_v, -diff * wb);
       }
+      this.hinges();
+      this.selfCollide();
       this.collide(it === 5);
     }
+  }
+
+  // Keep each knee in front of the line from hip to foot, so legs fold the
+  // way legs fold instead of bending backwards and bunching up.
+  hinges() {
+    const p = this.p;
+    _a.subVectors(p[HIR], p[HIL]);
+    _b.subVectors(p[CHE], p[PEL]);
+    const f = _f.crossVectors(_a, _b);
+    const fl = f.length();
+    if (fl < 1e-6) return;
+    f.multiplyScalar(1 / fl);
+    for (const [hp, kn, ft] of KNEES) {
+      _v.addVectors(p[hp], p[ft]).multiplyScalar(0.5);
+      const off = _v.subVectors(p[kn], _v).dot(f);
+      if (off >= 0.01) continue;
+      const fix = 0.01 - off;
+      p[kn].addScaledVector(f, fix * 0.7);
+      p[hp].addScaledVector(f, -fix * 0.15);
+      p[ft].addScaledVector(f, -fix * 0.15);
+    }
+  }
+
+  selfCollide() {
+    const p = this.p, r = this.r;
+    for (const [a, b] of SELF) {
+      _v.subVectors(p[b], p[a]);
+      const d = _v.length(), min = r[a] + r[b];
+      if (d >= min || d < 1e-6) continue;
+      const wa = INV_MASS[a], wb = INV_MASS[b];
+      const diff = (d - min) / (d * (wa + wb));
+      p[a].addScaledVector(_v, diff * wa);
+      p[b].addScaledVector(_v, -diff * wb);
+    }
+  }
+
+  // Shot or hit in the legs: the feet are swept out the way the blow went
+  // and the upper body pitches the other way, so the body goes down hard.
+  sweepLegs(dir, speed) {
+    this.wake();
+    const h = this.sys.h;
+    this.tone *= 0.3; // the legs give out
+    for (const j of [FTL, FTR, KNL, KNR]) {
+      const k = j === FTL || j === FTR ? 1 : 0.6;
+      this.q[j].addScaledVector(dir, -speed * k * h);
+      this.q[j].y -= speed * 0.8 * k * h; // off the ground, or friction eats the kick
+    }
+    for (const j of [CHE, HEAD, SHL, SHR]) this.q[j].addScaledVector(dir, speed * 0.3 * h);
   }
 
   collide(friction) {

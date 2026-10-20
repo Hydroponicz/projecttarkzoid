@@ -171,6 +171,7 @@ export class Builder {
       h: def.h, blocksSight: type === 'wall' || type === 'door', blocksShot: type !== 'bed' && type !== 'crate', noCollide: !solid, built: s,
     });
     if (def.bashable) s.box.structure = s;
+    s.box.decalParent = g;
 
     if (type === 'door') {
       // Panel hinged at one end, reusing the world door logic.
@@ -183,6 +184,8 @@ export class Builder {
       g.add(pivot);
       s.mesh = g; s.panel = pivot; s.baseRot = 0;
       s.door = { box: s.box, mesh: pivot, baseRot: 0 };
+      s.box.door = true;
+      s.box.decalParent = pivot;
       setDoor(s.door, !!saved.open);
       s.open = !!saved.open;
     }
