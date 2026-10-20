@@ -411,6 +411,10 @@ class Spring {
 
 const sstep = (a, b, x) => { const t = Math.max(0, Math.min(1, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
 const bump = (a, b, c, d, x) => sstep(a, b, x) * (1 - sstep(c, d, x));
+// Minimum-jerk easing (how people move a hand from A to B): speed builds and
+// fades with no kick in acceleration at either end, unlike smoothstep.
+const mj = (a, b, x) => { const t = Math.max(0, Math.min(1, (x - a) / (b - a))); return t * t * t * (t * (t * 6 - 15) + 10); };
+const mjBump = (a, b, c, d, x) => mj(a, b, x) * (1 - mj(c, d, x));
 const clamp01 = (v) => Math.max(0, Math.min(1, v));
 const ARM_MAX = 60;
 
@@ -419,14 +423,15 @@ const ARM_MAX = 60;
 // one, maybe fumble it, seat it, slap it home, rack the bolt if the gun was
 // empty, and return to the grip. Tired and injured hands are slower.
 const RELOAD_STEPS = {
-  rifle: { reach: 0.26, out: 0.24, stow: 0.32, drop: 0.12, fetch: 0.36, miss: 0.34, seat: 0.2, slap: 0.12, charge: 0.52, ret: 0.3 },
+  rifle: { reach: 0.26, out: 0.24, stow: 0.32, drop: 0.12, fetch: 0.36, miss: 0.34, seat: 0.2, slap: 0.12, charge: 0.6, ret: 0.3 },
   pistol: { reach: 0.18, out: 0.16, stow: 0.24, drop: 0.08, fetch: 0.26, miss: 0.28, seat: 0.14, slap: 0.1, charge: 0.26, ret: 0.22 },
 };
 function reloadTimeline({ pistol, hasOld, quick, fumble, charge, swap = true, k }) {
   const S = RELOAD_STEPS[pistol ? 'pistol' : 'rifle'];
   const ph = {};
   let t = 0;
-  const add = (name, d) => { ph[name] = [t, t + d * k]; t += d * k; };
+  // no two reloads are timed exactly alike
+  const add = (name, d) => { const dd = d * k * (0.94 + Math.random() * 0.12); ph[name] = [t, t + dd]; t += dd; };
   if (swap) {
     if (hasOld) { add('reach', S.reach); add('out', S.out); }
     add('stow', hasOld && quick ? S.drop : S.stow);
@@ -485,13 +490,28 @@ function reloadKeys(tl, pistol) {
   keys.push([tl.dur, RB_ZERO]);
   return keys;
 }
-function sampleKeys(keys, T) {
+// A smooth curve through keyframes [[time, {channel: value}], ...]: a
+// monotone cubic per channel. Motion carries its speed through each key
+// instead of stopping dead at every one, never overshoots, and only comes to
+// rest where a value really holds still (or turns back).
+function track(keys, T) {
+  const n = keys.length;
   if (T <= keys[0][0]) return keys[0][1];
-  for (let i = 0; i < keys.length - 1; i++) {
-    const [t0, a] = keys[i], [t1, b] = keys[i + 1];
-    if (T < t1) return rbMix(a, b, sstep(t0, t1, T));
+  if (T >= keys[n - 1][0]) return keys[n - 1][1];
+  let i = 0;
+  while (i < n - 2 && T >= keys[i + 1][0]) i++;
+  const [t0, a] = keys[i], [t1, b] = keys[i + 1], h = t1 - t0;
+  if (h <= 1e-6) return b;
+  const u = (T - t0) / h, u2 = u * u, u3 = u2 * u;
+  const slope = (j, c) => { const dt2 = keys[j + 1][0] - keys[j][0]; return dt2 > 1e-6 ? (keys[j + 1][1][c] - keys[j][1][c]) / dt2 : 0; };
+  // tangent at key j: harmonic mean of the slopes either side (0 at the ends and turning points)
+  const tan = (j, c) => { if (j <= 0 || j >= n - 1) return 0; const s0 = slope(j - 1, c), s1 = slope(j, c); return s0 * s1 <= 0 ? 0 : 2 / (1 / s0 + 1 / s1); };
+  const out = {};
+  for (const c in a) {
+    const m0 = tan(i, c) * h, m1 = tan(i + 1, c) * h;
+    out[c] = (2 * u3 - 3 * u2 + 1) * a[c] + (u3 - 2 * u2 + u) * m0 + (-2 * u3 + 3 * u2) * b[c] + (u3 - u2) * m1;
   }
-  return keys[keys.length - 1][1];
+  return out;
 }
 
 export class GunController {
@@ -840,7 +860,7 @@ export class GunController {
   reloadBody(dt, parts) {
     const a = ['reload', 'shell', 'pump'].includes(this.anim?.type) ? this.anim : null;
     const tgt = a?.target || RB_ZERO, c = a?.cond || this.cond, rb = this.rb;
-    const k = 150 * (1 - 0.35 * c.tired), damp = 2 * Math.sqrt(k) * (0.62 - 0.12 * c.tired);
+    const k = 115 * (1 - 0.3 * c.tired), damp = 2 * Math.sqrt(k) * (0.8 - 0.14 * c.tired);
     let moving = false;
     for (const n of RB_KEYS) { rb[n].step(dt, k, damp, tgt[n]); if (Math.abs(rb[n].x) > 1e-4 || Math.abs(rb[n].v) > 1e-3) moving = true; }
     if (!moving && !a) return;
@@ -867,7 +887,7 @@ export class GunController {
     a.t = T / tl.dur;
     for (const e of a.events) if (!e.done && T >= e.at()) { e.done = true; e.fn(); }
     // progress through a phase (0 before it starts, 1 once it's over)
-    const k = (n) => (ph[n] ? sstep(ph[n][0], ph[n][1], T) : (n === 'reach' || n === 'out' ? 1 : 0));
+    const k = (n) => (ph[n] ? mj(ph[n][0], ph[n][1], T) : (n === 'reach' || n === 'out' ? 1 : 0));
     const inP = (n) => !!ph[n] && T >= ph[n][0] && T < ph[n][1];
     const after = (n) => !!ph[n] && T >= ph[n][1];
     const pose = this.pose, L = parts.handL, L0 = L?.userData.p0, style = parts.magStyle || 'box', pistol = style === 'heel';
@@ -878,55 +898,62 @@ export class GunController {
 
     // --- the gun: the body pose to follow (see reloadBody), and a glance
     // down at the rig while the hand is at the pouch
-    a.target = sampleKeys(a.keys, T);
+    a.target = track(a.keys, T);
     a.look = ph.stow ? bump(ph.stow[0], ph.stow[0] + 0.2 * a.k, ph.fetch[0] + 0.12 * a.k, ph.fetch[1], T) : 0;
     const busy = 1 - sstep(tl.dur - 0.2, tl.dur, T);
     pose.position.y -= (0.03 * c.tired + 0.025 * c.hurt) * busy; // arms sag under the weight
     pose.position.y += Math.sin(T * 4.2) * 0.006 * c.tired * busy;  // heavy breathing
 
-    // --- magazines: offsets from the magazine's seat (y, z, rotation x)
-    const old = { x: 0, y: 0, z: 0, rx: 0, vis: !!parts.mag };
-    if (ph.out) {
-      const ko = k('out');
-      if (style === 'rock') { const r = sstep(0, 0.5, ko), d = sstep(0.4, 1, ko); old.rx = 0.38 * r; old.z = -0.012 * r; old.y = -0.012 * r - 0.07 * d; }
-      else old.y = -(pistol ? 0.085 : 0.075) * ko;
-      if (after('out')) {
-        if (a.quick) {
-          // dropped: it falls away
-          const f = T - ph.out[1];
-          old.y -= 4.9 * f * f * 0.7; old.rx += f * 5; old.x -= f * 0.15;
-          old.vis = f < 0.45;
-        } else {
-          const ks = k('stow'), arc = Math.sin(ks * Math.PI);
-          old.x = POUCH.x * ks - 0.05 * arc; old.y += (POUCH.y - old.y) * ks; old.z += (POUCH.z - old.z) * ks + 0.03 * arc; old.rx += (POUCH.rx - old.rx) * ks;
-          old.vis = ks < 0.98;
+    // --- magazines: offsets from the magazine's seat. Each one moves along a
+    // smooth track (out of the well and round to the pouch; up from the pouch,
+    // in and seated) instead of stopping at every step.
+    const Z = { x: 0, y: 0, z: 0, rx: 0 }, P = { x: POUCH.x, y: POUCH.y, z: POUCH.z, rx: POUCH.rx };
+    const OUT = style === 'rock' ? { x: 0, y: -0.082, z: -0.012, rx: 0.38 } : { x: 0, y: -(pistol ? 0.085 : 0.075), z: 0, rx: 0 };
+    const PRE = style === 'rock' ? { x: 0, y: -0.065, z: -0.014, rx: 0.36 } : { x: 0, y: pistol ? -0.08 : -0.07, z: 0, rx: 0 };
+    const mix = (p, q, f) => ({ x: p.x + (q.x - p.x) * f, y: p.y + (q.y - p.y) * f, z: p.z + (q.z - p.z) * f, rx: p.rx + (q.rx - p.rx) * f });
+    const at = (n, f) => ph[n][0] + (ph[n][1] - ph[n][0]) * f;
+    if (a.tracksFor !== tl) {
+      a.tracksFor = tl;
+      a.oldKeys = null; a.newKeys = null;
+      if (ph.out) {
+        a.oldKeys = [[ph.out[0], Z]];
+        if (style === 'rock') a.oldKeys.push([at('out', 0.45), { x: 0, y: -0.012, z: -0.012, rx: 0.38 }]); // rocked forward off the catch
+        a.oldKeys.push([ph.out[1], OUT]);
+        if (!a.quick) {
+          const m = mix(OUT, P, 0.5);
+          a.oldKeys.push([at('stow', 0.5), { ...m, x: m.x - 0.05, z: m.z + 0.03 }], [ph.stow[1], P]); // round the side of the gun to the pouch
         }
       }
+      if (ph.fetch) {
+        const m = mix(P, PRE, 0.5);
+        a.newKeys = [[ph.fetch[0], P], [at('fetch', 0.5), { x: m.x - 0.055, y: m.y, z: m.z + 0.02, rx: m.rx + 0.25 }], [ph.fetch[1], PRE]];
+        if (ph.miss) a.newKeys.push([ph.miss[1], PRE]);
+        if (style === 'rock') a.newKeys.push([at('seat', 0.5), { x: 0, y: -0.004, z: -0.004, rx: 0.3 }]); // front lug hooked in
+        a.newKeys.push([ph.seat[1], Z]);
+      }
     }
-    const nw = { x: POUCH.x, y: POUCH.y, z: POUCH.z, rx: POUCH.rx, vis: !!a.newRoot && T >= (ph.fetch?.[0] ?? 1e9) };
-    if (ph.fetch) {
-      const pre = style === 'rock' ? { y: -0.065, z: -0.014, rx: 0.36 } : { y: pistol ? -0.08 : -0.07, z: 0, rx: 0 };
-      const kf = k('fetch');
-      const lerpTo = (o, to, t2) => { o.x += (to.x - o.x) * t2; o.y += (to.y - o.y) * t2; o.z += (to.z - o.z) * t2; o.rx += (to.rx - o.rx) * t2; };
-      lerpTo(nw, { x: 0, ...pre }, kf);
-      const arc = Math.sin(kf * Math.PI); // swings out and round to the well
-      nw.x -= 0.055 * arc; nw.z += 0.02 * arc; nw.rx += 0.25 * arc;
+    const old = { ...Z, vis: !!parts.mag };
+    if (a.oldKeys) {
+      Object.assign(old, track(a.oldKeys, T));
+      if (a.quick && after('out')) {
+        // dropped: it falls away
+        const f = T - ph.out[1];
+        old.y -= 4.9 * f * f * 0.7; old.rx += f * 5; old.x -= f * 0.15;
+        old.vis = f < 0.45;
+      } else if (after('out')) old.vis = T < ph.stow[1] - 0.02;
+    }
+    const nw = { ...P, vis: !!a.newRoot && T >= (ph.fetch?.[0] ?? 1e9) };
+    if (a.newKeys) {
+      Object.assign(nw, track(a.newKeys, T));
       if (ph.miss) {
         // first try misses the well: knocks the edge, backs off, lines up again
         const km = (T - ph.miss[0]) / (ph.miss[1] - ph.miss[0]);
         if (km > 0 && km < 1) {
           const miss = style === 'rock' ? { x: 0, y: -0.014, z: 0.016, rx: 0.12 } : { x: 0.012, y: -0.012, z: 0.006, rx: 0.1 };
-          const go = sstep(0, 0.35, km), back = sstep(0.45, 1, km);
-          lerpTo(nw, miss, go * (1 - back));
+          Object.assign(nw, mix(nw, miss, mj(0, 0.35, km) * (1 - mj(0.45, 1, km))));
           nw.y -= 0.004 * Math.sin(km * 40) * bump(0.3, 0.35, 0.45, 0.55, km); // the clack
         }
       }
-      const ks = k('seat');
-      if (style === 'rock') {
-        const hook = sstep(0, 0.5, ks), rock = sstep(0.45, 1, ks);
-        lerpTo(nw, { x: 0, y: -0.004, z: -0.004, rx: 0.3 }, hook);
-        lerpTo(nw, { x: 0, y: 0, z: 0, rx: 0 }, rock);
-      } else lerpTo(nw, { x: 0, y: 0, z: 0, rx: 0 }, ks);
       nw.x += tr(41); nw.y += tr(37); nw.z += tr(29);
     }
     // apply
@@ -942,23 +969,26 @@ export class GunController {
       a.newRoot.rotation.x = rest.rx + nw.rx;
     }
 
-    // --- the support hand
+    // --- the support hand: carried by the magazine it holds, on smooth arcs
+    // of its own when empty-handed, the wrist easing between grips
     if (L) {
       const hold = (m) => _v.copy(HOLD[style]).applyEuler(_e.set(rest.rx + m.rx, 0, 0)).add(new THREE.Vector3(rest.x + m.x, rest.y + m.y, rest.z + m.z));
+      const V = (v) => ({ x: v.x, y: v.y, z: v.z });
       let pos = L0.clone(), rx = 0, rz = 0;
       const grip = 0.45, roll = pistol ? 0 : -0.5;
       if (ph.reach && T < ph.reach[1]) {
         // off the handguard, dipping under it on the way to the magazine
-        const kr = k('reach');
-        pos.lerp(hold(old), kr); pos.y -= 0.025 * Math.sin(kr * Math.PI);
-        rx = grip * kr; rz = roll * kr;
+        const H0 = V(hold(Z)), mid = { x: (L0.x + H0.x) / 2, y: (L0.y + H0.y) / 2 - 0.03, z: (L0.z + H0.z) / 2 };
+        pos.copy(track([[0, V(L0)], [at('reach', 0.5), mid], [ph.reach[1], H0]], T));
+        const kr = k('reach'); rx = grip * kr; rz = roll * kr;
       }
       else if (ph.out && T < ph.out[1]) { pos.copy(hold(old)); rx = grip; rz = roll; }
       else if (ph.stow && T < ph.stow[1]) {
         if (a.quick || !ph.out) {
-          // let go of the dropped magazine (or start empty-handed) and go to the pouch
-          const outEnd = style === 'rock' ? { x: 0, y: -0.082, z: -0.012, rx: 0.38 } : { x: 0, y: -(pistol ? 0.085 : 0.075), z: 0, rx: 0 };
-          pos.copy(ph.out ? hold(outEnd) : L0).lerp(hold(POUCH), k('stow'));
+          // let go of the dropped magazine (or start empty-handed) and swing down to the pouch
+          const from = V(ph.out ? hold(OUT) : L0), to = V(hold(P));
+          const mid = { x: (from.x + to.x) / 2 - 0.04, y: (from.y + to.y) / 2, z: (from.z + to.z) / 2 + 0.02 };
+          pos.copy(track([[ph.stow[0], from], [at('stow', 0.5), mid], [ph.stow[1], to]], T));
         } else pos.copy(hold(old));
         rx = grip; rz = roll;
       } else if (ph.fetch && T < (ph.slap ? ph.slap[1] : 0)) {
@@ -967,37 +997,45 @@ export class GunController {
         const kf = k('fetch');
         rz += 0.7 * (1 - kf) * (T >= ph.fetch[0] ? 1 : 0); rx += 0.3 * (1 - kf) * (T >= ph.fetch[0] ? 1 : 0);
         // the slap: a short wind-up, then the heel of the hand drives it home
-        if (inP('slap')) { const u = (T - ph.slap[0]) / (ph.slap[1] - ph.slap[0]); pos.y += -0.022 * bump(0, 0.35, 0.35, 0.55, u) + 0.008 * bump(0.45, 0.6, 0.7, 1, u); }
+        if (inP('slap')) { const u = (T - ph.slap[0]) / (ph.slap[1] - ph.slap[0]); pos.y += -0.022 * mjBump(0, 0.35, 0.35, 0.55, u) + 0.008 * mjBump(0.45, 0.6, 0.7, 1, u); }
       }
       else if (ph.charge && T < ph.charge[1] && parts.boltHandle && !pistol) {
-        // over to the charging handle, rack it, let it fly
+        // over the top to the charging handle, rack it, let it fly
         const h = new THREE.Vector3(...parts.boltHandle).add(new THREE.Vector3(0.014, -0.014, -0.012));
-        const base = ph.slap ? hold({ x: 0, y: 0, z: 0, rx: 0 }) : L0;
+        const base = ph.slap ? hold(Z) : L0;
         const kc = (T - ph.charge[0]) / (ph.charge[1] - ph.charge[0]);
-        const reachH = sstep(0, 0.36, kc), pull = sstep(0.36, 0.56, kc) * (1 - sstep(0.62, 0.68, kc)), leave = sstep(0.7, 1, kc);
+        const reachH = mj(0, 0.36, kc), pull = mj(0.36, 0.56, kc) * (1 - mj(0.62, 0.68, kc)), leave = mj(0.7, 1, kc);
         pos.copy(base).lerp(h, reachH);
-        pos.z += 0.08 * sstep(0.36, 0.56, kc) * (1 - sstep(0.7, 0.8, kc));
-        pos.lerp(L0, leave);
+        pos.y += 0.03 * Math.sin(reachH * Math.PI);
+        pos.z += 0.08 * mj(0.36, 0.56, kc) * (1 - mj(0.7, 0.8, kc));
+        const back = pos.clone().lerp(L0, leave);
+        back.y -= 0.02 * Math.sin(leave * Math.PI);
+        pos.copy(back);
         if (parts.bolt) parts.bolt.position.z = (cfg.boltTravel || 0.08) * pull;
         rx = 0.2 * (1 - leave); rz = -0.9 * reachH * (1 - leave);
       } else {
         // back to the grip
         // (after racking the bolt the hand is already on its way back)
         const fromMag = ph.slap && !(ph.charge && parts.boltHandle && !pistol);
-        const fromPos = fromMag ? hold({ x: 0, y: 0, z: 0, rx: 0 }) : L0;
+        const fromPos = fromMag ? hold(Z) : L0;
         const kr = k('ret');
         pos.copy(fromPos).lerp(L0, kr);
+        pos.y -= 0.015 * Math.sin(kr * Math.PI);
         rx = grip * (1 - kr) * (fromMag ? 1 : 0); rz = roll * (1 - kr) * (fromMag ? 1 : 0);
       }
       pos.x += tr(23); pos.y += tr(19);
       L.position.copy(pos);
+      // the wrist follows its target smoothly rather than snapping between grips
+      const ease = 1 - Math.exp(-dt * 16);
+      a.wrx = (a.wrx ?? 0) + (rx - (a.wrx ?? 0)) * ease;
+      a.wrz = (a.wrz ?? 0) + (rz - (a.wrz ?? 0)) * ease;
       const r0 = L.userData.r0;
-      L.rotation.set(r0.x + rx, r0.y, r0.z + rz);
+      L.rotation.set(r0.x + a.wrx, r0.y, r0.z + a.wrz);
     }
     // Pistol: the slide drops home when the slide stop is pressed
     if (pistol && ph.charge && parts.slide) {
       const kc = k('charge');
-      parts.slide.position.z = (cfg.boltTravel || 0.035) * (1 - sstep(0.4, 0.55, kc));
+      parts.slide.position.z = (cfg.boltTravel || 0.035) * (1 - mj(0.4, 0.55, kc));
     }
     if (T >= tl.dur) {
       const done = this.anim;
