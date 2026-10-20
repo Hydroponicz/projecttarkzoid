@@ -12,9 +12,9 @@ npm run build    # static build in dist/
 
 ## How it plays
 
-1. **Create a survivor.** Pick a name and a profession: Unemployed, Police Officer, Fire Officer, Carpenter, Nurse, Burglar or Veteran. Each comes with skill bonuses and a starting kit. Then spend points on Strength, Fitness, Aiming, Carpentry, Stealth and First Aid.
+1. **Create a survivor.** Pick a name and a profession: Unemployed, Police Officer, Fire Officer, Carpenter, Nurse, Burglar, Farmer or Veteran. Each comes with skill bonuses and a starting kit. Then spend points on Strength, Fitness, Aiming, Carpentry, Stealth, First Aid and Farming.
 2. **Follow the guide.** A new character starts a ten-step "First day" tutorial, shown top right. It covers moving, scavenging, the inventory, eating, arming yourself, a first kill, claiming a safehouse, finding a trader, making a deal and fortifying. Each step gives a small reward. After that, five chapters of goals lead the way:
-   1. **Dig In**: build, sleep, stock your safehouse, survive to day 3.
+   1. **Dig In**: build, sleep, stock your safehouse, survive to day 3, harvest a crop you grew.
    2. **Trade Routes**: find every trader, finish jobs, reach loyalty 2.
    3. **Armed and Dangerous**: a rifle, an optic, body armor, 50 kills.
    4. **The Outpost**: soldier zombies, military loot, loyalty 3.
@@ -23,7 +23,7 @@ npm run build    # static build in dist/
    Each chapter pays out gear. **J** opens the goals panel; **K** (while it's open) skips the tutorial.
 3. **Wake up in a random house** in a persistent, procedurally generated town. Loot doesn't respawn. The world is saved automatically (every 30 seconds, when you sleep, and when you close the tab).
 3. **Make a home.** Claim the building you're standing in as your safehouse with **V**. Outdoors, **V** claims a 20×20 m camp instead. Zombies never respawn near your safehouse.
-4. **Build.** Press **B** to build walls, barricades, doors, storage crates, beds and campfires out of planks and nails. You need a hammer. Planks come from lumber piles in warehouses, or you can chop trees with an axe and saw the logs into planks. Hammering is loud and draws zombies.
+4. **Build.** Press **B** to build walls, barricades, doors, storage crates, beds and campfires out of planks and nails, or dig garden plots with a shovel. You need a hammer. Planks come from lumber piles in warehouses, or you can chop trees with an axe and saw the logs into planks. Hammering is loud and draws zombies.
 5. **Survive the nights.** One in-game minute passes per real second, so a full day takes 24 minutes. At night zombies move faster, and more of them spawn as the days go by. Sleep in a bed to recover fatigue and health. Sleeping outside your safehouse may wake you to company.
 6. **Death is permanent.** Your corpse stays in the world with all your gear, and your base keeps standing. The next survivor you create spawns into the same world. Fallen characters are listed in the graveyard on the title screen.
 
@@ -64,6 +64,46 @@ Furniture never blocks doorways or door swings, and tall pieces don't stand in f
 - Window states are saved.
 
 New consumables: **vitamins**, **antibiotics** (slow a zombie infection, don't cure it), **morphine**, **surgical kits** (restore a destroyed limb), **coffee** (fights fatigue), chips, rice and MREs.
+
+## The countryside
+
+The town sits in the middle of a map about 440 m across. Around it is farmland and wilderness, laid out on a grid of 40 m parcels. The town's streets continue out as dirt farm tracks, and a ring track loops round the town.
+
+| What | What's there |
+| --- | --- |
+| **Farms** (8) | A clapboard **farmhouse** with a pitched roof and a pantry in the kitchen. A red **barn** with a gambrel roof and sliding doors, holding stalls, hay, farm supply shelves, seed racks and sometimes a tractor. Outside: a silo, a chicken coop (eggs), produce crates, round hay bales, a tractor and plow, a pickup truck, a **well**, and a fenced **kitchen garden** whose crops were left growing. A few zombies wander each farm. |
+| **Fields** | Next to the farms: wheat, corn (tall rows you can lose sight in), fenced vegetable rows, plowed earth, pasture with a water trough, and mown hay fields. Corn and vegetable rows can be picked for food and grow back. |
+| **Orchards** (4) | Rows of apple trees. Pick the apples; they grow back over a day or two. |
+| **Forests** | Dense mixed pine, oak and birch woods with fallen logs, rocks and bushes. Some have **clearings** with berry bushes, a **hunting cabin** (hunting locker with a rifle or shotgun, a pantry, a bed) or an abandoned **campsite**. |
+| **Meadows** | Open grass with scattered trees, boulders (big ones are cover), bushes, berry bushes and **ponds** ringed with reeds. |
+
+New loot: farm supply shelves (shovels, watering cans, fertilizer, seeds), seed racks, produce crates, chicken coops, pantries (preserves, honey, milk), hay piles and hunting lockers. Hardware stores also stock some seeds and tools, and grocery shelves carry some produce.
+
+Most zombies are in town; the countryside is quieter. Everything far away is hidden by fog, and the scenery is split into chunks so only what's near you gets drawn.
+
+## Farming
+
+- **Dig a plot.** Build mode (**B**), item 7: a 2×2 m garden plot. Needs a shovel, outdoors only. The farms' kitchen gardens are already dug, and some are ready to pick.
+- **Tend it.** Look at a plot and press **F**:
+  - **Plant** carrots, cabbages, potatoes, tomatoes or corn.
+  - **Water** with a watering can (2 L per watering) or a water bottle.
+  - **Fertilize** for faster growth.
+  - **Harvest** when it's ripe. You can also pull up a crop, clear dead plants, or fill the plot in.
+- **Growth.**
+  - Crops ripen in 2 to 4 game days with steady water (carrots fastest, corn slowest). They grow on game time, so sleeping counts.
+  - A soaked plot dries out in about 30 hours. A dry crop barely grows and dies after about a day and a half without water.
+  - A ripe crop left in the ground rots after two days.
+  - The plants visibly grow, and the soil darkens when it's wet.
+- **Water.** Wells and ponds: press **F** to drink your fill and top up every watering can you carry.
+- **Foraging.** Apple trees, berry bushes and the farm fields' corn and vegetable rows. Pick them with **F**. They grow back over a day or two.
+- **Farming skill (0–8).** It rises with use: digging, planting, watering, fertilizing, harvesting and picking. Each level:
+  - Speeds growth and slows thirst damage.
+  - Every 3 levels, adds one to each harvest.
+  - Raises the chance of saving seeds from a harvest.
+  - Gives ripe crops longer before they rot.
+  - From level 1 you see a crop's health; from level 3 its exact growth.
+  - The **Farmer** profession starts at Farming 3 with a shovel, a full watering can, seed potatoes, carrot seeds and a backpack.
+- **Saved:** every plot and crop, what's been picked from trees and bushes, and your Farming experience.
 
 ## Systems
 
@@ -208,12 +248,12 @@ Zombies and survivors react physically to what hits them.
 | T / Z | Check magazine / switch fire mode |
 | Q / E | Lean left / right |
 | 1, 2 | Switch between firearm and melee |
-| F | Interact: open/close doors, search containers, sleep in beds, talk to survivors (1–9 picks a dialogue option) |
+| F | Interact: open/close doors, search containers, sleep in beds, talk to survivors (1–9 picks a dialogue option), tend garden plots, pick fruit, drink at wells and ponds |
 | Tab or I | Inventory. Close it with Esc, Tab, F, the Close button, a click outside, or by walking off. |
 | H | Quick-heal (bandage if bleeding, otherwise a medkit) |
 | L | Flashlight |
 | M | Map (your safehouse is outlined in yellow) |
-| B | Build mode: 1–6 select a piece, R rotate, LMB build, X dismantle |
+| B | Build mode: 1–7 select a piece (7 = garden plot), R rotate, LMB build, X dismantle |
 | V | Claim a safehouse |
 | Esc | Pause. The game goes fullscreen when you spawn; hold Esc or use the pause menu to leave fullscreen. |
 
@@ -240,6 +280,8 @@ tp 0 0               tp safehouse         time 22:00          time +8
 car                  car military         fixcar              kit Mechanic
 traders              tp trader            tp trader medic     rep 25
 speed 20             skill carpentry 8    set fatigue 90      killall 25
+kit Farmer           grow                 grow 12             farmxp 100
+tp farm              tp orchard           tp cabin            tp camp
 god / noclip / invis / freeze / freebuild                    js player.skill
 ```
 
@@ -250,7 +292,9 @@ god / noclip / invis / freeze / freebuild                    js player.skill
 | `src/main.js` | Game state machine (menu → creation → play → death), save/load, day/night, interactions, sleep, safehouse |
 | `src/character.js` | Professions, skills and the character creation screen |
 | `src/build.js` | Carpentry: placing, saving and dismantling structures |
-| `src/world.js` | Seeded procedural town: districts, building archetypes, house room layouts, furnishing by room and business, doors and windows, military sites, cars, trees; merges static scenery (vertex colours, ~50 draw calls) |
+| `src/world.js` | Seeded procedural town: districts, building archetypes (including farmhouses, barns and cabins with pitched roofs), house room layouts, furnishing by room and business, doors and windows, military sites, cars; merges static scenery (vertex colours; the town as one batch, the countryside in chunks) |
+| `src/countryside.js` | Farmland and wilderness: dirt tracks, farms, fields, orchards, forests with clearings, meadows and ponds, instanced trees by species, rocks, bushes and corn |
+| `src/farming.js` | Garden plots, crops and growth, watering and fertilizer, harvests, wells and ponds, foraging, the Farming skill and the plot screen |
 | `src/furniture.js` | Box-built furniture and container models (kitchens, beds, sofas, shelving, racks, desks…) |
 | `src/player.js` | First-person controller, leaning, melee, body-part health, status effects |
 | `src/weapons.js` | Firearms: weapon/optic models, PIP scopes, sway/recoil physics, animations, magazines, attachments |

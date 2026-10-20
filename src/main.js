@@ -19,6 +19,7 @@ import { Builder, BUILDABLES, buildCostText } from './build.js';
 import { setupCreation } from './character.js';
 import { DevConsole } from './devconsole.js';
 import { Survivors } from './survivors.js';
+import { Farming } from './farming.js';
 
 const $ = (id) => document.getElementById(id);
 const SCREENS = ['menu', 'create', 'death'];
@@ -48,6 +49,7 @@ class Game {
     this.sun = new THREE.DirectionalLight(0x9aaad8, 0.9);
     this.sun.castShadow = true;
     this.sun.shadow.mapSize.set(2048, 2048);
+    this.sun.shadow.normalBias = 0.02; // no acne on big flat ground pieces
     Object.assign(this.sun.shadow.camera, { left: -40, right: 40, top: 40, bottom: -40, near: 1, far: 120 });
     this.scene.add(this.sun, this.sun.target);
 
@@ -125,6 +127,9 @@ class Game {
     this.scene.background.copy(NIGHT).lerp(DAY, d);
     this.scene.fog.color.copy(this.scene.background);
     this.scene.fog.density = this.dev.noFog ? 0 : 0.026 - 0.014 * d;
+    // Nothing past the point where fog is ~opaque gets drawn
+    const far = this.dev.noFog ? 300 : Math.min(300, Math.round(2.0 / this.scene.fog.density));
+    if (far !== this.camera.far) { this.camera.far = far; this.camera.updateProjectionMatrix(); }
     this.hemi.intensity = 1.1 + 1.3 * d;
     this.sun.intensity = 0.9 + 1.6 * d;
     this.sun.color.setHex(0x9aaad8).lerp(new THREE.Color(0xfff0d8), d);
@@ -243,6 +248,7 @@ class Game {
     this.progress = new Progress(this, this.profile, !ch.player);
     this.vehicles = new Vehicles(this, w?.vehicles || null);
     if (ch.player?.vehicle != null && this.vehicles.list[ch.player.vehicle]) this.vehicles.enter(this.vehicles.list[ch.player.vehicle]);
+    this.farming = new Farming(this, w?.farming || null);
 
     this.updateLighting();
     this.autosave = AUTOSAVE;
@@ -341,6 +347,7 @@ class Game {
       survivors: this.survivors.serialize(),
       traders: this.traders?.serialize(),
       vehicles: this.vehicles?.serialize(),
+      farming: this.farming?.serialize(),
     };
     writeSave(this.save);
   }
@@ -358,6 +365,8 @@ class Game {
     this.survivors = null;
     this.vehicles?.dispose();
     this.vehicles = null;
+    this.farming?.dispose();
+    this.farming = null;
     this.traders?.dispose();
     this.traders = null;
     this.progress?.togglePanel(false);
@@ -417,7 +426,7 @@ class Game {
   }
 
   updatePause() {
-    const ui = this.invOpen || this.hud.mapOpen || this.dev.open || this.dialogOpen || this.traderOpen || this.vehicleOpen;
+    const ui = this.invOpen || this.hud.mapOpen || this.dev.open || this.dialogOpen || this.traderOpen || this.vehicleOpen || this.farmOpen;
     const show = this.state === 'play' && !this.input.locked && !ui && !this.awaitingRelock;
     $('pause').style.display = show ? 'flex' : 'none';
     $('relock').style.display = this.state === 'play' && this.awaitingRelock && !this.input.locked && !ui ? 'block' : 'none';
@@ -540,6 +549,7 @@ class Game {
     const out = [...this.world.containers, ...this.world.beds];
     for (const w of this.world.windows) if (w.sill < 1.2) out.push(w);
     if (this.vehicles) out.push(...this.vehicles.interactables(), ...this.world.pumps);
+    if (this.farming) out.push(...this.farming.interactables());
     for (const d of this.world.doors) if (!d.broken) out.push(d);
     for (const s of this.builder.structures) if (s.grid || s.door || s.type === 'bed') out.push(s);
     for (const s of this.survivors.list) if (!s.dead && s.disp !== 'hostile') out.push(s);
@@ -552,9 +562,9 @@ class Game {
     let best = null, bestScore = Infinity;
     for (const c of this.interactables()) {
       const dx = c.x - p.pos.x, dz = c.z - p.pos.z;
-      const d = Math.hypot(dx, dz);
+      const dist = Math.hypot(dx, dz), d = Math.max(0, dist - (c.reach || 0)); // reach: big things (ponds)
       if (d > 2.3) continue;
-      const dot = d > 0.6 ? (dx * fx + dz * fz) / d : 1;
+      const dot = dist > 0.6 + (c.reach || 0) * 0.5 ? (dx * fx + dz * fz) / dist : 1;
       if (dot < 0.7) continue;
       const score = d * (2 - dot);
       if (score < bestScore) { bestScore = score; best = c; }
@@ -572,6 +582,8 @@ class Game {
       this.vehicles.openPanel(t.v);
     } else if (t.kind === 'pump') {
       this.vehicles.usePump(t);
+    } else if (t.kind === 'plot' || t.kind === 'forage' || t.kind === 'water') {
+      this.farming.interact(t);
     } else if (t.kind === 'window') {
       if (t.state === 'broken') return this.hud.message('The glass is smashed. Space to climb through.', 2);
       setWindow(t, t.state === 'open' ? 'closed' : 'open');
@@ -782,6 +794,10 @@ class Game {
       // Looking over a vehicle: Esc, Tab or walking off closes it
       if (pressed('Escape') || inp.inventory || ['KeyW', 'KeyA', 'KeyS', 'KeyD'].some(pressed)) this.vehicles.closePanel();
       inp.interact = inp.inventory = inp.slot1 = inp.slot2 = inp.reload = inp.jump = inp.fire = inp.firePressed = false;
+    } else if (this.farmOpen) {
+      // Tending a garden plot: Esc, Tab or walking off closes it
+      if (pressed('Escape') || inp.inventory || ['KeyW', 'KeyA', 'KeyS', 'KeyD'].some(pressed)) this.farming.closePanel();
+      inp.interact = inp.inventory = inp.slot1 = inp.slot2 = inp.reload = inp.jump = inp.fire = inp.firePressed = false;
     } else if (this.traderOpen) {
       // At a trader's counter: Esc, Tab, walking off or the trader dying closes it.
       const npc = this.traders.open?.npc;
@@ -810,7 +826,7 @@ class Game {
     }
     if (inp.map) { this.hud.toggleMap(); if (this.hud.mapOpen) this.input.unlock(); else this.resume(); this.updatePause(); }
     if (this.hud.mapOpen && pressed('Escape')) { this.hud.toggleMap(false); this.resume(); }
-    const paused = !this.input.locked && !this.invOpen && !this.hud.mapOpen && !this.dev.open && !this.dialogOpen && !this.traderOpen && !this.vehicleOpen && !this.awaitingRelock;
+    const paused = !this.input.locked && !this.invOpen && !this.hud.mapOpen && !this.dev.open && !this.dialogOpen && !this.traderOpen && !this.vehicleOpen && !this.farmOpen && !this.awaitingRelock;
     if (paused || this.sleeping) return;
     if (this.dev.open && this.dev.pauseWhileOpen) {
       // Simulation paused, but keep the view in sync with console edits.
@@ -828,7 +844,7 @@ class Game {
     const driving = !!this.player.vehicle;
     if (pressed('KeyB') && !this.invOpen && !driving) {
       this.builder.toggle();
-      this.hud.message(this.builder.active ? 'Build mode: 1–6 select, R rotate, LMB build, X dismantle, B exit' : 'Build mode off');
+      this.hud.message(this.builder.active ? 'Build mode: 1–7 select, R rotate, LMB build, X dismantle, B exit' : 'Build mode off');
     }
     if (pressed('KeyV') && !this.invOpen && !driving) this.claimSafehouse();
     if (inp.interact && !this.invOpen && this.lookTarget) this.interact(this.lookTarget);
@@ -852,6 +868,7 @@ class Game {
     this.ragdolls.update(dt);
     this.traders.update(dt);
     this.vehicles.update(dt);
+    this.farming.update(dt);
     for (const d of this.shaking) {
       d.shake -= dt;
       const base = d.baseRot + (d.open ? Math.PI / 2 : 0);

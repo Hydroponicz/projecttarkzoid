@@ -31,6 +31,7 @@ export class Player {
     this.fatigue = 10;
     // Character skills (0..8) from character creation.
     const st = game.profile.stats;
+    if (st.farming == null) st.farming = 0; // characters from before farming
     this.skill = st;
     this.stealthMul = 1 - 0.07 * st.stealth;
     this.hp = {};

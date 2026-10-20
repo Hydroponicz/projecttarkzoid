@@ -43,6 +43,7 @@ const CHAPTERS = [
     { id: 'sleep', text: 'Sleep in a bed', check: (c) => [c.slept, 1] },
     { id: 'stock', text: 'Store 10 food or water in your safehouse', check: (c, g) => [g.progress.stockpile(), 10] },
     { id: 'day3', text: 'Survive until day 3', check: (c, g) => [Math.min(3, g.day), 3] },
+    { id: 'harvest', text: 'Harvest a crop you grew (dig a plot with a shovel, plant seeds, water them)', check: (c) => [Math.min(1, c.harvested || 0), 1] },
   ] },
   { title: 'Trade Routes', blurb: 'The traders are the closest thing to a town left. Earn their trust.', reward: [['ai2', 2], ['roler', 1]], goals: [
     { id: 'alltraders', text: 'Find every trader', check: (c, g) => { const ts = g.traders?.list.filter((t) => t.building) || []; return [ts.filter((t) => t.discovered).length, ts.length || 1]; } },
@@ -103,6 +104,7 @@ export class Progress {
     else if (kind === 'build') c.built++;
     else if (kind === 'sleep') c.slept++;
     else if (kind === 'trade') c.trades++;
+    else if (kind === 'harvest') c.harvested = (c.harvested || 0) + 1;
     this.timer = 0; // re-check right away
   }
 

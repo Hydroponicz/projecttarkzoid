@@ -31,6 +31,7 @@ import { lookMats, JOINT } from './ragdoll.js';
 
 export const NAV_CELL = 0.6;
 export const NAV_N = Math.ceil((HALF * 2) / NAV_CELL);
+const TOWN_R = 104; // half-size of the town (zombies are densest there)
 export const FIELD_R = 100; // cells around the player covered by the flow field (60 m)
 
 const TYPES = {
@@ -262,7 +263,9 @@ export class Zombies {
 
   randomOpenPoint(awayFrom, minDist, avoid) {
     for (let i = 0; i < 50; i++) {
-      const x = (Math.random() * 2 - 1) * (HALF - 4), z = (Math.random() * 2 - 1) * (HALF - 4);
+      // Most of the dead are in town; the countryside is thinner.
+      const R = Math.random() < 0.72 ? TOWN_R : HALF - 4;
+      const x = (Math.random() * 2 - 1) * R, z = (Math.random() * 2 - 1) * R;
       const gi = Math.floor((x + HALF) / NAV_CELL), gj = Math.floor((z + HALF) / NAV_CELL);
       if (this.blocked[gi * NAV_N + gj]) continue;
       if (awayFrom && Math.hypot(x - awayFrom.x, z - awayFrom.z) < minDist) continue;
@@ -492,7 +495,7 @@ export class Zombies {
 
     // Trickle spawns keep the town alive; more over time.
     this.spawnTimer -= dt;
-    const cap = 90 + Math.min(80, game.day * 8);
+    const cap = 115 + Math.min(80, game.day * 8);
     if (this.spawnTimer <= 0) {
       this.spawnTimer = game.isNight ? 5 : 10;
       if (this.list.length < cap) {

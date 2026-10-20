@@ -9,6 +9,7 @@ export const STATS = {
   carpentry: { name: 'Carpentry', desc: 'Unlocks doors and beds (2), sturdier builds' },
   stealth: { name: 'Stealth', desc: 'Quieter footsteps, harder for zombies to spot' },
   firstaid: { name: 'First Aid', desc: 'Medkits heal more' },
+  farming: { name: 'Farming', desc: 'Faster, hardier crops and bigger harvests. Rises as you farm' },
 };
 export const MAX_SKILL = 8;
 const MAX_BUY = 5;
@@ -21,6 +22,7 @@ export const PROFESSIONS = {
   carpenter: { name: 'Carpenter', desc: 'Builds from day one. Toolbag included.', points: 1, bonus: { carpentry: 3 }, kit: ['hammer', 'bp_scav', ['planks', { count: 8 }], ['nails', { count: 40 }], 'saw'] },
   nurse: { name: 'Nurse', desc: 'Patches people up. Brought supplies.', points: 1, bonus: { firstaid: 3 }, kit: ['knife', 'ai2', 'bandage', 'bandage', 'painkillers'] },
   burglar: { name: 'Burglar', desc: 'Quiet on their feet. Crowbar in hand.', points: 0, bonus: { stealth: 3 }, kit: ['crowbar'] },
+  farmer: { name: 'Farmer', desc: 'Grows food from dirt. Seeds, a shovel and a can.', points: 0, bonus: { farming: 3, strength: 1 }, kit: ['shovel', 'bp_scav', ['watering_can', { water: 10 }], ['seeds_potato', { count: 4 }], ['seeds_carrot', { count: 4 }], 'apple'] },
   veteran: { name: 'Veteran', desc: 'Seen worse. Brought a shotgun.', points: -2, bonus: { aiming: 3, strength: 1 }, kit: [['mp133', { loaded: 6 }], ['ammo_12g', { count: 8 }], 'knife'] },
 };
 

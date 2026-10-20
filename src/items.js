@@ -104,6 +104,27 @@ export const ITEMS = {
   jack: { name: 'Car Jack', short: 'Jack', type: 'tool', tool: 'jack', w: 3, h: 1, color: '#c83a2a', value: 4500 },
   gas_can: { name: 'Gas Can', short: 'Gas can', type: 'fuel', w: 2, h: 3, color: '#b02a1a', value: 2500, cap: 20 },
 
+  // --- farming: tools, seeds and produce ---
+  shovel: { name: 'Shovel', short: 'Shovel', type: 'melee', w: 1, h: 3, color: '#6a6a5a', value: 3500, damage: 48, range: 1.9, rate: 0.85, tool: 'shovel' },
+  watering_can: { name: 'Watering Can', short: 'Can', type: 'tool', tool: 'watering_can', w: 2, h: 2, color: '#3a7a5a', value: 2000, waterCap: 10 },
+  fertilizer: { name: 'Bag of Fertilizer', short: 'Fertilizer', type: 'farm', w: 2, h: 2, color: '#6a5a3a', value: 3000, uses: 4 },
+  seeds_carrot: { name: 'Carrot Seeds', short: 'Carrot sd', type: 'seed', crop: 'carrot', w: 1, h: 1, color: '#d88a3a', value: 600, stack: 10 },
+  seeds_potato: { name: 'Seed Potatoes', short: 'Potato sd', type: 'seed', crop: 'potato', w: 1, h: 1, color: '#a88a5a', value: 700, stack: 10 },
+  seeds_tomato: { name: 'Tomato Seeds', short: 'Tomato sd', type: 'seed', crop: 'tomato', w: 1, h: 1, color: '#c83a2a', value: 800, stack: 10 },
+  seeds_cabbage: { name: 'Cabbage Seeds', short: 'Cabbage sd', type: 'seed', crop: 'cabbage', w: 1, h: 1, color: '#7aaa4a', value: 700, stack: 10 },
+  seeds_corn: { name: 'Corn Seeds', short: 'Corn sd', type: 'seed', crop: 'corn', w: 1, h: 1, color: '#e8c840', value: 900, stack: 10 },
+  carrot: { name: 'Carrot', short: 'Carrot', type: 'food', w: 1, h: 1, color: '#e8822a', value: 700, food: 12, water: 4 },
+  potato: { name: 'Potato', short: 'Potato', type: 'food', w: 1, h: 1, color: '#b8986a', value: 800, food: 18, water: 0 },
+  tomato: { name: 'Tomato', short: 'Tomato', type: 'food', w: 1, h: 1, color: '#d83a2a', value: 800, food: 10, water: 10 },
+  cabbage: { name: 'Cabbage', short: 'Cabbage', type: 'food', w: 2, h: 2, color: '#8ac85a', value: 1400, food: 26, water: 8 },
+  corn: { name: 'Ear of Corn', short: 'Corn', type: 'food', w: 1, h: 2, color: '#e8c83a', value: 1000, food: 16, water: 2 },
+  apple: { name: 'Apple', short: 'Apple', type: 'food', w: 1, h: 1, color: '#c8302a', value: 600, food: 9, water: 8 },
+  berries: { name: 'Wild Berries', short: 'Berries', type: 'food', w: 1, h: 1, color: '#4a3a8a', value: 500, food: 7, water: 5 },
+  eggs: { name: 'Fresh Eggs', short: 'Eggs', type: 'food', w: 1, h: 1, color: '#f0e8d8', value: 1500, food: 20, water: 0 },
+  preserves: { name: 'Jar of Preserves', short: 'Preserves', type: 'food', w: 1, h: 1, color: '#a83a5a', value: 2800, food: 30, water: 5 },
+  honey: { name: 'Jar of Honey', short: 'Honey', type: 'food', w: 1, h: 1, color: '#e0a020', value: 4500, food: 28, water: -4 },
+  milk: { name: 'Carton of Milk', short: 'Milk', type: 'food', w: 1, h: 2, color: '#f4f4f0', value: 2200, food: 12, water: 30 },
+
   // --- quest items (placed in the world when a trader's quest is accepted) ---
   q_case: { name: 'Sealed Medical Case', short: 'Med case', type: 'quest', w: 2, h: 1, color: '#d8d8d0', value: 0 },
   q_parts: { name: 'Box of Rifle Parts', short: 'Parts', type: 'quest', w: 2, h: 1, color: '#5a5040', value: 0 },
@@ -129,6 +150,8 @@ const KG = {
   sight_reddot: 0.2, sight_holo: 0.35, scope_pso: 0.6, scope_6x: 0.7,
   supp_pm: 0.2, supp_rifle: 0.5, brake_ak: 0.15, grip_vert: 0.15,
   tire: 9, brakes: 2, headlight: 1, spark_plugs: 0.2, engine_parts: 4, scrap: 1, wrench: 0.6, jack: 4, gas_can: 1.5,
+  shovel: 1.8, watering_can: 0.8, fertilizer: 3, seeds_carrot: 0.02, seeds_potato: 0.15, seeds_tomato: 0.02, seeds_cabbage: 0.02, seeds_corn: 0.03,
+  carrot: 0.1, potato: 0.2, tomato: 0.15, cabbage: 1.0, corn: 0.3, apple: 0.15, berries: 0.1, eggs: 0.4, preserves: 0.5, honey: 0.4, milk: 1.0,
 };
 for (const k in ITEMS) ITEMS[k].kg = KG[k] ?? 0.3;
 
@@ -141,6 +164,7 @@ export function itemWeight(it) {
   if (it.mods) for (const m of Object.values(it.mods)) if (m) w += itemWeight(m);
   if (it.grid) for (const c of it.grid.items) w += itemWeight(c);
   if (def.type === 'fuel') w += (it.fuel || 0) * 0.75;
+  if (def.waterCap) w += it.water || 0;
   return w;
 }
 
@@ -155,6 +179,7 @@ export function makeItem(key, opts = {}) {
   // Vehicle parts have a condition; gas cans hold fuel.
   if (def.part) it.cond = opts.cond ?? Math.round(25 + rng() * 75);
   if (def.type === 'fuel') it.fuel = opts.fuel ?? Math.round(rng() * 12);
+  if (def.waterCap) it.water = opts.water ?? Math.round(rng() * 4);
   if (def.stack) it.count = opts.count ?? Math.ceil(def.stack * (0.3 + rng() * 0.5));
   if (def.type === 'weapon') {
     // opts.loaded = rounds to put in the magazine / tube (a round is also chambered).
@@ -191,6 +216,7 @@ export function migrateItem(it) {
   const def = ITEMS[it.key];
   if (!def) return;
   if (def.part && it.cond == null) it.cond = 70;
+  if (def.waterCap && it.water == null) it.water = 0;
   if (def.type === 'weapon' && !it.mods) {
     const loaded = it.loaded ?? 0;
     delete it.loaded;
@@ -208,6 +234,15 @@ export const LOOT_TABLES = {
   fridge: [['beans', 5], ['water', 6], ['soda', 6], ['crackers', 4]],
   cabinet: [['mag_pm', 1.5], ['sight_reddot', 0.3], ['bandage', 5], ['ai2', 3], ['painkillers', 3], ['bolts', 4], ['tape', 4], ['wires', 3], ['knife', 2], ['ammo_9x18', 3], ['chain', 1], ['roler', 0.4], ['nails', 2], ['hammer', 0.8], ['bp_scav', 0.8], ['beans', 2]],
   toolbox: [['hammer', 4], ['saw', 3], ['nails', 6], ['tape', 3], ['bolts', 3], ['crowbar', 1], ['wires', 2], ['wrench', 1.5], ['spark_plugs', 0.6]],
+  // --- farms ---
+  farm_shelf: [['shovel', 1.5], ['watering_can', 1.5], ['fertilizer', 2.5], ['seeds_carrot', 1.5], ['seeds_potato', 1.5], ['seeds_tomato', 1], ['seeds_cabbage', 1], ['seeds_corn', 1],
+    ['hammer', 0.6], ['saw', 0.5], ['nails', 1], ['tape', 0.8], ['axe', 0.3], ['gas_can', 0.5]],
+  seed_rack: [['seeds_carrot', 3], ['seeds_potato', 3], ['seeds_tomato', 2.5], ['seeds_cabbage', 2.5], ['seeds_corn', 2.5], ['fertilizer', 0.8]],
+  produce_crate: [['potato', 4], ['carrot', 4], ['apple', 3], ['cabbage', 2], ['corn', 2], ['tomato', 2]],
+  chicken_coop: [['eggs', 6], ['seeds_corn', 0.6]],
+  pantry: [['preserves', 4], ['honey', 2], ['potato', 2], ['rice', 2], ['beans', 2], ['milk', 1.5], ['eggs', 1], ['water', 1]],
+  hay: [['seeds_corn', 1], ['seeds_potato', 0.6], ['shovel', 0.3], ['scrap', 0.5], ['bolts', 0.4]],
+  hunting: [['sks', 0.35], ['mp133', 0.5], ['ammo_762', 2.5], ['ammo_12g', 3], ['scope_6x', 0.25], ['knife', 1.5], ['axe', 0.8], ['bandage', 1.5], ['mre', 1], ['water', 1], ['bp_tri', 0.3]],
   parts_shelf: [['tire', 1.5], ['battery', 1.2], ['brakes', 2], ['headlight', 2], ['spark_plugs', 3], ['engine_parts', 1.2], ['wrench', 0.6], ['gas_can', 0.8], ['scrap', 1.2]],
   toolbench: [['wrench', 3], ['jack', 2], ['tape', 2], ['scrap', 3], ['spark_plugs', 1.5], ['gas_can', 1], ['bolts', 2], ['wires', 1], ['engine_parts', 0.4]],
   tire_rack: [['tire', 6]],
@@ -225,8 +260,8 @@ export const LOOT_TABLES = {
   server: [['hdd', 4], ['wires', 3], ['gpu', 1], ['flashdrive', 1], ['mil_cable', 0.2]],
   safe: [['chain', 3], ['roler', 2], ['folder', 2.5], ['flashdrive', 2], ['ledx', 0.3], ['gpu', 0.6]],
   // --- stores ---
-  foodshelf: [['beans', 5], ['crackers', 4], ['chips', 5], ['rice', 3], ['soda', 4], ['water', 4], ['coffee', 2]],
-  toolshelf: [['hammer', 3], ['saw', 2.5], ['nails', 6], ['tape', 4], ['bolts', 4], ['wires', 3], ['planks', 2], ['axe', 0.8], ['crowbar', 1]],
+  foodshelf: [['beans', 5], ['crackers', 4], ['chips', 5], ['rice', 3], ['soda', 4], ['water', 4], ['coffee', 2], ['potato', 1], ['apple', 1], ['honey', 0.4], ['preserves', 0.6]],
+  toolshelf: [['hammer', 3], ['saw', 2.5], ['nails', 6], ['tape', 4], ['bolts', 4], ['wires', 3], ['planks', 2], ['axe', 0.8], ['crowbar', 1], ['shovel', 0.8], ['watering_can', 0.6], ['seeds_carrot', 0.5], ['seeds_tomato', 0.5], ['fertilizer', 0.4]],
   // --- police ---
   policelocker: [['pm', 1.5], ['mag_pm', 3], ['ammo_9x18', 4], ['ammo_12g', 1.5], ['mp133', 0.5], ['armor_paca', 0.6], ['helmet_ssh', 0.4], ['bandage', 2], ['supp_pm', 0.25]],
   evidence: [['chain', 2], ['roler', 1], ['flashdrive', 1], ['gpu', 0.5], ['knife', 2], ['ammo_9x18', 2], ['pm', 0.6]],
@@ -297,4 +332,12 @@ export const CONTAINER_TYPES = {
   toolbench: { name: 'Workbench', w: 5, h: 4, rolls: [2, 4], color: 0x6a5a3a, size: [1.8, 0.95, 0.7] },
   tire_rack: { name: 'Tire Rack', w: 6, h: 6, rolls: [1, 3], color: 0x2a2a2a, size: [1.4, 1.2, 0.6] },
   drinkfridge: { name: 'Drinks Fridge', w: 4, h: 4, rolls: [2, 5], color: 0xb02a2a, size: [0.85, 1.95, 0.7] },
+  // Farms and the countryside
+  farm_shelf: { name: 'Farm Supplies', w: 5, h: 5, rolls: [2, 4], color: 0x6a5a3a, size: [1.6, 1.8, 0.55] },
+  seed_rack: { name: 'Seed Rack', w: 4, h: 3, rolls: [2, 4], color: 0x8a6a3a, size: [1.0, 1.4, 0.4] },
+  produce_crate: { name: 'Produce Crate', w: 4, h: 3, rolls: [2, 5], color: 0x9a7a4a, size: [0.8, 0.5, 0.6] },
+  chicken_coop: { name: 'Chicken Coop', w: 3, h: 3, rolls: [1, 3], color: 0x8a5a3a, size: [1.4, 1.1, 1.0] },
+  pantry: { name: 'Pantry Shelf', w: 4, h: 4, rolls: [1, 4], color: 0x7a5a3a, size: [1.0, 1.8, 0.4] },
+  hay: { name: 'Hay Pile', w: 4, h: 3, rolls: [0, 2], color: 0xc8a850, size: [1.4, 0.7, 1.0] },
+  hunting: { name: 'Hunting Locker', w: 4, h: 5, rolls: [1, 3], color: 0x4a5a3a, size: [0.7, 1.8, 0.5] },
 };

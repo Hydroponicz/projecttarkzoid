@@ -19,6 +19,8 @@ export const FOOT = {
   hospital_bed: [1.0, 2.1, 0.7], curtain: [0.05, 2.0, 1.9], whiteboard: [1.6, 0.05, 1.9],
   // Garage
   car_lift: [3.2, 4.6, 0], drum: [0.6, 0.6, 0.9], compressor: [0.8, 0.5, 0.8],
+  // Farm
+  tractor: [1.9, 3.4, 2.3], hay_stack: [2.4, 1.2, 1.4], stall: [3.0, 0.14, 1.4], trough: [2.0, 0.6, 0.6], plow: [1.8, 1.4, 0.7],
 };
 
 export function createFurnisher(group) {
@@ -384,6 +386,66 @@ export function createFurnisher(group) {
     },
     drum: (g) => { cyl(g, 0.3, 0.88, [0x2a4a8a, 0xa82a1a, 0x3a5a2a][Math.floor(Math.random() * 3)], 0, 0, 0, 12); },
     compressor: (g) => { cyl(g, 0.2, 0.7, 0xc83a2a, 0, 0.1, 0, 12).rotation.z = Math.PI / 2; B(g, 0.8, 0.12, 0.45, 0x333333, 0, 0, 0); B(g, 0.3, 0.25, 0.25, 0x222222, 0.1, 0.5, 0); },
+    // --- farm ---
+    farm_shelf: (g, rnd) => shelving(g, 1.6, 1.8, 0.55, 0x6a5a3a, rnd, [0x6a5a3a, 0x3a7a5a, 0xc8a850, 0xd88a3a, 0x7aaa4a, 0x8a8a90]),
+    seed_rack: (g, rnd) => {
+      B(g, 1.0, 1.4, 0.06, 0x8a6a3a, 0, 0, -0.17);
+      for (const sx of [-1, 1]) B(g, 0.04, 1.4, 0.4, 0x6a4a2a, sx * 0.48, 0, 0);
+      for (let r = 0; r < 4; r++) {
+        B(g, 0.92, 0.03, 0.34, 0x6a4a2a, 0, 0.2 + r * 0.32, 0);
+        for (let i = 0; i < 6; i++) B(g, 0.11, 0.16, 0.02, [0xd88a3a, 0xc83a2a, 0x7aaa4a, 0xe8c840, 0xa88a5a][Math.floor(rnd() * 5)], -0.38 + i * 0.15, 0.23 + r * 0.32, 0.05, -0.25);
+      }
+    },
+    produce_crate: (g, rnd) => {
+      B(g, 0.8, 0.05, 0.6, 0x9a7a4a, 0, 0, 0);
+      for (const sz of [-1, 1]) for (let i = 0; i < 3; i++) B(g, 0.8, 0.1, 0.03, 0x9a7a4a, 0, 0.06 + i * 0.15, sz * 0.285);
+      for (const sx of [-1, 1]) for (let i = 0; i < 3; i++) B(g, 0.03, 0.1, 0.6, 0x9a7a4a, sx * 0.385, 0.06 + i * 0.15, 0);
+      const c = [0xb8986a, 0xe8822a, 0xc8302a, 0x8ac85a][Math.floor(rnd() * 4)];
+      for (let i = 0; i < 12; i++) B(g, 0.12, 0.1, 0.12, c, -0.28 + (i % 4) * 0.18 + rnd() * 0.03, 0.3 + rnd() * 0.08, -0.17 + Math.floor(i / 4) * 0.17);
+    },
+    chicken_coop: (g) => {
+      B(g, 1.4, 0.75, 1.0, 0x8a5a3a, 0, 0.3, 0); legs(g, 1.4, 1.0, 0.3, 0.08, 0x5a3a22);
+      const r1 = B(g, 1.55, 0.04, 0.62, 0x5a4a3a, 0, 1.12, -0.22); r1.rotation.x = -0.5;
+      const r2 = B(g, 1.55, 0.04, 0.62, 0x5a4a3a, 0, 1.12, 0.22); r2.rotation.x = 0.5;
+      B(g, 0.3, 0.3, 0.02, 0x1e140c, 0.35, 0.42, 0.51); B(g, 0.1, 0.5, 0.3, 0x7a5a3a, 0.35, 0, 0.62, 0.6);
+    },
+    pantry: (g, rnd) => shelving(g, 1.0, 1.8, 0.4, 0x7a5a3a, rnd, [0xa83a5a, 0xe0a020, 0xd8c8a0, 0x7a3a5a, 0xc8a050], 5),
+    hay: (g, rnd) => { for (let i = 0; i < 3; i++) B(g, 1.3 - i * 0.3, 0.25, 0.9 - i * 0.2, i % 2 ? 0xb89848 : 0xc8a850, (rnd() - 0.5) * 0.1, i * 0.22, 0); },
+    hunting: (g) => { cabinet(g, 0.7, 1.8, 0.5, 0x4a5a3a, { doors: 1, handle: 0x222222 }); },
+    hay_stack: (g, rnd) => {
+      // Square bales stacked two high
+      for (let y = 0; y < 2; y++) for (let i = 0; i < 2; i++) for (let j = 0; j < (y ? 1 : 2); j++) {
+        const b = B(g, 1.1, 0.55, 0.55, (i + j + y) % 2 ? 0xc8a850 : 0xb89a4a, -0.6 + i * 1.2 + (rnd() - 0.5) * 0.08, y * 0.6, -0.3 + j * 0.6 + (y ? 0.3 : 0));
+        B(g, 1.12, 0.02, 0.02, 0x6a5a3a, b.position.x, b.position.y + 0.08, b.position.z + 0.28);
+      }
+    },
+    stall: (g) => {
+      for (let i = 0; i < 4; i++) B(g, 3.0, 0.14, 0.06, 0x6a4a2a, 0, 0.1 + i * 0.32, 0);
+      for (const x of [-1.45, 0, 1.45]) B(g, 0.1, 1.4, 0.1, 0x4a3a22, x, 0, 0);
+    },
+    trough: (g) => {
+      B(g, 2.0, 0.08, 0.6, 0x7a7a7a, 0, 0.1, 0); for (const sz of [-1, 1]) B(g, 2.0, 0.5, 0.05, 0x7a7a7a, 0, 0.1, sz * 0.28);
+      for (const sx of [-1, 1]) B(g, 0.05, 0.5, 0.6, 0x7a7a7a, sx * 0.98, 0.1, 0);
+      B(g, 1.9, 0.02, 0.5, M(0x3a5a6a, 0.1, 0.2), 0, 0.45, 0); legs(g, 2.0, 0.6, 0.1, 0.08, 0x5a5a5a);
+    },
+    plow: (g) => {
+      B(g, 1.7, 0.1, 0.12, 0x8a2a1a, 0, 0.5, -0.5); B(g, 0.12, 0.1, 1.3, 0x8a2a1a, 0, 0.5, 0.05);
+      for (let i = 0; i < 3; i++) { const s = B(g, 0.06, 0.45, 0.35, 0x5a5a5a, -0.6 + i * 0.6, 0.05, -0.45 + i * 0.25); s.rotation.y = 0.5; }
+    },
+    tractor: (g) => {
+      const red = 0xa82a1a, tire = 0x1a1a1a;
+      B(g, 0.9, 0.7, 1.6, red, 0, 0.75, 0.75); B(g, 0.95, 0.12, 1.7, 0x2a2a2a, 0, 0.62, 0.7); // hood + chassis
+      B(g, 0.08, 0.6, 0.08, 0x333333, 0.25, 1.45, 1.2); // exhaust stack
+      B(g, 1.2, 0.6, 1.1, red, 0, 0.7, -0.8); // body under the seat
+      B(g, 0.5, 0.1, 0.45, 0x222222, 0, 1.35, -0.8); B(g, 0.5, 0.45, 0.08, 0x222222, 0, 1.4, -1.05); // seat
+      for (const sx of [-1, 1]) for (const z of [-1.05, -0.45]) B(g, 0.05, 1.0, 0.05, 0x333333, sx * 0.6, 1.3, z);
+      B(g, 1.3, 0.05, 0.8, red, 0, 2.28, -0.75); // canopy
+      for (const sx of [-1, 1]) {
+        const w1 = cyl(g, 0.72, 0.42, tire, sx * 0.82, 0, -0.85, 14); w1.rotation.z = Math.PI / 2; w1.position.y = 0.72;
+        const h1 = cyl(g, 0.4, 0.44, 0xd8a020, sx * 0.82, 0, -0.85, 10); h1.rotation.z = Math.PI / 2; h1.position.y = 0.72;
+        const w2 = cyl(g, 0.42, 0.28, tire, sx * 0.62, 0, 1.15, 12); w2.rotation.z = Math.PI / 2; w2.position.y = 0.42;
+      }
+    },
     forklift: (g) => {
       B(g, 1.1, 0.8, 1.6, 0xd8a020, 0, 0.25, -0.2); B(g, 1.1, 0.06, 1.3, 0x222222, 0, 2.1, -0.35);
       for (const x of [-0.5, 0.5]) for (const z of [-0.95, 0.25]) B(g, 0.06, 1.85, 0.06, 0x222222, x, 0.25, z);

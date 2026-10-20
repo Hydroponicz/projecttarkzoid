@@ -39,6 +39,7 @@ const KITS = {
   'Mechanic': ['bp_tri', 'wrench', 'jack', 'tire', 'battery', ['spark_plugs', { count: 4 }], 'engine_parts', 'gas_can', 'brakes', ['scrap', { count: 3 }], 'tape'],
   'Medic': ['salewa', 'salewa', 'ai2', 'ai2', 'bandage', 'bandage', 'painkillers', 'antiviral'],
   'Lumberjack': ['axe', 'saw', 'bp_scav'],
+  'Farmer': ['bp_tri', 'shovel', 'watering_can', 'fertilizer', ['seeds_carrot', { count: 6 }], ['seeds_potato', { count: 6 }], ['seeds_tomato', { count: 6 }], ['seeds_cabbage', { count: 6 }], ['seeds_corn', { count: 6 }]],
   'Survivor': ['water', 'water', 'beans', 'beans', 'crackers', 'soda'],
 };
 
@@ -473,7 +474,7 @@ export class DevConsole {
       for (let left = count; left > 0; left -= def.stack) items.push(makeItem(key, { count: Math.min(def.stack, left) }));
     } else {
       for (let i = 0; i < count; i++) {
-        const it = makeItem(key, def.type === 'mag' ? { rounds: def.cap } : def.type === 'weapon' ? { loaded: 0 } : def.part ? { cond: 100 } : def.type === 'fuel' ? { fuel: def.cap } : {});
+        const it = makeItem(key, def.type === 'mag' ? { rounds: def.cap } : def.type === 'weapon' ? { loaded: 0 } : def.part ? { cond: 100 } : def.type === 'fuel' ? { fuel: def.cap } : def.waterCap ? { water: def.waterCap } : {});
         if (def.type === 'weapon') fillWeapon(it);
         items.push(it);
       }
@@ -768,6 +769,16 @@ export class DevConsole {
         v.fuel = v.def.tank;
         this.log(`Spawned a ${v.name}`);
       } },
+      grow: { u: '[hours]', d: 'Advance every garden plot (default: until ripe)', f: (a) => {
+        need();
+        const F = g.farming;
+        if (a[0]) { F.tick(+a[0]); F.last = g.time; }
+        else for (const p of F.plots) if (p.crop && !p.dead) { p.growth = 1; p.ripeFor = 0; p.health = Math.max(p.health, 60); }
+        for (const p of F.plots) F.redraw(p);
+        F.renderPanel();
+        this.log(`${F.plots.filter((p) => F.ripe(p)).length} of ${F.plots.length} plots ripe`);
+      } },
+      farmxp: { u: '<xp>', d: 'Add Farming experience', f: (a) => { need(); g.farming.gainXp(+a[0] || 50); this.log(`Farming ${g.profile.stats.farming} (${Math.round(g.profile.farmXp)} xp)`); } },
       fixcar: { d: 'Fully repair and refuel the nearest vehicle', f: () => {
         need();
         const v = g.vehicles.nearest(g.player.pos, 12);

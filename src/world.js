@@ -7,10 +7,11 @@ import { SpatialHash } from './collision.js';
 import { CONTAINER_TYPES, rollLoot } from './items.js';
 import { makeGrid, addItem } from './inventory.js';
 import { createFurnisher, FOOT, footRect } from './furniture.js';
+import { buildCountryside, plantTrees } from './countryside.js';
 
-export const HALF = 120;      // map half-size
+export const HALF = 220;      // map half-size (town in the middle, countryside around it)
 // Bump when generation changes so old saves don't map loot onto new layouts.
-export const WORLD_VERSION = 4;
+export const WORLD_VERSION = 5;
 const BLOCK = 40;             // road grid spacing
 const ROAD = 8;
 const WALL_H = 3.0;
@@ -178,6 +179,10 @@ export function buildWorld(scene, seed) {
     gas: { floor: 0x8a8a84, wall: [0xd8d0c0], sign: { text: 'FUEL & SNACKS', bg: '#b03a1a' }, windows: STORE_WIN, checkout: true, wallLoot: ['foodshelf', 'fridge', 'cabinet', 'foodshelf'] },
     mechanic: { floor: 0x5a5a58, wall: [0x8a8478, 0x6a7a8a], sign: { text: 'AUTO REPAIR', bg: '#2a4a7a' }, garage: true, open: true, windows: { w: 1.4, gap: 3.4, sill: 1.1, top: 2.2, skip: 0.3 }, wallLoot: ['parts_shelf', 'toolbench', 'tire_rack', 'toolbox'] },
     military: { floor: 0x5a5a4a, wall: [0x5a6a4a], sign: { text: 'COMMAND POST', bg: '#3a4a2a' }, windows: { w: 1.0, gap: 3.0, sill: 1.1, top: 1.9 }, wallLoot: ['milcrate', 'duffel', 'ammobox', 'milcrate', 'surgical'] },
+    // Countryside
+    farmhouse: { home: true, farm: true, roof: { type: 'gable', color: [0x4a3a32, 0x3a3a3c, 0x5a2a22] }, floor: 0x6b5a45, wall: [0xe8e2d4, 0xd8c8a0, 0xb8c4c8, 0xc8b89a], interior: [0xe0d8c0, 0xd8d0b8, 0xc8d0c0, 0xe8e0d0] },
+    barn: { barnDoor: true, open: true, roof: { type: 'gambrel', color: [0x3a3a3c, 0x5a5048] }, floor: 0x5a4a34, wall: [0x8a2a1e, 0x7a2a20, 0x9a3424, 0x6a6058], windows: { w: 0.9, gap: 4.2, sill: 1.9, top: 2.6, skip: 0.35 } },
+    cabin: { open: true, roof: { type: 'gable', color: [0x3a3a32, 0x2a3a2a] }, floor: 0x5a4a34, wall: [0x6a4a2a, 0x5a4026], windows: { w: 0.9, gap: 3.0, sill: 1.0, top: 1.9, skip: 0.3 } },
   };
   const COMPANIES = ['VERTEX CAPITAL', 'NORDLINE LOGISTICS', 'HALVERSEN & KLINE', 'OKAFOR DYNAMICS', 'MERIDIAN INSURANCE', 'GREYSTONE PARTNERS', 'ARKWELL ENERGY', 'LUMEN BIOTECH'];
   const companies = shuffle([...COMPANIES]); // each firm appears once
@@ -266,7 +271,16 @@ export function buildWorld(scene, seed) {
         out.doors.push({ ...pos, ax, w: o.w });
       } else if (o.type === 'garage') {
         seg(g0, g1, 2.7, WALL_H); // a wide opening with the shutter rolled up
-        prop(ax === 'x' ? o.w : 0.35, 0.3, ax === 'x' ? 0.35 : o.w, 0x8a8a84, pos.x, 2.55, pos.z);
+        if (o.out) {
+          // Barn: two plank doors slid open along the outside of the wall
+          const off = o.out * (WALL_T / 2 + 0.06);
+          for (const s of [-1, 1]) {
+            const c = o.c + s * o.w * 0.75;
+            prop(ax === 'x' ? o.w / 2 : 0.08, 2.6, ax === 'x' ? 0.08 : o.w / 2, color, ax === 'x' ? c : fixed + off, 1.3, ax === 'x' ? fixed + off : c);
+            prop(ax === 'x' ? o.w / 2 * 1.08 : 0.04, 0.12, ax === 'x' ? 0.04 : o.w / 2 * 1.08, 0xe8e4dc, ax === 'x' ? c : fixed + off * 1.5, 1.3, ax === 'x' ? fixed + off * 1.5 : c).rotation[ax === 'x' ? 'z' : 'x'] = 0.75; // cross brace
+          }
+          prop(ax === 'x' ? o.w * 2.2 : 0.1, 0.1, ax === 'x' ? 0.1 : o.w * 2.2, 0x3a3a3a, ax === 'x' ? o.c : fixed + off, 2.68, ax === 'x' ? fixed + off : o.c); // track
+        } else prop(ax === 'x' ? o.w : 0.35, 0.3, ax === 'x' ? 0.35 : o.w, 0x8a8a84, pos.x, 2.55, pos.z);
         out.garages = [...(out.garages || []), { ...pos, ax, w: o.w }];
       } else {
         // Sill and lintel stop bullets but not sight; the opening itself is
@@ -667,6 +681,25 @@ export function buildWorld(scene, seed) {
       P.open('forklift', c.x + rnd(-3, 3), c.z + rnd(-3, 3), rand() < 0.5 ? 0 : Math.PI / 2);
       return;
     }
+    if (kindName === 'barn') {
+      // Stalls down one side, hay, farm supplies, a tractor in the middle
+      const [rw, rd] = P.size(), c = P.centre();
+      const along = rw >= rd ? 'x' : 'z';
+      fill(P, ['farm_shelf', 'farm_shelf', 'seed_rack', 'hay', 'produce_crate', 'toolbench', 'hay_stack', 'hay_stack'], 9);
+      const side = rand() < 0.5 ? -1 : 1;
+      for (let t = -0.32; t <= 0.33; t += 0.32) {
+        const x = along === 'x' ? c.x + t * rw : c.x + side * (rw / 2 - 1.6), z = along === 'x' ? c.z + side * (rd / 2 - 1.6) : c.z + t * rd;
+        P.open('stall', x, z, along === 'x' ? Math.PI / 2 : 0, { exact: true });
+      }
+      if (rand() < 0.6) P.open('tractor', c.x, c.z, along === 'x' ? Math.PI / 2 : 0);
+      else P.open('hay_stack', c.x, c.z, rand() < 0.5 ? 0 : Math.PI / 2);
+      return;
+    }
+    if (kindName === 'cabin') {
+      P.wall('bed_single', { sheet: 0x6a4a3a }); P.wall('hunting'); P.wall('stove'); P.wall('pantry'); P.wall('cabinet');
+      const c = P.centre(); P.open('dining_table', c.x, c.z, 0); P.open('rug', c.x, c.z, 0, { free: true });
+      return;
+    }
     if (kindName === 'military') {
       for (const r of rooms) {
         const Q = r === front ? P : roomPlacer(r, bDoors, wins, keepOut);
@@ -677,6 +710,37 @@ export function buildWorld(scene, seed) {
     }
     const n = Math.floor(rnd(2, 4 + (w * d) / 120));
     for (let i = 0; i < n; i++) placeAlong(rooms[Math.floor(rand() * rooms.length)], pick(kind.wallLoot), bDoors, keepOut, wins);
+  }
+
+  // Pitched roof along the long side: gable (farmhouse, cabin) or the
+  // two-slope gambrel of a barn. The gable ends are in the wall colour.
+  function roof(cx, cz, w, d, type, roofColor, wallColor) {
+    const alongX = w >= d, span = alongX ? d : w, len = alongX ? w : d;
+    const hs = span / 2 + 0.35, rise = type === 'gambrel' ? span * 0.5 : span * 0.32;
+    const pts = type === 'gambrel'
+      ? [[-hs, 0], [-hs * 0.72, rise * 0.62], [0, rise], [hs * 0.72, rise * 0.62], [hs, 0]]
+      : [[-hs, 0], [0, rise], [hs, 0]];
+    const shape = new THREE.Shape(pts.map(([a, b]) => new THREE.Vector2(a, b)));
+    const geo = new THREE.ExtrudeGeometry(shape, { depth: len - 0.1, bevelEnabled: false });
+    geo.translate(0, 0, -(len - 0.1) / 2);
+    const gable = new THREE.Mesh(geo, fur.M(wallColor, 0.95));
+    gable.position.set(cx, WALL_H + 0.24, cz);
+    if (alongX) gable.rotation.y = Math.PI / 2;
+    gable.castShadow = gable.receiveShadow = true;
+    group.add(gable);
+    // Roof panels on each sloped edge, overhanging the ends
+    for (let i = 0; i < pts.length - 1; i++) {
+      const [a0, b0] = pts[i], [a1, b1] = pts[i + 1];
+      const el = Math.hypot(a1 - a0, b1 - b0), ang = Math.atan2(b1 - b0, a1 - a0);
+      const nx = -Math.sin(ang) * 0.07, ny = Math.cos(ang) * 0.07;
+      const pnl = new THREE.Mesh(new THREE.BoxGeometry(el + 0.12, 0.12, len + 0.5), fur.M(roofColor, 0.9));
+      const ma = (a0 + a1) / 2 + nx, mb = (b0 + b1) / 2 + ny;
+      pnl.rotation.order = 'YXZ';
+      pnl.rotation.set(0, alongX ? Math.PI / 2 : 0, ang);
+      pnl.position.set(cx + (alongX ? 0 : ma), WALL_H + 0.24 + mb, cz + (alongX ? -ma : 0));
+      pnl.castShadow = pnl.receiveShadow = true;
+      group.add(pnl);
+    }
   }
 
   function floorPatch(r, color) {
@@ -705,7 +769,7 @@ export function buildWorld(scene, seed) {
     }
     const frontSide = doorSides[0];
     // Garages: the front door is a wide roll-up opening cars can drive through
-    if (kind.garage) { const o = ext[frontSide][0]; o.type = 'garage'; o.w = 3.8; const [a0, a1] = frontSide === 'n' || frontSide === 's' ? [x0, x1] : [z0, z1]; o.c = Math.max(a0 + 2.6, Math.min(a1 - 2.6, o.c)); }
+    if (kind.garage || kind.barnDoor) { const o = ext[frontSide][0]; o.type = 'garage'; o.w = 3.8; if (kind.barnDoor) o.out = { n: -1, s: 1, w: -1, e: 1 }[frontSide]; const [a0, a1] = frontSide === 'n' || frontSide === 's' ? [x0, x1] : [z0, z1]; o.c = Math.max(a0 + 2.6, Math.min(a1 - 2.6, o.c)); }
 
     // Interior layout
     if (kind.corridor) {
@@ -728,7 +792,7 @@ export function buildWorld(scene, seed) {
       bDoors.push(...wallWithOpenings('x', x0, x1, zc - cw, northGaps, interiorColor).doors);
       bDoors.push(...wallWithOpenings('x', x0, x1, zc + cw, southGaps, interiorColor).doors);
       junc.e.push(zc - cw, zc + cw); junc.w.push(zc - cw, zc + cw);
-    } else if (kindName === 'house') {
+    } else if (kind.home || kindName === 'house') {
       rooms = layoutHouse(b, ext, junc, bDoors, interiorColor);
     } else if (w > 12 && !kind.aisles && !kind.desks && !kind.open) {
       // Interior partition with a doorway
@@ -785,12 +849,13 @@ export function buildWorld(scene, seed) {
       facade(cx, cz, w - 2, d - 2, roofY + 0.25, h, new THREE.Color(0x8a9aaa));
       prop(1.2, 4, 1.2, 0x555555, cx + w / 4, h + 2, cz); // rooftop antenna mast
     }
+    if (kind.roof) roof(cx, cz, w, d, kind.roof.type, pick(kind.roof.color), color);
     for (const r of rooms) {
       prop(0.5, 0.05, 0.5, 0xd8d8c8, (r.x0 + r.x1) / 2, WALL_H - 0.03, (r.z0 + r.z1) / 2); // ceiling light
     }
 
     // --- furnishing ---
-    if (kindName === 'house') {
+    if (kind.home || kindName === 'house') {
       for (const r of rooms) {
         const P = roomPlacer(r, bDoors, wins);
         if (r.type === 'kitchen' || r.type === 'bathroom') floorPatch(r, r.type === 'kitchen' ? pick([0xb8b4a8, 0x8a8478, 0xc8c0b0]) : pick([0xd8dcd8, 0xa8b8c0, 0xe0d8d0]));
@@ -802,6 +867,7 @@ export function buildWorld(scene, seed) {
         else if (r.type === 'laundry') { P.wall('washer'); P.wall('washer'); P.wall('tool_rack'); P.wall('cabinet'); P.wall('toolbox'); }
         else { P.wall('toolshelf'); P.wall('toolbox'); }
         if (r.type === 'studio') furnishBedroom(P, true);
+        if (kind.farm && r.type.includes('kitchen')) P.wall('pantry');
       }
     } else if (kind.aisles) {
       // Store aisles: rows of shelving through the middle of the floor.
@@ -891,7 +957,7 @@ export function buildWorld(scene, seed) {
           if (rand() < 0.5) P.wall('plant');
         }
       }
-    } else if (kindName !== 'house') {
+    } else if (!kind.home && kindName !== 'house') {
       furnishBusiness(kindName, kind, rooms, outerDoors, bDoors, wins, keepOut, w, d);
     }
     for (const dr of bDoors) addDoor(dr.x, dr.z, dr.ax, rand() < 0.75, dr.w);
@@ -1120,12 +1186,8 @@ export function buildWorld(scene, seed) {
     checkpoint(road, -100 + seg * BLOCK + 20 + rnd(-4, 4));
   }
 
-  // Forest ring outside the town
-  for (let i = 0; i < 420; i++) {
-    const x = rnd(-HALF, HALF), z = rnd(-HALF, HALF);
-    if (Math.abs(x) < 106 && Math.abs(z) < 106) continue;
-    trees.push([x, z]);
-  }
+  // Farmland, woods and meadows around the town
+  const country = buildCountryside({ rand, rnd, pick, shuffle, group, fur, addBox, prop, building, car, addContainer, trees, zombieSpawns, landmarks, corpseMesh, HALF });
 
   // Abandoned cars on roads
   for (let i = 0; i < 26; i++) {
@@ -1142,7 +1204,7 @@ export function buildWorld(scene, seed) {
   function car(x, z, rot, style, opts = {}) {
     const mil = style === 'military';
     const color = opts.color ?? (mil ? 0x4a5a3a : style === 'police' ? 0xe8e8e8 : pick([0x6a2222, 0x22446a, 0x555555, 0x887744, 0x2a4a2a, 0xcccccc, 0x7a6a50, 0x303438]));
-    const type = mil ? 'military' : style === 'police' ? 'police' : rand() < 0.25 ? 'pickup' : 'sedan';
+    const type = mil ? 'military' : style === 'police' ? 'police' : opts.type || (rand() < 0.25 ? 'pickup' : 'sedan');
     const L = mil ? 6.2 : type === 'pickup' ? 4.8 : 4.3;
     const spec = { x, z, rot, type, color, rng: rand(), project: !!opts.project };
     if (mil) {
@@ -1161,36 +1223,36 @@ export function buildWorld(scene, seed) {
   }
 
 
-  // Walls → one instanced mesh
+  // Walls → instanced meshes (the town, and one per countryside chunk)
   const wallGeo = new THREE.BoxGeometry(1, 1, 1);
   const wallMat = new THREE.MeshStandardMaterial({ roughness: 0.95 });
-  const wallMesh = new THREE.InstancedMesh(wallGeo, wallMat, walls.length);
   const m4 = new THREE.Matrix4();
   const colr = new THREE.Color();
-  walls.forEach((w, i) => {
-    const y0 = w.y0 ?? 0, y1 = w.y1 ?? WALL_H;
-    m4.makeScale(w.maxX - w.minX, y1 - y0, w.maxZ - w.minZ);
-    m4.setPosition((w.minX + w.maxX) / 2, (y0 + y1) / 2, (w.minZ + w.maxZ) / 2);
-    wallMesh.setMatrixAt(i, m4);
-    wallMesh.setColorAt(i, colr.set(w.color).multiplyScalar(rnd(0.92, 1.05)));
-  });
-  wallMesh.castShadow = true;
-  wallMesh.receiveShadow = true;
-  group.add(wallMesh);
+  const wallRegions = new Map();
+  for (const w of walls) {
+    const k = regionOf((w.minX + w.maxX) / 2, (w.minZ + w.maxZ) / 2);
+    if (!wallRegions.has(k)) wallRegions.set(k, []);
+    wallRegions.get(k).push(w);
+  }
+  for (const list of wallRegions.values()) {
+    const wallMesh = new THREE.InstancedMesh(wallGeo, wallMat, list.length);
+    list.forEach((w, i) => {
+      const y0 = w.y0 ?? 0, y1 = w.y1 ?? WALL_H;
+      m4.makeScale(w.maxX - w.minX, y1 - y0, w.maxZ - w.minZ);
+      m4.setPosition((w.minX + w.maxX) / 2, (y0 + y1) / 2, (w.minZ + w.maxZ) / 2);
+      wallMesh.setMatrixAt(i, m4);
+      wallMesh.setColorAt(i, colr.set(w.color).multiplyScalar(rnd(0.92, 1.05)));
+    });
+    wallMesh.castShadow = true;
+    wallMesh.receiveShadow = true;
+    wallMesh.computeBoundingSphere();
+    group.add(wallMesh);
+  }
 
-  // Trees → instanced trunks + foliage
-  const treeBoxes = [];
+  // Trees: one instanced mesh per species (pine, oak, birch, apple)
   const felled = new Set();
-  const trunkMesh = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.18, 0.25, 3, 6), new THREE.MeshStandardMaterial({ color: 0x3a2a1a }), trees.length);
-  const leafMesh = new THREE.InstancedMesh(new THREE.ConeGeometry(1.8, 5, 7), new THREE.MeshStandardMaterial({ color: 0x24361e, roughness: 1 }), trees.length);
-  trees.forEach(([x, z], i) => {
-    const s = rnd(0.8, 1.4);
-    m4.makeScale(s, s, s); m4.setPosition(x, 1.5 * s, z); trunkMesh.setMatrixAt(i, m4);
-    m4.makeScale(s, s, s); m4.setPosition(x, 4.5 * s, z); leafMesh.setMatrixAt(i, m4);
-    treeBoxes.push(addBox(x - 0.25, z - 0.25, x + 0.25, z + 0.25, { blocksSight: false, h: 6, tree: i }));
-  });
-  trunkMesh.castShadow = leafMesh.castShadow = true;
-  group.add(trunkMesh, leafMesh);
+  const forest = plantTrees({ group, trees, addBox, rnd });
+  const treeBoxes = forest.boxes;
 
   // Map boundary
   for (const [a, b, c, d] of [[-HALF - 1, -HALF - 1, HALF + 1, -HALF], [-HALF - 1, HALF, HALF + 1, HALF + 1], [-HALF - 1, -HALF, -HALF, HALF], [HALF, -HALF, HALF + 1, HALF]]) {
@@ -1222,14 +1284,14 @@ export function buildWorld(scene, seed) {
 
   return {
     group, hash, containers, generatedContainers, buildings, houses, roads, trees, doors, beds, windows, zombieSpawns, landmarks, vehicleSpawns, pumps,
+    dirtRoads: country.dirtRoads, features: country.features, gardens: country.gardens, forage: country.forage, waterSources: country.water,
+    setFruit: forest.setFruit, setBerries: country.setBerries,
     addBox, addContainer: (type, x, z) => addContainer(type, x, z, 0, {}), felled,
     // Cut down a tree: hide its instances and remove its collider.
     fellTree(i) {
       if (felled.has(i)) return;
       felled.add(i);
-      const zero = new THREE.Matrix4().makeScale(0, 0, 0);
-      trunkMesh.setMatrixAt(i, zero); leafMesh.setMatrixAt(i, zero);
-      trunkMesh.instanceMatrix.needsUpdate = leafMesh.instanceMatrix.needsUpdate = true;
+      forest.fell(i);
       hash.remove(treeBoxes[i]);
       return treeBoxes[i];
     },
@@ -1286,8 +1348,14 @@ export function corpseMesh(parent, x, z, color, rot = Math.random() * Math.PI * 
   return g;
 }
 
+// Town scenery batches as one region; the countryside in chunks, so farms
+// and woods off-screen (or outside the sun's shadow box) aren't drawn.
+const REGION = 60;
+const regionOf = (x, z) => (Math.abs(x) < 110 && Math.abs(z) < 110 ? 'town' : `${Math.floor(x / REGION)},${Math.floor(z / REGION)}`);
+
 // Batch all static, untextured, opaque scenery (furniture, props, vehicles,
 // sandbags, fences...) into one mesh per material to keep draw calls low.
+const _mp = new THREE.Vector3();
 function mergeStatic(group) {
   group.updateMatrixWorld(true);
   const buckets = new Map();
@@ -1301,7 +1369,8 @@ function mergeStatic(group) {
     // colours), so all the furniture of one finish is a single draw call.
     const plain = !m.emissive || m.emissive.getHex() === 0;
     const rough = Math.round(m.roughness * 10) / 10, metal = Math.round(m.metalness * 10) / 10;
-    const key = plain ? ['vc', rough, metal, m.side].join('|') : [m.type, m.color.getHex(), m.roughness, m.metalness, m.emissive.getHex(), m.side].join('|');
+    o.getWorldPosition(_mp);
+    const key = regionOf(_mp.x, _mp.z) + (o.castShadow ? '|' : '|ns|') + (plain ? ['vc', rough, metal, m.side].join('|') : [m.type, m.color.getHex(), m.roughness, m.metalness, m.emissive.getHex(), m.side].join('|'));
     let geo = o.geometry.index ? o.geometry.toNonIndexed() : o.geometry.clone();
     for (const name of Object.keys(geo.attributes)) if (!['position', 'normal', 'uv'].includes(name)) geo.deleteAttribute(name);
     if (!geo.attributes.uv || !geo.attributes.normal) return;
@@ -1312,6 +1381,7 @@ function mergeStatic(group) {
       geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
     }
     if (!buckets.has(key)) buckets.set(key, { mat: plain ? new THREE.MeshStandardMaterial({ vertexColors: true, roughness: rough, metalness: metal, side: m.side }) : m, geos: [], shadow: o.castShadow });
+    // (ground patches and furrows don't cast shadows: they'd only shade themselves)
     buckets.get(key).geos.push(geo);
     victims.push(o);
   });
@@ -1320,7 +1390,7 @@ function mergeStatic(group) {
     const merged = mergeGeometries(geos);
     if (!merged) continue;
     const mesh = new THREE.Mesh(merged, mat);
-    mesh.castShadow = shadow || true;
+    mesh.castShadow = shadow;
     mesh.receiveShadow = true;
     group.add(mesh);
   }

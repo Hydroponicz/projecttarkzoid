@@ -5,7 +5,7 @@ import * as THREE from 'three';
 import { segBox } from './collision.js';
 import { setDoor } from './world.js';
 import { makeGrid, countItem, takeItem, addItem } from './inventory.js';
-import { makeItem } from './items.js';
+import { ITEMS, makeItem } from './items.js';
 import { sfx } from './audio.js';
 
 export const BUILDABLES = [
@@ -15,6 +15,8 @@ export const BUILDABLES = [
   { type: 'crate', name: 'Storage Crate', w: 1.0, d: 0.8, h: 0.8, cost: { planks: 3, nails: 2 }, hp: 200, skill: 0 },
   { type: 'bed', name: 'Bed', w: 1.0, d: 2.0, h: 0.55, cost: { planks: 4, nails: 4 }, hp: 200, skill: 2 },
   { type: 'campfire', name: 'Campfire', w: 0.8, d: 0.8, h: 0.3, cost: { planks: 2, nails: 0 }, hp: 100, skill: 0 },
+  // Dug with a shovel, outdoors; farming.js owns plots once they exist
+  { type: 'plot', name: 'Garden Plot', w: 2.0, d: 2.0, h: 0.15, cost: {}, hp: 0, skill: 0, tool: 'shovel' },
 ];
 const BY_TYPE = Object.fromEntries(BUILDABLES.map((b) => [b.type, b]));
 
@@ -58,10 +60,12 @@ export class Builder {
     this.game.scene.add(m);
   }
 
-  hasHammer() {
+  hasHammer() { return this.hasTool('hammer'); }
+
+  hasTool(tool) {
     const p = this.game.profile;
-    if (p.equip.melee?.key === 'hammer') return true;
-    return this.game.player.ammoGrids().some((g) => g.items.some((i) => i.key === 'hammer'));
+    if (p.equip.melee && ITEMS[p.equip.melee.key].tool === tool) return true;
+    return this.game.player.ammoGrids().some((g) => g.items.some((i) => ITEMS[i.key].tool === tool));
   }
 
   canAfford(def) {
@@ -99,7 +103,11 @@ export class Builder {
   blockReason(def, x, z) {
     const free = this.game.dev?.freeBuild;
     if (!free && def.skill > this.game.player.skill.carpentry) return `Needs Carpentry ${def.skill}`;
-    if (!free && !this.hasHammer()) return 'You need a hammer';
+    if (!free && !this.hasTool(def.tool || 'hammer')) return `You need a ${def.tool || 'hammer'}`;
+    if (def.type === 'plot') {
+      if (this.world.buildingAt(x, z)) return 'Dig plots outdoors';
+      if (this.game.farming?.plotAt(x, z, 1.95)) return 'Too close to another plot';
+    }
     if (!free && !this.canAfford(def)) return 'Not enough materials';
     const [w, d] = footprint(def, this.rot);
     const minX = x - w / 2 + 0.02, maxX = x + w / 2 - 0.02, minZ = z - d / 2 + 0.02, maxZ = z + d / 2 - 0.02;
@@ -115,6 +123,14 @@ export class Builder {
   }
 
   place(def, x, z, rot) {
+    if (def.type === 'plot') {
+      this.game.farming.addPlot(x, z);
+      this.game.farming.gainXp(1);
+      this.game.zombies.noise(x, z, 6);
+      sfx.dig();
+      this.game.hud.message('Dug a garden plot. Look at it and press F to plant.', 3);
+      return null;
+    }
     const grids = this.game.player.ammoGrids();
     if (!this.game.dev?.freeBuild) for (const [k, n] of Object.entries(def.cost)) takeItem(grids, k, n);
     const s = this.create(def.type, x, z, rot);

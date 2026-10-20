@@ -130,6 +130,7 @@ export class HUD {
       else if (t.kind === 'window') text = t.state === 'broken' ? '[Space] Climb through (broken glass)' : t.state === 'open' ? '[F] Close window · [Space] Climb through' : '[F] Open window';
       else if (t.door || t.kind === 'door') text = `[F] ${t.open ? 'Close' : 'Open'} ${t.name}${hp}`;
       else if (t.kind === 'bed' || t.type === 'bed') text = '[F] Sleep';
+      else if (t.prompt) text = t.prompt();
       else text = `[F] Search ${t.name}`;
     }
     prompt.style.display = text ? 'block' : 'none';
@@ -158,8 +159,8 @@ export class HUD {
     this.barSel = b.sel;
     this.barT = 15;
     bar.innerHTML = game.buildables.map((d, i) => {
-      const na = d.skill > game.player.skill.carpentry || !b.canAfford(d);
-      return `<div class="b ${i === b.sel ? 'sel' : ''} ${na ? 'na' : ''}">${i + 1}. ${d.name}<small>${game.buildCost(d)}${d.skill ? ` · Carp ${d.skill}` : ''}</small></div>`;
+      const na = d.skill > game.player.skill.carpentry || !b.canAfford(d) || (d.tool && !b.hasTool(d.tool));
+      return `<div class="b ${i === b.sel ? 'sel' : ''} ${na ? 'na' : ''}">${i + 1}. ${d.name}<small>${d.tool ? `needs a ${d.tool}` : game.buildCost(d)}${d.skill ? ` · Carp ${d.skill}` : ''}</small></div>`;
     }).join('');
   }
 
@@ -174,13 +175,24 @@ export class HUD {
     const S = c.width / (HALF * 2);
     const tx = (x) => (x + HALF) * S;
     ctx.fillStyle = '#2b3322'; ctx.fillRect(0, 0, c.width, c.height);
-    ctx.fillStyle = '#26301f';
-    for (const [x, z] of game.world.trees) ctx.fillRect(tx(x) - 1, tx(z) - 1, 3, 3);
+    // Countryside: fields, woods, ponds, then the farm tracks
+    for (const f of game.world.features || []) {
+      ctx.fillStyle = f.color;
+      if (f.r) { ctx.beginPath(); ctx.arc(tx(f.x), tx(f.z), f.r * S, 0, 7); ctx.fill(); } else ctx.fillRect(tx(f.x0), tx(f.z0), (f.x1 - f.x0) * S, (f.z1 - f.z0) * S);
+    }
+    ctx.fillStyle = '#5a4a35';
+    for (const r of game.world.dirtRoads || []) {
+      if (r.axis === 'x') ctx.fillRect(tx(r.k) - 3 * S, tx(r.a0), 6 * S, (r.a1 - r.a0) * S);
+      else ctx.fillRect(tx(r.a0), tx(r.k) - 3 * S, (r.a1 - r.a0) * S, 6 * S);
+    }
+    ctx.fillStyle = '#1c2616';
+    for (const [x, z] of game.world.trees) ctx.fillRect(tx(x) - 1, tx(z) - 1, 2, 2);
     ctx.fillStyle = '#3a3a3a';
     for (let k = -100; k <= 100; k += 40) { ctx.fillRect(tx(k) - 4 * S, tx(-104), 8 * S, 208 * S); ctx.fillRect(tx(-104), tx(k) - 4 * S, 208 * S, 8 * S); }
     const colors = {
       house: '#8a7a62', shop: '#6a7a8a', clinic: '#c8c8c0', warehouse: '#5a5a4a', pharmacy: '#6ac08a', hospital: '#e8e8e0',
       office: '#7a8aa8', skyscraper: '#9aaac8', police: '#4a6ab8', grocery: '#b8984a', hardware: '#a86a3a', gas: '#c85a3a', military: '#5a6a3a',
+      farmhouse: '#c8bca0', barn: '#a83a2a', cabin: '#6a4a2a',
     };
     for (const b of game.world.buildings) {
       if (b.area) { ctx.strokeStyle = '#7a8a4a'; ctx.setLineDash([4, 3]); ctx.strokeRect(tx(b.x0), tx(b.z0), (b.x1 - b.x0) * S, (b.z1 - b.z0) * S); ctx.setLineDash([]); continue; }

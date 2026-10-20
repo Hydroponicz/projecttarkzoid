@@ -122,6 +122,8 @@ export const sfx = {
   horn() { tone(392, 0.45, 0.18, 'square'); tone(494, 0.45, 0.14, 'square'); },
   crank(dur = 1) { const n = Math.max(2, Math.round(dur / 0.14)); for (let i = 0; i < n; i++) setTimeout(() => { noise(0.09, 260, 1.5, 0.3, 'lowpass', 0.08); tone(55, 0.06, 0.12, 'square'); }, i * 140); },
   crash(vol = 1) { noise(0.35, 500, 0.8, 0.9 * vol, 'lowpass', 0.3); noise(0.2, 2800, 1, 0.35 * vol, 'bandpass', 0.18); tone(60, 0.25, 0.5 * vol, 'sine', -25); },
+  dig() { noise(0.18, 350, 1, 0.45, 'lowpass', 0.16); setTimeout(() => noise(0.12, 500, 1, 0.3, 'lowpass', 0.1), 220); },
+  pour() { noise(0.8, 1800, 0.6, 0.09, 'bandpass', 0.7); },
   windowSlide() { noise(0.3, 1200, 2, 0.12, 'bandpass', 0.3); },
   // Meaty melee impact (blunt or blade)
   meleeHit(heavy) { noise(0.14, heavy ? 300 : 600, 1, 0.65, 'lowpass', 0.13); tone(heavy ? 60 : 90, 0.14, 0.45, 'sine', -30); if (heavy) noise(0.04, 2200, 2, 0.25, 'bandpass', 0.04); },
