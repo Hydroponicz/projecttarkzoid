@@ -13,7 +13,15 @@ npm run build    # static build in dist/
 ## How it plays
 
 1. **Create a survivor.** Pick a name and a profession: Unemployed, Police Officer, Fire Officer, Carpenter, Nurse, Burglar or Veteran. Each comes with skill bonuses and a starting kit. Then spend points on Strength, Fitness, Aiming, Carpentry, Stealth and First Aid.
-2. **Wake up in a random house** in a persistent, procedurally generated town. Loot doesn't respawn. The world is saved automatically (every 30 seconds, when you sleep, and when you close the tab).
+2. **Follow the guide.** A new character starts a ten-step "First day" tutorial, shown top right. It covers moving, scavenging, the inventory, eating, arming yourself, a first kill, claiming a safehouse, finding a trader, making a deal and fortifying. Each step gives a small reward. After that, five chapters of goals lead the way:
+   1. **Dig In**: build, sleep, stock your safehouse, survive to day 3.
+   2. **Trade Routes**: find every trader, finish jobs, reach loyalty 2.
+   3. **Armed and Dangerous**: a rifle, an optic, body armor, 50 kills.
+   4. **The Outpost**: soldier zombies, military loot, loyalty 3.
+   5. **Long Haul**: day 14, 250 kills, 15 jobs.
+
+   Each chapter pays out gear. **J** opens the goals panel; **K** (while it's open) skips the tutorial.
+3. **Wake up in a random house** in a persistent, procedurally generated town. Loot doesn't respawn. The world is saved automatically (every 30 seconds, when you sleep, and when you close the tab).
 3. **Make a home.** Claim the building you're standing in as your safehouse with **V**. Outdoors, **V** claims a 20×20 m camp instead. Zombies never respawn near your safehouse.
 4. **Build.** Press **B** to build walls, barricades, doors, storage crates, beds and campfires out of planks and nails. You need a hammer. Planks come from lumber piles in warehouses, or you can chop trees with an axe and saw the logs into planks. Hammering is loud and draws zombies.
 5. **Survive the nights.** One in-game minute passes per real second, so a full day takes 24 minutes. At night zombies move faster, and more of them spawn as the days go by. Sleep in a bed to recover fatigue and health. Sleeping outside your safehouse may wake you to company.
@@ -97,11 +105,18 @@ Guns work much like Tarkov's. Each firearm is a detailed procedural model, and i
 - **Magazines are items.** Load them in the inventory, round by round, by dragging ammo onto a magazine (or right-click → Load). Loading only continues while the inventory is open. Drag a magazine onto a weapon to insert it.
 - **Chambered rounds.** **R** swaps in your fullest spare magazine. A tactical reload keeps the chambered round (30+1). On an empty reload the bolt has to be racked. Double-tap **R** for a quick reload that drops the old mag on the ground. The MP-133 loads shell by shell; firing interrupts the loading, and you pump between shots. The PM's slide and the SKS bolt lock back when empty.
 - **No ammo counter.** Press **T** to check your magazine, which gives a rough "About half" reading. **Z** switches fire mode on the AK.
-- **Aiming physics.** The gun lags behind your mouse, and your breathing sways it in a figure-8. Sway grows when you're low on stamina, tired, or moving. Aiming drains arm stamina; hold **Shift** while aiming to hold your breath and steady the shot. Recoil kicks the weapon on springs and climbs the camera, which partly recovers. Bullets fire along the barrel, not the screen center.
+- **Aiming physics.**
+  - **Mouse lag:** the gun lags behind your mouse, more loosely at a run.
+  - **Breathing:** your breathing sways the gun in a figure-8. Sway grows when you're low on stamina, tired, or moving.
+  - **Momentum:** the gun carries your body's momentum. Speeding up, stopping dead or cutting sideways at a sprint throws it the other way, harder the sharper the change. Your aim goes with it.
+  - **Holding breath:** aiming drains arm stamina. Hold **Shift** while aiming to hold your breath: the sway eases out over a moment, the edges of your vision close in, and you exhale (or gasp, if you ran out) when you let go.
+  - **Recoil:** recoil kicks the weapon on springs and climbs the camera, which partly recovers.
+  - **Where bullets go:** bullets fire along the barrel, not the screen center.
+  - **Sprinting** widens the view slightly and gradually.
 - **Animations.** Drawing, magazine swaps (tilt, mag out, hand to pouch, mag in, rack), mag checks, pumping, shell loading, fire-mode switching, bolt and slide cycling, ejected brass and shells, and muzzle flash. The gun pulls back when you face a wall.
 - **Attachments.** Open the inventory (**Tab**). Drag an attachment onto your weapon (in your hands or in a bag), or right-click the attachment and choose **Attach to …**. Right-click the weapon to detach things. Each part only fits certain guns; hover an item to see what it fits. Attachments change ergonomics, sway and recoil.
   - Red dot and holographic sights project their reticle at infinity, like real reflex sights.
-  - The **PSO-1 4×** and **Hunting 6×** are true picture-in-picture scopes: a magnified view renders onto the lens, with the PSO's chevron and rangefinder reticle and an eye-box shadow when the gun sways.
+  - The **PSO-1 4×** and **Hunting 6×** are true picture-in-picture scopes: a magnified view renders onto the lens, with the PSO's chevron and rangefinder reticle and an eye-box shadow when the gun sways. The scope view follows the exact path of the bullet, so the reticle is true: shots land within the rifle's spread.
   - Suppressors cut gunshot noise by about 80%, which matters with zombies around.
   - Also a muzzle brake and a vertical foregrip.
 - **Lean** with **Q** / **E**.
@@ -126,14 +141,15 @@ Four or five survivors have moved into small houses, shops or gas stations aroun
 
   Active quests show their progress on the HUD, and their targets are marked on the map. Rewards are items and reputation.
 - **Finding them.** A post appears on the map once you get close, or when another survivor tells you about it.
-- **Death.** Traders can be hurt and killed, by zombies or by you. A dead trader's post is abandoned: no more trades or quests, but their cupboards are free to loot.
+- **Zombies leave traders alone.** They never pick a trader as prey, and traders' gunfire doesn't draw crowds.
+- **Death.** Traders can be hurt and killed, by you or in crossfire. A dead trader's post is abandoned: no more trades or quests, but their cupboards are free to loot.
 
 ## Hits, ragdolls and gore
 
 Zombies and survivors react physically to what hits them.
 
 - **Hit reactions.** A body rocks away from the hit, and a headshot snaps the head back. Leg shots and heavy blows (shotgun at close range, axe, crowbar) can knock a target off its feet. It goes ragdoll, tumbles, and climbs back up once it settles. You can keep shooting it while it's down.
-- **Death.** Every death is a ragdoll: 15 joints with joint limits, colliding with the ground, walls, cars and furniture. Knees only bend forward and limbs can't pass through the body, so bodies come to rest with their legs out instead of folded up. A shot to the legs sweeps the feet out from under the target.
+- **Death.** Every death is a ragdoll: 15 joints with joint limits, colliding with the ground, walls, cars and furniture. Knees only bend forward and hips have a natural range. Arms and legs collide with the torso (as a solid box) and with each other, so bodies come to rest with their legs out instead of folded through themselves. Bodies collide with other bodies and pile up. Hitting a wall, a window or glass absorbs the blow instead of bouncing the body away. A shot to the legs sweeps the feet out from under the target.
   - The killing blow pushes where it lands, and a running body keeps its momentum.
   - A headshot drops the body limp on the spot. A body shot buckles the knees first, then the body crumples, sometimes with a few death twitches.
   - Survivors drop their gun as they fall.
@@ -155,6 +171,7 @@ Zombies and survivors react physically to what hits them.
 | C / X / Space | Crouch / prone / jump |
 | LMB / RMB | Fire or swing / aim down sights |
 | Shift while aiming | Hold breath |
+| J / K | Goals panel / skip the tutorial (with the panel open) |
 | R / double-tap R | Reload / quick reload (drops the mag) |
 | T / Z | Check magazine / switch fire mode |
 | Q / E | Lean left / right |
@@ -177,7 +194,7 @@ Press **`** (backquote) or **F1** to open the dev console, in game or on the men
 | Player | God mode, noclip, infinite stamina and ammo, frozen needs, invisible to zombies. Sliders for every body part, need and skill. Bleed, infect, break legs, heal, cure. Ready-made loadouts. |
 | World | Spawn friendly, wary or hostile survivors, list them, or kill them all. Freeze zombies, free build, fullbright, no fog. Hour and day sliders, time speed (0–60×). Click the map to teleport. Spawn zombies at your crosshair, around you, or at random. Kill, enrage or calm all zombies. Open, close or repair every door. Restock loot, claim or clear a safehouse. |
 | Items | Search, filter and spawn any item into your inventory, the container you're looking at, or at your feet. Gear goes into an empty equipment slot automatically. |
-| Debug | Collision-box overlay and zombie AI labels (type, state, HP, distance, whether it can see you, bashing). A live view of the zombie pathfinding grid. FPS, draw calls, and game state. |
+| Debug | Bullet tracers: each shot's path and impact in bright purple for 7 seconds (`tracers` command). Collision-box overlay and zombie AI labels (type, state, HP, distance, whether it can see you, bashing). A live view of the zombie pathfinding grid. FPS, draw calls, and game state. |
 | Save | Save now, export or import save files as JSON, reroll the world seed, wipe the save. |
 
 The command line has Tab completion and ↑/↓ history. Type `help` for the full list. Examples:
@@ -205,6 +222,7 @@ god / noclip / invis / freeze / freebuild                    js player.skill
 | `src/player.js` | First-person controller, leaning, melee, body-part health, status effects |
 | `src/weapons.js` | Firearms: weapon/optic models, PIP scopes, sway/recoil physics, animations, magazines, attachments |
 | `src/survivors.js` | AI survivors: dispositions and trust, A* pathfinding, combat, following, dialogue, trading |
+| `src/progress.js` | First-day tutorial, progression chapters and goals, the guide tracker and goals panel |
 | `src/traders.js` | Trading posts: placement, renovation props, barter offers, loyalty, quests, trader screen and quest tracker |
 | `src/zombies.js` | Zombie spawning, perception, flow-field pathing, attacks, hit reactions, knockdowns, corpses |
 | `src/ragdoll.js` | Verlet ragdolls (death, knockdown, get-up), dropped weapons, corpse freezing |

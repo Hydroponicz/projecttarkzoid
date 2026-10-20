@@ -26,6 +26,7 @@ const FLAGS = {
   noFog: 'Disable fog',
   colliders: 'Show collision boxes',
   labels: 'Show zombie AI labels',
+  tracers: 'Show bullet trails and impacts (purple, 7 s)',
   pauseWhileOpen: 'Pause game while console is open',
 };
 const TABS = ['Player', 'World', 'Items', 'Debug', 'Save'];
@@ -336,7 +337,7 @@ export class DevConsole {
 
   tabDebug() {
     const s0 = this.section('Overlays');
-    for (const k of ['colliders', 'labels', 'fullbright', 'noFog']) this.flag(s0, k);
+    for (const k of ['colliders', 'labels', 'tracers', 'fullbright', 'noFog']) this.flag(s0, k);
     const s1 = this.section('Performance & state');
     this.perfEl = document.createElement('div');
     this.perfEl.className = 'dev-stats';
@@ -809,6 +810,7 @@ export class DevConsole {
       } },
       flag: { u: '<name> [on|off]', d: 'Toggle any console flag', f: (a) => { if (!(a[0] in FLAGS)) throw new Error(`Flags: ${Object.keys(FLAGS).join(', ')}`); flagCmd(a[0])(a.slice(1)); } },
       god: { d: 'Toggle god mode', f: flagCmd('god') },
+      tracers: { d: 'Toggle bullet trails and impact markers', f: flagCmd('tracers') },
       noclip: { d: 'Toggle noclip', f: flagCmd('noclip') },
       invis: { d: 'Toggle invisibility to zombies', f: flagCmd('invisible') },
       freeze: { d: 'Toggle frozen zombies', f: flagCmd('freeze') },

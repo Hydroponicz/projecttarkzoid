@@ -425,6 +425,7 @@ export class Traders {
       if (o.type === 'scout') st.targets[i] = this.pickBuilding(o.kinds, t, 60);
     });
     t.quests[q.id] = st;
+    this.game.progress?.event('trade');
     sfx.pickup();
     this.game.hud.message(`Quest accepted: ${q.title}`, 4);
   }
@@ -499,6 +500,7 @@ export class Traders {
     this.give(o.get[0], o.get[1]);
     t.stock[o.id] = { day: this.day(), left: this.stockLeft(t, o) - 1 };
     t.rep = +(t.rep + 0.4).toFixed(1);
+    this.game.progress?.event('trade');
     sfx.pickup();
     this.lastSay = ['Pleasure doing business.', 'Fair trade.', 'Deal.', 'Take care of it.'][Math.floor(Math.random() * 4)];
   }

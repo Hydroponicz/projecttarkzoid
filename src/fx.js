@@ -100,6 +100,7 @@ class DecalLayer {
 }
 const _m4 = new THREE.Matrix4(), _s = new THREE.Vector3(), _q = new THREE.Quaternion(), _p = new THREE.Vector3();
 const quadGeo = new THREE.PlaneGeometry(1, 1);
+const traceDotGeo = new THREE.SphereGeometry(0.05, 10, 8);
 const decalMat = (tex) => new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
 const UP = new THREE.Vector3(0, 1, 0);
 
@@ -137,6 +138,22 @@ export class FX {
     this.attached.push(m);
     if (this.attached.length > 120) { const o = this.attached.shift(); o.parent?.remove(o); }
   }
+
+  // Debug: a bullet's path and where it stopped, bright purple, for 7 s.
+  debugTrace(from, to, hit) {
+    this.traces = this.traces || [];
+    const mat = new THREE.LineBasicMaterial({ color: 0xff30ff, transparent: true, opacity: 0.9, depthTest: false });
+    const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints([from, to]), mat);
+    line.renderOrder = 10;
+    const dot = new THREE.Mesh(traceDotGeo, new THREE.MeshBasicMaterial({ color: hit === 'flesh' ? 0xff60ff : 0xc000ff, transparent: true, depthTest: false }));
+    dot.position.copy(to);
+    dot.renderOrder = 10;
+    this.scene.add(line, dot);
+    this.traces.push({ line, dot, t: 7 });
+    if (this.traces.length > 200) this.dropTrace(this.traces.shift());
+  }
+
+  dropTrace(tr) { this.scene.remove(tr.line, tr.dot); tr.line.geometry.dispose(); tr.line.material.dispose(); tr.dot.material.dispose(); }
 
   // Ejected brass / shotgun shells that tumble and bounce on the ground.
   casing(pos, vel, shell) {
@@ -208,6 +225,15 @@ export class FX {
   }
 
   update(dt) {
+    if (this.traces) {
+      for (let i = this.traces.length - 1; i >= 0; i--) {
+        const tr = this.traces[i];
+        tr.t -= dt;
+        const o = Math.min(1, tr.t); // fade over the last second
+        tr.line.material.opacity = 0.9 * o; tr.dot.material.opacity = o;
+        if (tr.t <= 0) { this.dropTrace(tr); this.traces.splice(i, 1); }
+      }
+    }
     for (let i = this.casings.length - 1; i >= 0; i--) {
       const c = this.casings[i];
       c.life -= dt;
@@ -249,6 +275,8 @@ export class FX {
   clear() {
     for (const c of this.casings) this.scene.remove(c.m);
     for (const m of this.attached) m.parent?.remove(m);
+    for (const tr of this.traces || []) this.dropTrace(tr);
+    this.traces = [];
     this.attached = [];
     this.casings = []; this.parts = []; this.pmesh.count = 0;
     this.splats.clear(); this.pools.clear(); this.holes.clear();

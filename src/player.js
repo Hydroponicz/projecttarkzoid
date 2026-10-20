@@ -310,9 +310,11 @@ export class Player {
       this.eye + this.y + Math.abs(Math.sin(this.bob)) * bobAmt - Math.abs(this.lean) * 0.05 - this.landDip,
       this.pos.z + rzv * leanDist);
     this.camera.rotation.set(this.pitch - this.landDip * 0.4, this.yaw, Math.sin(this.bob * 0.5) * bobAmt * 0.35 - this.lean * 0.16);
-    const sprintFov = wantSprint && moving ? 4 : 0;
-    const targetFov = (gunActive ? 75 + (this.gun.adsFov - 75) * this.ads : 75) + sprintFov * (1 - this.ads);
-    if (Math.abs(this.camera.fov - targetFov) > 0.01) { this.camera.fov = targetFov; this.camera.updateProjectionMatrix(); }
+    // A slight, slow widening at a full sprint; everything eases.
+    this.sprintFovK = (this.sprintFovK || 0) + ((wantSprint && moving ? 1 : 0) - (this.sprintFovK || 0)) * Math.min(1, dt * 1.8);
+    const targetFov = (gunActive ? 75 + (this.gun.adsFov - 75) * this.ads : 75) + 2.5 * this.sprintFovK * (1 - this.ads);
+    const nf = this.camera.fov + (targetFov - this.camera.fov) * Math.min(1, dt * 12);
+    if (Math.abs(this.camera.fov - nf) > 0.001) { this.camera.fov = nf; this.camera.updateProjectionMatrix(); }
 
     // Weapon switching (1 / 2 / mouse wheel)
     this.meleeCd -= dt;
@@ -389,6 +391,7 @@ export class Player {
     const rd = g.ragdolls?.raycast(origin, dir, sv ? sv.t : z ? z.t : wallD);
     const tHit = rd ? rd.t : sv ? sv.t : z ? z.t : null;
     breakGlass(tHit ?? wallD);
+    if (g.dev?.tracers) g.fx.debugTrace(origin, origin.clone().addScaledVector(dir, Math.min(tHit ?? wallD, maxD)), tHit != null ? 'flesh' : 'wall');
     if (tHit == null) {
       if (wallD < maxD) {
         g.fx.impact(wallPoint, normal, wallBox?.decalParent, wallBox?.decalInset);
@@ -536,7 +539,7 @@ export class Player {
     return true;
   }
 
-  onKill(target) { this.kills++; this.game.hud.message('Kill confirmed'); this.game.traders?.onKill(target); }
+  onKill(target) { this.kills++; this.game.hud.message('Kill confirmed'); this.game.traders?.onKill(target); this.game.progress?.onKill(target); }
 
   // ---------- health ----------
   takeZombieHit(amount, zb) {
@@ -620,6 +623,7 @@ export class Player {
   use(item) {
     const def = ITEMS[item.key];
     if (def.type === 'food') {
+      this.game.progress?.event('use', item);
       this.food = Math.min(100, this.food + def.food);
       this.water = Math.max(0, Math.min(100, this.water + def.water));
       if (def.fatigue) this.fatigue = Math.max(0, this.fatigue - def.fatigue);

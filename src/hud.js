@@ -134,6 +134,8 @@ export class HUD {
     prompt.textContent = text;
     this.updateBuildBar(game);
 
+    // Holding breath: the edges of your vision close in a little
+    $('focus').style.opacity = p.active === 'gun' && p.gun ? (p.gun.holdK || 0) * 0.55 : 0;
     $('vignette').style.opacity = Math.max(p.hurtFlash, (1 - Math.min(p.hp.thorax / 85, p.hp.head / 35)) * 0.6);
     // No crosshair with a firearm (Tarkov-style); a small dot for melee and building.
     $('crosshair').style.opacity = p.active === 'gun' && p.weapon && !game.builder.active ? 0 : 0.6;

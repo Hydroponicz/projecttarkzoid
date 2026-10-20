@@ -610,6 +610,8 @@ export function loadStep(job, game) {
 // ---------------------------------------------------------------------------
 // Gun controller: aiming physics, animation, firing, reloading, PIP.
 // ---------------------------------------------------------------------------
+const _scopeEuler = new THREE.Euler();
+
 class Spring {
   constructor() { this.x = 0; this.v = 0; }
   step(dt, k, c, target = 0) { this.v += ((target - this.x) * k - this.v * c) * dt; this.x += this.v * dt; return this.x; }
@@ -628,6 +630,9 @@ export class GunController {
     this.root.add(this.pose);
     this.camera.add(this.root);
     this.lagX = new Spring(); this.lagY = new Spring();
+    this.momX = new Spring(); this.momZ = new Spring(); // body momentum sway
+    this.holdK = 0; // eased hold-breath amount
+    this.lastVel = null;
     this.recP = new Spring(); this.recY = new Spring(); this.kick = new Spring();
     this.camDebt = 0;
     this.ads = 0;
@@ -723,14 +728,32 @@ export class GunController {
     else this.armStamina += 12 * dt;
     this.armStamina = Math.max(0, Math.min(100, this.armStamina));
 
-    // --- sway: inertia from mouse movement ---
+    // --- sway: inertia from mouse movement (looser at a run) ---
+    const sbPrev = this.sprintBlend || 0;
+    const loose = 1 + sbPrev * 1.4 + Math.min(1, (ctx.speed || 0) / 4.6) * 0.5 * (1 - this.ads);
     const lagK = 140 / weight, lagC = 16;
-    this.lagX.v += -input.mdx * 0.00035 * weight;
-    this.lagY.v += -input.mdy * 0.00035 * weight;
+    this.lagX.v += -input.mdx * 0.00035 * weight * loose;
+    this.lagY.v += -input.mdy * 0.00035 * weight * loose;
     this.lagX.step(dt, lagK, lagC);
     this.lagY.step(dt, lagK, lagC);
-    this.lagX.x = THREE.MathUtils.clamp(this.lagX.x, -0.06, 0.06);
-    this.lagY.x = THREE.MathUtils.clamp(this.lagY.x, -0.06, 0.06);
+    const lagMax = 0.06 + 0.07 * sbPrev;
+    this.lagX.x = THREE.MathUtils.clamp(this.lagX.x, -lagMax, lagMax);
+    this.lagY.x = THREE.MathUtils.clamp(this.lagY.x, -lagMax, lagMax);
+
+    // --- sway: body momentum. Speeding up, stopping and cutting sideways
+    // throw the gun the other way, harder the sharper the change.
+    const pv = p.vel;
+    if (!this.lastVel) this.lastVel = { x: pv.x, z: pv.z };
+    const idt = 1 / Math.max(dt, 1 / 240);
+    const axw = (pv.x - this.lastVel.x) * idt, azw = (pv.z - this.lastVel.z) * idt;
+    this.lastVel.x = pv.x; this.lastVel.z = pv.z;
+    const aR = axw * Math.cos(p.yaw) - azw * Math.sin(p.yaw), aF = -axw * Math.sin(p.yaw) - azw * Math.cos(p.yaw);
+    const momGain = 0.0012 * weight * (1 + sbPrev * 1.5) * (1 - this.ads * 0.7);
+    this.momX.v += -aR * momGain * 60 * dt;
+    this.momZ.v += -aF * momGain * 60 * dt;
+    this.momX.step(dt, 70, 9); this.momZ.step(dt, 70, 9);
+    this.momX.x = THREE.MathUtils.clamp(this.momX.x, -0.1, 0.1);
+    this.momZ.x = THREE.MathUtils.clamp(this.momZ.x, -0.08, 0.08);
 
     // --- sway: breathing figure-8, worse when tired / moving ---
     let amp = 0.0035 / ergo;
@@ -742,7 +765,12 @@ export class GunController {
     if (p.fatigue > 80) amp *= 1.4;
     amp *= 1 - 0.05 * aimSkill;
     amp *= 1 + (1 - this.ads) * 1.8;
-    if (this.holding) amp *= 0.12;
+    // Holding breath steadies the gun gradually, and lets go gradually.
+    this.holdK += ((this.holding ? 1 : 0) - this.holdK) * Math.min(1, dt * (this.holding ? 4 : 2.5));
+    if (this.holding && !this.wasHolding) sfx.inhale();
+    if (!this.holding && this.wasHolding) sfx.exhale(this.armStamina < 5);
+    this.wasHolding = this.holding;
+    amp *= 1 - 0.88 * this.holdK;
     const bt = this.time;
     const breathYaw = amp * Math.sin(bt * 0.9);
     const breathPitch = amp * 0.65 * Math.sin(bt * 1.8 + 0.6);
@@ -759,8 +787,9 @@ export class GunController {
     }
 
     // --- final weapon offset relative to the camera ---
-    this.offYaw = this.lagX.x + breathYaw + this.recY.x;
-    this.offPitch = this.lagY.x + breathPitch + this.recP.x;
+    // (bullets follow these: momentum sway pulls your aim too)
+    this.offYaw = this.lagX.x + breathYaw + this.recY.x - this.momX.x * 0.5;
+    this.offPitch = this.lagY.x + breathPitch + this.recP.x - this.momZ.x * 0.35;
 
     // Walk bob on the weapon
     const bob = ctx.moving ? (ctx.sprinting ? 1 : 0.5) * (1 - this.ads * 0.85) : 0;
@@ -781,6 +810,9 @@ export class GunController {
     pose.position.z += this.retract * 0.18; pose.rotation.x += this.retract * 0.7; pose.position.y -= this.retract * 0.04;
     pose.position.z += this.kick.x;
     pose.rotation.x += this.kick.x * 2.2;
+    // Momentum: the gun swings out to the side and rolls, lurches forward or back
+    pose.position.x += this.momX.x * 0.35; pose.rotation.z += this.momX.x * 2.2; pose.rotation.y -= this.momX.x * 0.6;
+    pose.position.z -= this.momZ.x * 0.45; pose.position.y -= Math.abs(this.momZ.x) * 0.2;
 
     // Reset animated parts to their rest positions
     if (parts.magRoot) { parts.magRoot.position.y = parts.magRoot.userData.y0 ??= parts.magRoot.position.y; parts.magRoot.position.z = parts.magRoot.userData.z0 ??= parts.magRoot.position.z; parts.magRoot.visible = true; }
@@ -1055,7 +1087,9 @@ export class GunController {
     if (this.ads < 0.2) return;
     const cam = this.scopeCam;
     op.lens.getWorldPosition(cam.position);
-    this.built.model.getWorldQuaternion(cam.quaternion);
+    // The scope looks exactly where the bullets go (aim + sway + recoil),
+    // not along the cosmetic kick of the model, so the reticle stays true.
+    cam.quaternion.setFromEuler(_scopeEuler.set(this.p.pitch + this.offPitch, this.p.yaw + this.offYaw, 0, 'YXZ'));
     cam.fov = op.fov;
     cam.updateProjectionMatrix();
     cam.layers.set(0);

@@ -558,7 +558,7 @@ class Survivor {
     } else this.fireCd = st.rate * (0.9 + Math.random() * 0.5);
     this.takeRound();
     this.mgr.fireFx(this, tx, tz);
-    game.zombies.noise(this.pos.x, this.pos.z, ITEMS[this.weapon.key].noise);
+    if (!this.trader) game.zombies.noise(this.pos.x, this.pos.z, ITEMS[this.weapon.key].noise); // traders' guns don't draw crowds
     // Hit chance: skill, range, target movement / stance, darkness
     let chance = st.acc * this.skill * (1 - (dT / st.range) * 0.55);
     if (t === p) {
@@ -777,7 +777,7 @@ export class Survivors {
   nearestVisible(pos, range) {
     let best = null, bd = range;
     for (const s of this.list) {
-      if (s.dead) continue;
+      if (s.dead || s.trader) continue; // traders are left alone
       const d = s.pos.distanceTo(pos);
       if (d < bd && hasLOS(this.world.hash, pos.x, pos.z, s.pos.x, s.pos.z)) { bd = d; best = s; }
     }

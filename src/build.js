@@ -118,6 +118,7 @@ export class Builder {
     const grids = this.game.player.ammoGrids();
     if (!this.game.dev?.freeBuild) for (const [k, n] of Object.entries(def.cost)) takeItem(grids, k, n);
     const s = this.create(def.type, x, z, rot);
+    this.game.progress?.event('build');
     // Hammering is loud.
     this.game.zombies.noise(x, z, 22);
     sfx.hammer();

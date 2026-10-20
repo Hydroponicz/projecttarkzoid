@@ -24,6 +24,13 @@ const STRUTS = [[SHL, PEL], [SHR, PEL], [HIL, CHE], [HIR, CHE], [SHL, HIL], [SHR
 const LIMITS = [[SHL, ELL, HAL, 0.5], [SHR, ELR, HAR, 0.5], [HIL, KNL, FTL, 0.66], [HIR, KNR, FTR, 0.66], [CHE, SHL, HAL, 0.4], [CHE, SHR, HAR, 0.4]];
 // Knees are hinges: they only bend forward (hip, knee, foot).
 const KNEES = [[HIL, KNL, FTL], [HIR, KNR, FTR]];
+// Hips: knees can't come up through the chest or cross far under the
+// other leg; [a, b, fraction of the standing distance]
+const MINS = [[KNL, CHE, 0.78], [KNR, CHE, 0.78], [FTL, CHE, 0.72], [FTR, CHE, 0.72], [KNL, HIR, 0.8], [KNR, HIL, 0.8], [KNL, HEAD, 0.75], [KNR, HEAD, 0.75]];
+// Points along limbs that collide with the trunk (as a box): joints, and bone
+// midpoints given as [a, b].
+const ALL_PTS = [PEL, CHE, HEAD, SHL, SHR, ELL, HAL, ELR, HAR, HIL, HIR, KNL, FTL, KNR, FTR];
+const LIMB_PTS = [ELL, HAL, ELR, HAR, KNL, FTL, KNR, FTR, HEAD, [HIL, KNL], [HIR, KNR], [KNL, FTL], [KNR, FTR], [SHL, ELL], [SHR, ELR]];
 // Limbs can't pass through the trunk or each other.
 const SELF = [[KNL, KNR], [FTL, FTR], [KNL, CHE], [KNR, CHE], [FTL, CHE], [FTR, CHE], [FTL, HEAD], [FTR, HEAD], [KNL, HEAD], [KNR, HEAD], [FTL, PEL], [FTR, PEL], [FTL, KNR], [FTR, KNL]];
 // Spans the muscles hold while the body still has tone (dying, stumbling):
@@ -43,7 +50,7 @@ function restPose(kind) {
   return p;
 }
 
-const _v = new THREE.Vector3(), _a = new THREE.Vector3(), _b = new THREE.Vector3(), _f = new THREE.Vector3();
+const _v = new THREE.Vector3(), _a = new THREE.Vector3(), _b = new THREE.Vector3(), _f = new THREE.Vector3(), _d = new THREE.Vector3(), _m2 = new THREE.Vector3();
 const Y = new THREE.Vector3(0, 1, 0);
 const _m = new THREE.Matrix4();
 
@@ -102,6 +109,9 @@ class Ragdoll {
     ];
     this.limits = LIMITS.map(([a, m, b, f]) => [a, b, (len(a, m) + len(m, b)) * f]);
     this.toneCons = TONE.map(([a, b, buckle]) => [a, b, len(a, b), buckle]);
+    this.mins = MINS.map(([a, b, f]) => [a, b, len(a, b) * f]);
+    this.box = [0.25 * s, 0.31 * s, 0.14 * s]; // torso half extents
+    this.neighbors = [];
     if (spec.pose) for (let i = 0; i < N; i++) this.p[i].fromArray(spec.pose, i * 3);
     for (let i = 0; i < N; i++) {
       const prev = this.p[i].clone();
@@ -260,8 +270,19 @@ class Ragdoll {
         p[a].addScaledVector(_v, diff * wa);
         p[b].addScaledVector(_v, -diff * wb);
       }
+      for (const [a, b, min] of this.mins) {
+        _v.subVectors(p[b], p[a]);
+        const d = _v.length() || 1e-6;
+        if (d >= min) continue;
+        const wa = INV_MASS[a], wb = INV_MASS[b];
+        const diff = (d - min) / (d * (wa + wb));
+        p[a].addScaledVector(_v, diff * wa);
+        p[b].addScaledVector(_v, -diff * wb);
+      }
       this.hinges();
       this.selfCollide();
+      this.torsoCollide(this);
+      for (const o of this.neighbors) { this.torsoCollide(o); o.torsoCollide(this); this.jointCollide(o); }
       this.collide(it === 5);
     }
   }
@@ -300,6 +321,60 @@ class Ragdoll {
     }
   }
 
+  // Frame of the trunk: centre, axes (right, up, forward) and half extents.
+  torsoFrame() {
+    const p = this.p, f = this._tf || (this._tf = { c: new THREE.Vector3(), r: new THREE.Vector3(), u: new THREE.Vector3(), f: new THREE.Vector3() });
+    f.c.addVectors(p[PEL], p[CHE]).multiplyScalar(0.5);
+    f.u.subVectors(p[CHE], p[PEL]).normalize();
+    f.r.subVectors(p[SHR], p[SHL]).add(_a.subVectors(p[HIR], p[HIL])).addScaledVector(f.u, 0);
+    f.r.addScaledVector(f.u, -f.r.dot(f.u)).normalize();
+    f.f.crossVectors(f.r, f.u);
+    return f;
+  }
+
+  // Keep `body`'s limbs out of this ragdoll's trunk (a box). For our own
+  // body only the limbs count; for another body, every joint does.
+  torsoCollide(body) {
+    const own = body === this;
+    const F = this.torsoFrame(), [hx, hy, hz] = this.box;
+    const bp = body.p, br = body.r;
+    const pts = own ? LIMB_PTS : ALL_PTS;
+    for (const pt of pts) {
+      let P, rad, a = -1, b = -1;
+      if (Array.isArray(pt)) { [a, b] = pt; P = _m2.addVectors(bp[a], bp[b]).multiplyScalar(0.5); rad = (br[a] + br[b]) * 0.5; }
+      else { P = bp[pt]; rad = br[pt] * 0.85; }
+      _d.subVectors(P, F.c);
+      const lx = _d.dot(F.r), ly = _d.dot(F.u), lz = _d.dot(F.f);
+      const px = hx + rad - Math.abs(lx), py = hy + rad - Math.abs(ly), pz = hz + rad - Math.abs(lz);
+      if (px <= 0 || py <= 0 || pz <= 0) continue;
+      // Push out the shallowest way
+      let axis, pen, sgn;
+      if (pz <= px && pz <= py) { axis = F.f; pen = pz; sgn = Math.sign(lz) || 1; }
+      else if (px <= py) { axis = F.r; pen = px; sgn = Math.sign(lx) || 1; }
+      else { axis = F.u; pen = py; sgn = Math.sign(ly) || 1; }
+      const limb = own ? 0.75 : 0.5;
+      if (a >= 0) { bp[a].addScaledVector(axis, sgn * pen * limb); bp[b].addScaledVector(axis, sgn * pen * limb); }
+      else bp[pt].addScaledVector(axis, sgn * pen * limb);
+      if (!this.sleeping) { this.p[PEL].addScaledVector(axis, -sgn * pen * (1 - limb) * 0.5); this.p[CHE].addScaledVector(axis, -sgn * pen * (1 - limb) * 0.5); }
+    }
+  }
+
+  // Joint spheres against another body's joint spheres (bodies pile up).
+  jointCollide(o) {
+    const p = this.p, q = o.p;
+    for (let i = 0; i < N; i++) {
+      for (let j = 0; j < N; j++) {
+        _v.subVectors(p[i], q[j]);
+        const d2 = _v.lengthSq(), min = this.r[i] + o.r[j];
+        if (d2 >= min * min || d2 < 1e-10) continue;
+        const d = Math.sqrt(d2), pen = min - d;
+        const share = o.sleeping ? 1 : 0.5;
+        p[i].addScaledVector(_v, (pen / d) * share);
+        if (!o.sleeping) q[j].addScaledVector(_v, -(pen / d) * (1 - share));
+      }
+    }
+  }
+
   // Shot or hit in the legs: the feet are swept out the way the blow went
   // and the upper body pitches the other way, so the body goes down hard.
   sweepLegs(dir, speed) {
@@ -328,15 +403,32 @@ class Ragdoll {
       }
       // World boxes (walls, cars, furniture) below the joint's height
       for (const b of hash.query(pt.x - r, pt.z - r, pt.x + r, pt.z + r, this.sys.tmp)) {
-        if (b.noCollide || pt.y - r > (b.h ?? 3)) continue;
+        if (b.noCollide) continue;
+        // Windows: glass stops a body; an open or smashed one only has its sill.
+        const top = b.window ? (b.window.state === 'closed' ? 3 : b.window.sill) : (b.h ?? 3);
+        if (pt.y - r > top) continue;
         const cx = Math.max(b.minX, Math.min(pt.x, b.maxX)), cz = Math.max(b.minZ, Math.min(pt.z, b.maxZ));
         const dx = pt.x - cx, dz = pt.z - cz, d2 = dx * dx + dz * dz;
         if (d2 >= r * r) continue;
-        if ((b.h ?? 3) < 1.2 && pt.y > (b.h ?? 3) - 0.15) { pt.y = (b.h ?? 3) + r; continue; } // resting on top of low objects
+        // Only a limb coming down onto a low object rests on it; one that
+        // meets it from the side is pushed aside (no popping up onto sills).
+        if (top < 1.2 && q[i].y - r >= top - 0.04) { pt.y = top + r; if (q[i].y < pt.y) q[i].y = pt.y; continue; }
+        const ox = pt.x, oz = pt.z;
         if (d2 > 1e-8) { const d = Math.sqrt(d2); pt.x += (dx / d) * (r - d); pt.z += (dz / d) * (r - d); }
         else {
-          const l = pt.x - b.minX, rr = b.maxX - pt.x, t = pt.z - b.minZ, bt = b.maxZ - pt.z, m = Math.min(l, rr, t, bt);
+          // Inside the box: out the way it came in (from the previous position), else the shallowest side
+          const px = q[i].x, pz = q[i].z;
+          const l = pt.x - b.minX, rr = b.maxX - pt.x, t = pt.z - b.minZ, bt = b.maxZ - pt.z;
+          const m = px <= b.minX ? l : px >= b.maxX ? rr : pz <= b.minZ ? t : pz >= b.maxZ ? bt : Math.min(l, rr, t, bt);
           if (m === l) pt.x = b.minX - r; else if (m === rr) pt.x = b.maxX + r; else if (m === t) pt.z = b.minZ - r; else pt.z = b.maxZ + r;
+        }
+        // The push-out mustn't become velocity (that's what flung bodies off
+        // walls and window glass): an inelastic hit.
+        const cx2 = pt.x - ox, cz2 = pt.z - oz, cl = Math.hypot(cx2, cz2);
+        if (cl > 1e-6) {
+          const nx = cx2 / cl, nz = cz2 / cl;
+          const vn = (pt.x - q[i].x) * nx + (pt.z - q[i].z) * nz;
+          if (vn > 0) { q[i].x += nx * vn; q[i].z += nz * vn; }
         }
         if (friction) { q[i].x += (pt.x - q[i].x) * 0.2; q[i].z += (pt.z - q[i].z) * 0.2; }
       }
@@ -474,6 +566,9 @@ export class RagdollSystem {
     for (const r of this.list) {
       r.age += dt;
       if (r.sleeping) continue;
+      // Other bodies close enough to touch this one
+      r.neighbors.length = 0;
+      for (const o of this.list) if (o !== r && !o.dead && o.pelvis.distanceToSquared(r.pelvis) < 4.4) r.neighbors.push(o);
       for (let i = 0; i < steps; i++) r.step(this.h);
       r.updateMeshes();
       // Settling: motion has died down for a moment

@@ -7,6 +7,7 @@ import { HUD } from './hud.js';
 import { FX } from './fx.js';
 import { RagdollSystem, lookMats } from './ragdoll.js';
 import { Traders } from './traders.js';
+import { Progress } from './progress.js';
 import { InventoryUI } from './invui.js';
 import { ITEMS, makeItem, migrateItem, itemValue } from './items.js';
 import { combineItems, weaponActions, loadStep } from './weapons.js';
@@ -238,6 +239,7 @@ class Game {
     else this.survivors.populate(8);
     this.traders = new Traders(this, w?.traders || null);
     this.traders.spawnNPCs();
+    this.progress = new Progress(this, this.profile, !ch.player);
 
     this.updateLighting();
     this.autosave = AUTOSAVE;
@@ -352,6 +354,9 @@ class Game {
     this.survivors = null;
     this.traders?.dispose();
     this.traders = null;
+    this.progress?.togglePanel(false);
+    this.progress = null;
+    $('guide').innerHTML = '';
     this.ragdolls?.dispose();
     this.ragdolls = null;
     this.world?.dispose();
@@ -424,6 +429,8 @@ class Game {
   }
 
   openInventory(container) {
+    if (container?.grid && !container.survivor) this.progress?.event('search', container);
+    else if (!container) this.progress?.event('inv');
     this.invOpen = true;
     this.openContainer = container || null;
     this.input.unlock();
@@ -587,6 +594,7 @@ class Game {
     const fade = $('sleepfade');
     fade.style.opacity = 1;
     this.sleeping = true;
+    this.progress?.event('sleep');
     setTimeout(() => {
       this.time += hours * 60;
       p.sleep(hours);
@@ -798,6 +806,10 @@ class Game {
 
     if (this.invOpen) inp.reload = inp.slot1 = inp.slot2 = inp.flashlight = inp.interact = inp.check = inp.fireMode = inp.jump = inp.crouchToggle = inp.prone = false;
     this.tickLoader(dt);
+    // Goals panel: J toggles it, K (while it's open) skips the tutorial
+    if (pressed('KeyJ') && !this.invOpen) this.progress.togglePanel();
+    if (this.progress.panelOpen && (pressed('Escape') || this.invOpen)) this.progress.togglePanel(false);
+    if (this.progress.panelOpen && pressed('KeyK') && this.progress.tutorialActive) { this.progress.skipTutorial(); this.progress.drawPanel(); }
     if (pressed('KeyB') && !this.invOpen) {
       this.builder.toggle();
       this.hud.message(this.builder.active ? 'Build mode: 1–6 select, R rotate, LMB build, X dismantle, B exit' : 'Build mode off');
@@ -817,6 +829,7 @@ class Game {
     if (this.state !== 'play') return;
     this.dev.applyCheats();
     if (!this.dev.freeze) this.zombies.update(dt, this.player, this);
+    this.progress.update(dt);
     if (this.state !== 'play') return;
     if (!this.dev.freeze) this.survivors.update(dt);
     if (this.state !== 'play') return;
