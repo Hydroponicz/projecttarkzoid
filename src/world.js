@@ -62,13 +62,16 @@ export function buildWorld(scene, seed) {
   const WT = worldTextures();
   const gsize = HALF * 2 + 80;
   const grassTex = WT.grass.clone(); grassTex.needsUpdate = true; grassTex.repeat.set(gsize / 6, gsize / 6); // a tile every 6 m
-  const ground = new THREE.Mesh(new THREE.PlaneGeometry(gsize, gsize), new THREE.MeshStandardMaterial({ map: grassTex, roughness: 1 }));
+  // Flat things lie a centimetre or two above the ground, closer than the
+  // depth buffer can tell apart at a distance (the near plane is very close
+  // for the viewmodel), so the ground and roads are pushed back in depth.
+  const ground = new THREE.Mesh(new THREE.PlaneGeometry(gsize, gsize), new THREE.MeshStandardMaterial({ map: grassTex, roughness: 1, polygonOffset: true, polygonOffsetFactor: 4, polygonOffsetUnits: 16 }));
   ground.rotation.x = -Math.PI / 2;
   ground.receiveShadow = true;
   group.add(ground);
 
   // Asphalt: one texture tile per 8 m (a material for each road direction)
-  const asph = (rx, ry) => { const t = WT.asphalt.clone(); t.needsUpdate = true; t.repeat.set(rx, ry); return new THREE.MeshStandardMaterial({ map: t, roughness: 0.95 }); };
+  const asph = (rx, ry) => { const t = WT.asphalt.clone(); t.needsUpdate = true; t.repeat.set(rx, ry); return new THREE.MeshStandardMaterial({ map: t, roughness: 0.95, polygonOffset: true, polygonOffsetFactor: 2, polygonOffsetUnits: 8 }); };
   const roadMats = { x: asph(ROAD / 8, (200 + ROAD) / 8), z: asph((200 + ROAD) / 8, ROAD / 8) };
   const walkMat = mergeableMaterial('slab', 0xb0aca4, 0.5, 0.9), curbMat = mergeableMaterial('concrete', 0x9a9890, 1, 0.9);
   const lineMat = new THREE.MeshBasicMaterial({ color: 0x8a8460 });

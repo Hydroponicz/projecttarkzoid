@@ -219,11 +219,13 @@ Guns work much like Tarkov's. Each firearm is a detailed procedural model, and i
     - MP-133: walnut stock and a grooved pump.
   - Textures are generated: wood grain, worn and blued metal, stippled polymer, Bakelite.
   - Gloved hands have fingers wrapped round the grip, camo sleeves and a wristwatch.
-- **Reload animations.** Reloads are shown in full:
-  - The gun comes up and cants so you can see the magazine well.
+- **Reload animations.** Reloads are shown in full, with the body behind them, the way modern shooters animate them:
+  - The gun swings across your view onto its side, muzzle up and in, so the magazine well faces you. It turns at your wrist, not around the middle of the gun.
+  - The gun follows the hands on springs, so it carries momentum and settles. Pulling the magazine dips it, the new one seating and being slapped home jolts it, and the bolt flying forward kicks it. The view sways a little with the work and glances down at your rig as you reach for a magazine.
+  - The hands move in arcs. The wrist comes up from the pouch turned and squares up at the well, and it winds up before the slap.
   - The left hand rocks the old magazine out (AK) or pulls it down (SKS, PM), then pockets it. A quick reload drops it instead.
   - The hand brings the new magazine up from your gear, seats it and slaps it home. On an empty gun it reaches over and racks the charging handle (or lets the pistol's slide drop).
-  - The shotgun is loaded with a shell held in the fingers.
+  - The shotgun rolls over so the loading port faces you, and each shell is pushed in with the fingers.
 - **Your condition shows in your hands.**
   - **Rested:** reloads are quick and crisp.
   - **Tired** (low stamina, exhausted, very fatigued or shivering): reloads are slower and the arms sag. You breathe hard, and at the hip the gun droops and heaves with each breath.

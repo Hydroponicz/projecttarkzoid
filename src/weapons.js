@@ -419,8 +419,8 @@ const ARM_MAX = 60;
 // one, maybe fumble it, seat it, slap it home, rack the bolt if the gun was
 // empty, and return to the grip. Tired and injured hands are slower.
 const RELOAD_STEPS = {
-  rifle: { reach: 0.24, out: 0.22, stow: 0.3, drop: 0.12, fetch: 0.32, miss: 0.32, seat: 0.2, slap: 0.1, charge: 0.5, ret: 0.24 },
-  pistol: { reach: 0.16, out: 0.14, stow: 0.22, drop: 0.08, fetch: 0.24, miss: 0.26, seat: 0.14, slap: 0.08, charge: 0.24, ret: 0.18 },
+  rifle: { reach: 0.26, out: 0.24, stow: 0.32, drop: 0.12, fetch: 0.36, miss: 0.34, seat: 0.2, slap: 0.12, charge: 0.52, ret: 0.3 },
+  pistol: { reach: 0.18, out: 0.16, stow: 0.24, drop: 0.08, fetch: 0.26, miss: 0.28, seat: 0.14, slap: 0.1, charge: 0.26, ret: 0.22 },
 };
 function reloadTimeline({ pistol, hasOld, quick, fumble, charge, swap = true, k }) {
   const S = RELOAD_STEPS[pistol ? 'pistol' : 'rifle'];
@@ -445,7 +445,57 @@ const HOLD = { rock: new THREE.Vector3(-0.024, -0.08, -0.014), box: new THREE.Ve
 const POUCH = { y: -0.32, x: -0.13, z: 0.14, rx: 0.9 };
 const _v = new THREE.Vector3(), _e = new THREE.Euler(), _q = new THREE.Quaternion(), _a = new THREE.Vector3(), _Z = new THREE.Vector3(0, 0, 1);
 
+// How the body moves the gun through a reload, like a person rather than a
+// machine: keyframed poses the gun follows through springs, so it carries
+// momentum, overshoots a little and settles, and takes knocks from the hands.
+// Poses are offsets from the hip pose, turning about the firing hand's wrist:
+//   well:   canted onto its side, muzzle swung in and pitched up, brought up
+//           and in so the magazine well faces you, well in view
+//   away:   relaxed a little while the support hand is down at the pouch
+//   charge: rolled the other way to bring the charging handle (or the
+//           pistol's slide) round where the hand can get at it
+const RB_KEYS = ['x', 'y', 'z', 'rx', 'ry', 'rz'];
+const RB_POSES = {
+  rifle: {
+    well: { x: -0.07, y: 0.09, z: -0.06, rx: 0.45, ry: 0.3, rz: -0.4 },
+    away: { x: -0.06, y: 0.07, z: -0.04, rx: 0.36, ry: 0.24, rz: -0.26 },
+    charge: { x: -0.06, y: 0.06, z: -0.03, rx: 0.12, ry: 0.2, rz: 0.48 },
+  },
+  pistol: {
+    well: { x: -0.075, y: 0.08, z: 0.02, rx: 0.7, ry: 0.32, rz: -0.5 },
+    away: { x: -0.065, y: 0.065, z: 0.02, rx: 0.55, ry: 0.26, rz: -0.32 },
+    charge: { x: -0.07, y: 0.08, z: 0.02, rx: 0.3, ry: 0.3, rz: -0.15 },
+  },
+};
+const RB_ZERO = { x: 0, y: 0, z: 0, rx: 0, ry: 0, rz: 0 };
+// Shotgun: rolled well over so the loading port under the receiver faces you
+const RB_SHELL = { x: -0.07, y: 0.08, z: -0.05, rx: 0.3, ry: 0.28, rz: -0.75 };
+const rbMix = (a, b, k) => Object.fromEntries(RB_KEYS.map((n) => [n, a[n] + (b[n] - a[n]) * k]));
+// Keyframes [time, pose] for a reload timeline
+function reloadKeys(tl, pistol) {
+  const P = RB_POSES[pistol ? 'pistol' : 'rifle'], ph = tl.ph, keys = [[0, RB_ZERO]];
+  const at = (n, f) => ph[n][0] + (ph[n][1] - ph[n][0]) * f;
+  if (ph.stow) {
+    if (ph.reach) keys.push([at('reach', 0.85), P.well], [ph.out[1], P.well]);
+    else keys.push([at('stow', 0.6), P.well]);
+    keys.push([at('stow', 0.7), P.away], [at('fetch', 0.45), P.away], [ph.fetch[1], P.well]);
+    keys.push([ph.slap[1], P.well]);
+  }
+  if (ph.charge) keys.push([at('charge', 0.3), P.charge], [at('charge', 0.75), rbMix(P.charge, RB_ZERO, 0.25)]);
+  keys.push([tl.dur, RB_ZERO]);
+  return keys;
+}
+function sampleKeys(keys, T) {
+  if (T <= keys[0][0]) return keys[0][1];
+  for (let i = 0; i < keys.length - 1; i++) {
+    const [t0, a] = keys[i], [t1, b] = keys[i + 1];
+    if (T < t1) return rbMix(a, b, sstep(t0, t1, T));
+  }
+  return keys[keys.length - 1][1];
+}
+
 export class GunController {
+  static RB_POSES = RB_POSES; // exposed so poses can be tuned live from the console
   constructor(player) {
     this.p = player;
     this.cond = { tired: 0, hurt: 0, broken: false };
@@ -460,6 +510,7 @@ export class GunController {
     this.holdK = 0; // eased hold-breath amount
     this.lastVel = null;
     this.recP = new Spring(); this.recY = new Spring(); this.kick = new Spring();
+    this.rb = Object.fromEntries(RB_KEYS.map((n) => [n, new Spring()])); // reload body motion
     this.camDebt = 0;
     this.ads = 0;
     this.armStamina = 100;
@@ -693,6 +744,7 @@ export class GunController {
     }
 
     this.updateAnim(dt, w, def, cfg, parts, input);
+    this.reloadBody(dt, parts);
     for (const H of [parts.handL, parts.handR]) if (H) this.aimArm(H);
 
     // Muzzle flash
@@ -750,9 +802,9 @@ export class GunController {
       if (L && !a.shellMesh) { a.shellMesh = shellModel(); a.shellMesh.position.set(0.012, 0.022, -0.03); a.shellMesh.rotation.x = -0.4; a.shellMesh.traverse((o) => o.layers.set(VM_LAYER)); L.add(a.shellMesh); }
       if (a.shellMesh) a.shellMesh.visible = t > 0.08 && t < 0.7;
       const tilt = Math.min(1, a.loops > 0 ? 1 : sstep(0, 0.25, t));
-      // up and canted so the loading port under the receiver faces you
-      pose.position.y += 0.08 * tilt; pose.position.x -= 0.04 * tilt; pose.position.z += 0.02 * tilt;
-      pose.rotation.z -= 0.85 * tilt; pose.rotation.x += 0.05 * tilt; pose.rotation.y -= 0.25 * tilt;
+      // rolled over so the loading port under the receiver faces you (the body
+      // motion follows this through springs, see reloadBody)
+      a.target = rbMix(RB_ZERO, RB_SHELL, tilt);
       if (L) {
         // left hand leaves the pump, pushes a shell into the port
         const port = parts.port.position.clone().sub(parts.pump.position).add(new THREE.Vector3(-0.01, -0.03, 0.02));
@@ -782,6 +834,32 @@ export class GunController {
     arm.quaternion.setFromUnitVectors(_Z, _a.normalize());
   }
 
+  // The body behind a reload: the gun follows the reload's pose through
+  // springs (looser and slower to settle when tired), turning about the
+  // firing hand's wrist, and the view sways a little with it.
+  reloadBody(dt, parts) {
+    const a = ['reload', 'shell', 'pump'].includes(this.anim?.type) ? this.anim : null;
+    const tgt = a?.target || RB_ZERO, c = a?.cond || this.cond, rb = this.rb;
+    const k = 150 * (1 - 0.35 * c.tired), damp = 2 * Math.sqrt(k) * (0.62 - 0.12 * c.tired);
+    let moving = false;
+    for (const n of RB_KEYS) { rb[n].step(dt, k, damp, tgt[n]); if (Math.abs(rb[n].x) > 1e-4 || Math.abs(rb[n].v) > 1e-3) moving = true; }
+    if (!moving && !a) return;
+    const pose = this.pose;
+    pose.rotation.x += rb.rx.x; pose.rotation.y += rb.ry.x; pose.rotation.z += rb.rz.x;
+    pose.position.x += rb.x.x; pose.position.y += rb.y.x; pose.position.z += rb.z.x;
+    if (parts.handR) {
+      const m = this.built.model;
+      m.updateMatrix();
+      const piv = _v.copy(parts.handR.position).applyMatrix4(m.matrix);
+      _a.copy(piv).applyEuler(_e.set(rb.rx.x, rb.ry.x, rb.rz.x));
+      pose.position.add(piv.sub(_a));
+    }
+    const cam = this.camera.rotation, look = a?.look || 0;
+    cam.z += rb.rz.x * 0.07; cam.x += rb.rx.x * 0.05 - 0.04 * look; cam.y += rb.ry.x * 0.06;
+  }
+  // A knock to the gun from the hands (velocities, per pose channel)
+  bodyKick(o) { for (const n in o) this.rb[n].v += o[n]; }
+
   // ---------- magazine reload (timeline in seconds) ----------
   updateReload(dt, a, w, cfg, parts) {
     a.time += dt;
@@ -798,24 +876,13 @@ export class GunController {
     const shake = (0.0015 + 0.004 * c.tired + 0.008 * c.hurt) * (inP('fetch') || inP('seat') || inP('miss') ? 1 : 0.4);
     const tr = (f) => shake * (Math.sin(T * f) + Math.sin(T * f * 1.73 + 2)) * 0.5;
 
-    // --- the gun: tilted to show the magazine well, back for the bolt, level again
-    const swapEnd = ph.slap ? ph.slap[1] : 0;
-    const tilt = ph.reach || ph.stow ? sstep(0, 0.18 * a.k, T) * (1 - sstep(swapEnd - 0.05, swapEnd + 0.12, T)) : 0;
-    const chg = ph.charge ? bump(ph.charge[0] - 0.08, ph.charge[0] + 0.1, ph.charge[1] - 0.05, ph.charge[1] + 0.12, T) : 0;
-    // The gun comes up and in toward the middle of the view so you can watch
-    // your hands work the magazine well (at the hip it's below the screen)
-    const up = Math.max(tilt, chg * 0.8);
-    if (pistol) { pose.position.y += 0.07 * up; pose.position.x -= 0.05 * up; pose.position.z += 0.06 * up; pose.rotation.x += 0.3 * tilt; pose.rotation.z -= 0.25 * tilt; }
-    else {
-      // canted hard so the magazine well faces you, muzzle off to the right
-      pose.position.y += 0.1 * up; pose.position.x -= 0.035 * up; pose.position.z += (cfg.length > 0.75 ? -0.03 : 0.02) * up; // long rifles stay further out
-      pose.rotation.z -= 0.95 * tilt; pose.rotation.x += 0.06 * tilt; pose.rotation.y -= 0.3 * up;
-    }
-    pose.rotation.z += pistol ? 0 : 0.3 * chg; pose.rotation.x += 0.1 * chg;
+    // --- the gun: the body pose to follow (see reloadBody), and a glance
+    // down at the rig while the hand is at the pouch
+    a.target = sampleKeys(a.keys, T);
+    a.look = ph.stow ? bump(ph.stow[0], ph.stow[0] + 0.2 * a.k, ph.fetch[0] + 0.12 * a.k, ph.fetch[1], T) : 0;
     const busy = 1 - sstep(tl.dur - 0.2, tl.dur, T);
     pose.position.y -= (0.03 * c.tired + 0.025 * c.hurt) * busy; // arms sag under the weight
     pose.position.y += Math.sin(T * 4.2) * 0.006 * c.tired * busy;  // heavy breathing
-    if (ph.slap) pose.position.y += 0.008 * bump(ph.slap[0], ph.slap[0] + 0.03, ph.slap[0] + 0.04, ph.slap[1], T);
 
     // --- magazines: offsets from the magazine's seat (y, z, rotation x)
     const old = { x: 0, y: 0, z: 0, rx: 0, vis: !!parts.mag };
@@ -830,8 +897,8 @@ export class GunController {
           old.y -= 4.9 * f * f * 0.7; old.rx += f * 5; old.x -= f * 0.15;
           old.vis = f < 0.45;
         } else {
-          const ks = k('stow');
-          old.x = POUCH.x * ks; old.y += (POUCH.y - old.y) * ks; old.z += (POUCH.z - old.z) * ks; old.rx += (POUCH.rx - old.rx) * ks;
+          const ks = k('stow'), arc = Math.sin(ks * Math.PI);
+          old.x = POUCH.x * ks - 0.05 * arc; old.y += (POUCH.y - old.y) * ks; old.z += (POUCH.z - old.z) * ks + 0.03 * arc; old.rx += (POUCH.rx - old.rx) * ks;
           old.vis = ks < 0.98;
         }
       }
@@ -842,6 +909,8 @@ export class GunController {
       const kf = k('fetch');
       const lerpTo = (o, to, t2) => { o.x += (to.x - o.x) * t2; o.y += (to.y - o.y) * t2; o.z += (to.z - o.z) * t2; o.rx += (to.rx - o.rx) * t2; };
       lerpTo(nw, { x: 0, ...pre }, kf);
+      const arc = Math.sin(kf * Math.PI); // swings out and round to the well
+      nw.x -= 0.055 * arc; nw.z += 0.02 * arc; nw.rx += 0.25 * arc;
       if (ph.miss) {
         // first try misses the well: knocks the edge, backs off, lines up again
         const km = (T - ph.miss[0]) / (ph.miss[1] - ph.miss[0]);
@@ -878,7 +947,12 @@ export class GunController {
       const hold = (m) => _v.copy(HOLD[style]).applyEuler(_e.set(rest.rx + m.rx, 0, 0)).add(new THREE.Vector3(rest.x + m.x, rest.y + m.y, rest.z + m.z));
       let pos = L0.clone(), rx = 0, rz = 0;
       const grip = 0.45, roll = pistol ? 0 : -0.5;
-      if (ph.reach && T < ph.reach[1]) { const kr = k('reach'); pos.lerp(hold(old), kr); rx = grip * kr; rz = roll * kr; }
+      if (ph.reach && T < ph.reach[1]) {
+        // off the handguard, dipping under it on the way to the magazine
+        const kr = k('reach');
+        pos.lerp(hold(old), kr); pos.y -= 0.025 * Math.sin(kr * Math.PI);
+        rx = grip * kr; rz = roll * kr;
+      }
       else if (ph.out && T < ph.out[1]) { pos.copy(hold(old)); rx = grip; rz = roll; }
       else if (ph.stow && T < ph.stow[1]) {
         if (a.quick || !ph.out) {
@@ -887,7 +961,14 @@ export class GunController {
           pos.copy(ph.out ? hold(outEnd) : L0).lerp(hold(POUCH), k('stow'));
         } else pos.copy(hold(old));
         rx = grip; rz = roll;
-      } else if (ph.fetch && T < (ph.slap ? ph.slap[1] : 0)) { pos.copy(hold(nw)); rx = grip; rz = roll; if (inP('slap')) pos.y += 0.012 * bump(0, 0.3, 0.5, 1, (T - ph.slap[0]) / (ph.slap[1] - ph.slap[0])); }
+      } else if (ph.fetch && T < (ph.slap ? ph.slap[1] : 0)) {
+        pos.copy(hold(nw)); rx = grip; rz = roll;
+        // the wrist comes up from the pouch turned, and squares up at the well
+        const kf = k('fetch');
+        rz += 0.7 * (1 - kf) * (T >= ph.fetch[0] ? 1 : 0); rx += 0.3 * (1 - kf) * (T >= ph.fetch[0] ? 1 : 0);
+        // the slap: a short wind-up, then the heel of the hand drives it home
+        if (inP('slap')) { const u = (T - ph.slap[0]) / (ph.slap[1] - ph.slap[0]); pos.y += -0.022 * bump(0, 0.35, 0.35, 0.55, u) + 0.008 * bump(0.45, 0.6, 0.7, 1, u); }
+      }
       else if (ph.charge && T < ph.charge[1] && parts.boltHandle && !pistol) {
         // over to the charging handle, rack it, let it fly
         const h = new THREE.Vector3(...parts.boltHandle).add(new THREE.Vector3(0.014, -0.014, -0.012));
@@ -901,10 +982,12 @@ export class GunController {
         rx = 0.2 * (1 - leave); rz = -0.9 * reachH * (1 - leave);
       } else {
         // back to the grip
-        const fromPos = ph.slap ? hold({ x: 0, y: 0, z: 0, rx: 0 }) : L0;
+        // (after racking the bolt the hand is already on its way back)
+        const fromMag = ph.slap && !(ph.charge && parts.boltHandle && !pistol);
+        const fromPos = fromMag ? hold({ x: 0, y: 0, z: 0, rx: 0 }) : L0;
         const kr = k('ret');
         pos.copy(fromPos).lerp(L0, kr);
-        rx = grip * (1 - kr) * (ph.slap && !ph.charge ? 1 : 0); rz = roll * (1 - kr) * (ph.slap && !ph.charge ? 1 : 0);
+        rx = grip * (1 - kr) * (fromMag ? 1 : 0); rz = roll * (1 - kr) * (fromMag ? 1 : 0);
       }
       pos.x += tr(23); pos.y += tr(19);
       L.position.copy(pos);
@@ -970,17 +1053,18 @@ export class GunController {
     const ph = () => this.anim?.tl?.ph || tl.ph;
     const at = (name, f = 1) => () => { const q = ph()[name]; return q ? q[0] + (q[1] - q[0]) * f : Infinity; };
     this.play('reload', tl.dur, {
-      tl, opts, cond: c, k: kSpeed, rest, newRoot, time: 0,
+      tl, opts, cond: c, k: kSpeed, rest, newRoot, time: 0, keys: reloadKeys(tl, opts.pistol),
       events: [
-        { at: at('out', 0.3), fn: () => { if (old) sfx.magOut(); } },
+        { at: at('out', 0.3), fn: () => { if (old) { sfx.magOut(); this.bodyKick({ y: -0.12, rx: -0.5, rz: 0.2 }); } } },
         { at: at('out', 1), fn: () => {
           // Old magazine goes to your inventory, or the ground on a quick reload.
           if (old) { w.mag = null; if (this.anim?.quick || !grids.some((g) => addItem(g, old))) p.game.dropItem(old); }
         } },
         { at: at('fetch', 0), fn: () => { removeItem(bestGrid, best); if (!old) w.mag = null; } },
-        { at: at('miss', 0.35), fn: () => { sfx.click(700, 0.25); p.game.hud.message(c.hurt > c.tired ? 'Your injured arm fumbles the magazine' : 'Your hands are shaking: you fumble the magazine', 2); } },
-        { at: at('seat', 0.9), fn: () => { w.mag = best; sfx.magIn(); } },
-        { at: at('charge', 0.56), fn: () => { if (!opts.charge) return; sfx.bolt(); if (w.mag?.rounds > 0) { w.mag.rounds--; w.chamber = 1; } } },
+        { at: at('miss', 0.35), fn: () => { sfx.click(700, 0.25); this.bodyKick({ y: -0.1, rz: 0.5, rx: -0.3 }); p.game.hud.message(c.hurt > c.tired ? 'Your injured arm fumbles the magazine' : 'Your hands are shaking: you fumble the magazine', 2); } },
+        { at: at('seat', 0.9), fn: () => { w.mag = best; sfx.magIn(); this.bodyKick({ y: 0.2, rx: 0.9, rz: -0.35 }); } },
+        { at: at('slap', 0.55), fn: () => this.bodyKick({ y: 0.3, rx: 1.1 }) },
+        { at: at('charge', 0.56), fn: () => { if (!opts.charge) return; sfx.bolt(); this.bodyKick({ z: 0.25, rx: 1.3, rz: 0.5 }); if (w.mag?.rounds > 0) { w.mag.rounds--; w.chamber = 1; } } },
       ],
       onDone: () => { this.rebuild(true); },
     });
@@ -994,6 +1078,7 @@ export class GunController {
     a.quick = true;
     a.opts = { ...a.opts, quick: true };
     a.tl = reloadTimeline(a.opts);
+    a.keys = reloadKeys(a.tl, a.opts.pistol);
     a.dur = a.tl.dur;
     return true;
   }
@@ -1005,8 +1090,8 @@ export class GunController {
     const tl = reloadTimeline(opts);
     const rest = { x: parts.magRoot.position.x, y: parts.magRoot.userData.y0 ?? parts.magRoot.position.y, z: parts.magRoot.userData.z0 ?? parts.magRoot.position.z, rx: parts.magRoot.userData.rx0 ??= parts.magRoot.rotation.x };
     this.play('reload', tl.dur, {
-      tl, opts, cond: c, k: kSpeed, rest, time: 0,
-      events: [{ at: () => tl.ph.charge[0] + (tl.ph.charge[1] - tl.ph.charge[0]) * 0.56, fn: () => { sfx.bolt(); if (w.mag?.rounds > 0) { w.mag.rounds--; w.chamber = 1; } } }],
+      tl, opts, cond: c, k: kSpeed, rest, time: 0, keys: reloadKeys(tl, opts.pistol),
+      events: [{ at: () => tl.ph.charge[0] + (tl.ph.charge[1] - tl.ph.charge[0]) * 0.56, fn: () => { sfx.bolt(); this.bodyKick({ z: 0.25, rx: 1.3, rz: 0.5 }); if (w.mag?.rounds > 0) { w.mag.rounds--; w.chamber = 1; } } }],
     });
   }
 
@@ -1025,7 +1110,7 @@ export class GunController {
       if (!grids.some((g) => g.items.some((i) => i.key === def.ammo))) { p.game.hud.message(`No ${ITEMS[def.ammo].name}`, 2); return; }
       this.play('shell', cfg.shellTime * (1 - 0.05 * p.skill.aiming), {
         loops,
-        events: [{ at: 0.7, fn: () => { if (takeItem(grids, def.ammo, 1)) { w.tube = (w.tube || 0) + 1; sfx.shell(); } } }],
+        events: [{ at: 0.7, fn: () => { if (takeItem(grids, def.ammo, 1)) { w.tube = (w.tube || 0) + 1; sfx.shell(); this.bodyKick({ y: 0.08, rx: 0.35, rz: 0.25 }); } } }],
         onDone: () => {
           if (!this.shellStop && w.tube < def.tube && grids.some((g) => g.items.some((i) => i.key === def.ammo))) loop(loops + 1);
           else if (!w.chamber && w.tube > 0) this.pumpAction();
@@ -1039,7 +1124,7 @@ export class GunController {
     const w = this.w, cfg = this.built.cfg;
     this.play('pump', cfg.pumpTime, {
       events: [
-        { at: 0.35, fn: () => { sfx.pump(); if (this.spent) { this.ejectCasing(true); this.spent = false; } } },
+        { at: 0.35, fn: () => { sfx.pump(); this.bodyKick({ z: 0.12, rx: 0.5 }); if (this.spent) { this.ejectCasing(true); this.spent = false; } } },
         { at: 0.55, fn: () => { if (w.tube > 0) { w.tube--; w.chamber = 1; } } },
       ],
     });

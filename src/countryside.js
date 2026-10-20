@@ -164,6 +164,7 @@ export function buildCountryside(ctx) {
   // --- dirt roads: town streets continue out as farm tracks, plus a ring ---
   const dirtMat = mergeableMaterial('dirt', 0xffffff, 0.3, 1);
   const rutMat = mergeableMaterial('dirt', 0x8a7a68, 0.3, 1);
+  Object.assign(dirtMat, { polygonOffset: true, polygonOffsetFactor: 2, polygonOffsetUnits: 8 }); // under the ruts (see the ground in world.js)
   function dirtRoad(axis, k, a0, a1) {
     const len = a1 - a0, mid = (a0 + a1) / 2;
     const m = new THREE.Mesh(new THREE.PlaneGeometry(axis === 'x' ? DIRT : len, axis === 'x' ? len : DIRT), dirtMat);

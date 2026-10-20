@@ -282,7 +282,7 @@ export function hand(kind, sleeveDir, mirror = 1) {
   // and back out of the screen), however the hand and gun are turned
   H.userData.arm = arm; H.userData.armDir = d.clone();
   RB(arm, 0.05, 0.05, 0.045, 0.012, MAT.glove, 0, 0, 0.04); // cuff
-  RB(arm, 0.066, 0.066, 0.3, 0.02, MAT.sleeve, 0, 0, 0.21);
+  RB(arm, 0.066, 0.066, 0.5, 0.02, MAT.sleeve, 0, 0, 0.31); // long enough to always run off screen
   if (mirror < 0) { RB(arm, 0.054, 0.012, 0.022, 0.004, MAT.leather, 0, 0.026, 0.075); C(arm, 0.011, 0.006, MAT.watch, 0, 0.034, 0.075, 16).rotation.x = Math.PI / 2; } // watch face up
   return H;
 }
