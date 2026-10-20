@@ -366,7 +366,7 @@ export class Player {
       this.game.fx.blood(point);
       sfx.hitFlesh();
       this.game.hud.hitmarker(z.head);
-      if (this.game.zombies.damage(z.zb, dmg, this.pos.x, this.pos.z)) this.onKill();
+      if (this.game.zombies.damage(z.zb, dmg, this.pos.x, this.pos.z, z.head)) this.onKill();
     } else if (wallD < maxD) {
       this.game.fx.impact(origin.clone().addScaledVector(dir, wallD - 0.02));
     }
@@ -389,7 +389,7 @@ export class Player {
       const head = this.pitch > -0.15 && Math.random() < 0.35;
       const dmg = def.damage * (head ? 1.8 : 1) * (1 + 0.12 * this.skill.strength);
       this.game.fx.blood(new THREE.Vector3(zb.pos.x, head ? 1.6 : 1.2, zb.pos.z));
-      if (this.game.zombies.damage(zb, dmg, this.pos.x, this.pos.z)) this.onKill();
+      if (this.game.zombies.damage(zb, dmg, this.pos.x, this.pos.z, head)) this.onKill();
       hit = true;
       if (!this.melee || this.melee.key !== 'axe') break; // axes cleave
     }
@@ -488,6 +488,7 @@ export class Player {
     if (def.type === 'food') {
       this.food = Math.min(100, this.food + def.food);
       this.water = Math.max(0, Math.min(100, this.water + def.water));
+      if (def.fatigue) this.fatigue = Math.max(0, this.fatigue - def.fatigue);
       return true;
     }
     if (def.type === 'med') {
@@ -497,7 +498,27 @@ export class Player {
         this.game.hud.message('Infection cured.');
         return true;
       }
-      if (def.painkiller) { this.painkiller = def.painkiller; this.game.hud.message('Painkillers active'); return true; }
+      if (def.slowInfection) {
+        if (!this.infected) { this.game.hud.message("You're not infected."); return false; }
+        this.infection = Math.max(0, this.infection - def.slowInfection);
+        this.game.hud.message('The antibiotics slow the infection — but they won\'t cure it.', 4);
+        return true;
+      }
+      if (def.surgery) {
+        // Restore one destroyed limb and close its wound.
+        const k = Object.keys(PARTS).find((p) => this.hp[p] <= 0 && !PARTS[p].vital);
+        if (!k) { this.game.hud.message('No destroyed limbs to operate on.'); return false; }
+        this.hp[k] = PARTS[k].max * 0.4;
+        this.bleeding.delete(k);
+        this.game.hud.message(`Surgery on your ${PARTS[k].name.toLowerCase()} succeeded.`, 3);
+        return true;
+      }
+      if (def.painkiller) {
+        this.painkiller = def.painkiller;
+        if (def.heal) for (const k in PARTS) if (this.hp[k] > 0) this.hp[k] = Math.min(PARTS[k].max, this.hp[k] + def.heal / 7);
+        this.game.hud.message(def.heal ? 'Morphine kicks in.' : 'Painkillers active');
+        return true;
+      }
       let used = false;
       if (def.stopBleed && this.bleeding.size) {
         const p = this.bleeding.values().next().value;

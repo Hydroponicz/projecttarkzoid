@@ -13,6 +13,9 @@ const TYPES = {
   walker: { hp: 100, speed: 1.3, chase: 2.1, dmg: [7, 13], scale: 1, weight: 70 },
   runner: { hp: 70, speed: 1.6, chase: 4.6, dmg: [6, 10], scale: 0.95, weight: 22 },
   brute: { hp: 320, speed: 1.0, chase: 2.6, dmg: [16, 26], scale: 1.3, weight: 8 },
+  // Themed variants placed at specific locations (never random spawns)
+  patient: { hp: 90, speed: 1.2, chase: 2.2, dmg: [6, 12], scale: 0.97, weight: 0, cloth: [0xc8d8e0, 0xd8dcd8, 0xa8c0c8] },
+  soldier: { hp: 170, speed: 1.25, chase: 2.6, dmg: [9, 15], scale: 1.02, weight: 0, armor: 0.4, helmet: true, cloth: [0x4a5a3a, 0x55603e, 0x3e4a30], loot: 'soldier' },
 };
 
 const geo = {
@@ -144,7 +147,9 @@ export class Zombies {
     }
     const t = TYPES[typeName];
     const g = new THREE.Group();
-    const skin = pickArr(skinMats), cloth = pickArr(clothMats), pants = pickArr(clothMats);
+    const skin = pickArr(skinMats);
+    const cloth = t.cloth ? new THREE.MeshStandardMaterial({ color: pickArr(t.cloth), roughness: 1 }) : pickArr(clothMats);
+    const pants = t.cloth ? cloth : pickArr(clothMats);
     const torso = new THREE.Mesh(geo.torso, cloth); torso.position.y = 1.15;
     const head = new THREE.Mesh(geo.head, skin); head.position.y = 1.65;
     const e1 = new THREE.Mesh(eyeGeo, eyeMat); e1.position.set(-0.06, 0.03, 0.135);
@@ -155,6 +160,12 @@ export class Zombies {
     const legL = new THREE.Mesh(geo.leg, pants); legL.position.set(-0.13, 0.82, 0);
     const legR = new THREE.Mesh(geo.leg, pants); legR.position.set(0.13, 0.82, 0);
     g.add(torso, head, armL, armR, legL, legR);
+    if (t.helmet) {
+      const helmet = new THREE.Mesh(new THREE.SphereGeometry(0.17, 10, 6, 0, Math.PI * 2, 0, Math.PI / 2), new THREE.MeshStandardMaterial({ color: 0x3e4a30, roughness: 0.8 }));
+      helmet.position.y = 0.08; head.add(helmet);
+      const vest = new THREE.Mesh(new THREE.BoxGeometry(0.52, 0.42, 0.32), new THREE.MeshStandardMaterial({ color: 0x3a4430, roughness: 0.9 }));
+      vest.position.y = 1.2; g.add(vest);
+    }
     g.traverse((o) => { o.castShadow = true; });
     g.scale.setScalar(t.scale);
     g.position.set(x, 0, z);
@@ -183,6 +194,20 @@ export class Zombies {
       const p = this.randomOpenPoint(player, 30);
       if (p) this.spawn(p.x, p.z);
     }
+    // Themed groups at landmarks: patients in the hospital, soldiers at
+    // military sites, staff and customers in shops and offices.
+    for (const sp of this.world.zombieSpawns || []) {
+      if (Math.hypot(sp.x - player.x, sp.z - player.z) < 30) continue;
+      for (let k = 0; k < sp.n; k++) {
+        for (let tries = 0; tries < 8; tries++) {
+          const x = sp.x + (Math.random() * 2 - 1) * sp.r, z = sp.z + (Math.random() * 2 - 1) * sp.r;
+          const gi = Math.floor((x + HALF) / NAV_CELL), gj = Math.floor((z + HALF) / NAV_CELL);
+          if (this.blocked[gi * NAV_N + gj]) continue;
+          this.spawn(x, z, sp.type || undefined);
+          break;
+        }
+      }
+    }
     // Small hordes around a few buildings
     for (let i = 0; i < 4; i++) {
       const b = this.world.buildings[Math.floor(Math.random() * this.world.buildings.length)];
@@ -201,8 +226,10 @@ export class Zombies {
     }
   }
 
-  damage(zb, amount, fromX, fromZ) {
+  damage(zb, amount, fromX, fromZ, head = false) {
     if (zb.dead) return false;
+    // Armored zombies (soldiers) shrug off body shots; headshots go through.
+    if (zb.def.armor && !head) amount *= 1 - zb.def.armor;
     zb.hp -= amount;
     zb.stagger = 0.25;
     zb.state = 'chase';
@@ -218,9 +245,10 @@ export class Zombies {
     zb.dead = true;
     this.scene.remove(zb.mesh);
     const cloth = zb.parts.torso.material.color.getHex();
-    const c = this.world.addContainer('body', zb.pos.x, zb.pos.z);
-    c.name = 'Zombie';
-    if (Math.random() < 0.65) c.grid.items.length = 0; // most zombies carry nothing
+    const c = this.world.addContainer(zb.def.loot || 'body', zb.pos.x, zb.pos.z);
+    c.type = 'body';
+    c.name = zb.def.loot === 'soldier' ? 'Dead Soldier' : 'Zombie';
+    if (!zb.def.loot && Math.random() < 0.65) c.grid.items.length = 0; // most zombies carry nothing
     c.mesh = corpseMesh(this.world.group, zb.pos.x, zb.pos.z, cloth);
     this.list.splice(this.list.indexOf(zb), 1);
   }
@@ -254,6 +282,8 @@ export class Zombies {
       const dist = Math.hypot(dx, dz);
       nearest = Math.min(nearest, pdist);
 
+      // Hidden beyond what the fog lets you see (saves draw calls).
+      zb.mesh.visible = pdist < (game.isNight ? 70 : 110);
       // Too far away: cheap sleep update.
       if (pdist > 90 && !prey) continue;
 

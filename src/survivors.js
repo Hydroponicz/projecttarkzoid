@@ -372,6 +372,7 @@ class Survivor {
     this.gunMesh.rotation.x = this.weapon ? armX * 0.9 : armX - 1.2;
     this.mesh.position.copy(this.pos);
     this.mesh.rotation.y = this.dir;
+    this.mesh.visible = dP < (game.isNight ? 70 : 110);
   }
 
   roundsLoaded() {
@@ -875,7 +876,14 @@ export class Survivors {
     const bearing = ((Math.atan2(cx - p.x, -(cz - p.z)) * 180) / Math.PI + 360) % 360;
     const dir = dirs[Math.round(bearing / 45) % 8];
     const dist = Math.round(Math.hypot(cx - p.x, cz - p.z) / 10) * 10;
-    const what = { clinic: "a clinic — there might still be meds inside", warehouse: "a warehouse with lumber and tools", shop: "a shop that wasn't fully picked clean" }[b.kind] || 'a house that looked untouched';
+    const what = {
+      clinic: 'a clinic — there might still be meds inside', warehouse: 'a warehouse with lumber and tools', shop: "a shop that wasn't fully picked clean",
+      pharmacy: 'a pharmacy — the shelves might still have pills', hospital: "the hospital. Full of them, but the medicine's worth it",
+      office: 'an office block — people say there are drives and documents worth a fortune', skyscraper: 'the tower downtown. Executives kept safes up there',
+      police: "the police station. Lockers full of sidearms, if you can get in", grocery: 'a grocery store with food left on the shelves',
+      hardware: 'a hardware store — tools, nails, planks', gas: 'a gas station with snacks in the kiosk',
+      compound: "a military outpost. Soldiers turned, but their gear's still there", military: 'the army command post',
+    }[b.kind] || 'a house that looked untouched';
     if (s.trust < 10 && Math.random() < 0.5) return "Why would I tell you anything?";
     return `There's ${what}, about ${dist} metres ${dir} of here.`;
   }

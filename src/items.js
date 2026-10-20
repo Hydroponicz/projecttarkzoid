@@ -51,6 +51,8 @@ export const ITEMS = {
   armor_6b13: { name: '6B13 Assault Armor', short: '6B13', type: 'armor', w: 3, h: 3, color: '#4a5a3a', value: 48000, protection: 0.7, durability: 90 },
   helmet_ssh: { name: 'SSh-68 Helmet', short: 'SSh-68', type: 'helmet', w: 2, h: 2, color: '#4a5a3a', value: 9000, protection: 0.5, durability: 40 },
   bp_scav: { name: 'Scav Backpack', short: 'Scav BP', type: 'backpack', w: 3, h: 3, color: '#5a5a3a', value: 6000, gw: 4, gh: 4 },
+  helmet_6b47: { name: '6B47 Ratnik Helmet', short: '6B47', type: 'helmet', w: 2, h: 2, color: '#3a4a2a', value: 32000, protection: 0.7, durability: 60 },
+  bp_mil: { name: 'Military Rucksack', short: 'Rucksack', type: 'backpack', w: 4, h: 4, color: '#3a4a2a', value: 38000, gw: 6, gh: 7 },
   bp_tri: { name: 'Tri-Zip Backpack', short: 'Tri-Zip', type: 'backpack', w: 3, h: 4, color: '#3a5a4a', value: 22000, gw: 6, gh: 6 },
 
   // --- consumables ---
@@ -62,6 +64,14 @@ export const ITEMS = {
   ai2: { name: 'AI-2 Medkit', short: 'AI-2', type: 'med', w: 1, h: 1, color: '#c33', value: 4000, heal: 40, uses: 2 },
   salewa: { name: 'Salewa Kit', short: 'Salewa', type: 'med', w: 1, h: 2, color: '#c55', value: 14000, heal: 60, stopBleed: true, uses: 4 },
   antiviral: { name: 'Antiviral Injector', short: 'AV-1', type: 'med', w: 1, h: 1, color: '#3aaa6a', value: 45000, cure: true, uses: 1 },
+  vitamins: { name: 'Vitamins', short: 'Vitamins', type: 'med', w: 1, h: 1, color: '#e8a030', value: 2500, heal: 8, uses: 5 },
+  antibiotics: { name: 'Antibiotics', short: 'Antibio', type: 'med', w: 1, h: 1, color: '#5a9ad8', value: 11000, slowInfection: 35, uses: 2 },
+  morphine: { name: 'Morphine Injector', short: 'Morphine', type: 'med', w: 1, h: 1, color: '#d85a5a', value: 14000, painkiller: 180, heal: 15, uses: 1 },
+  surgical: { name: 'Surgical Kit', short: 'Surgery', type: 'med', w: 2, h: 1, color: '#7ab0a0', value: 32000, surgery: true, uses: 2 },
+  coffee: { name: 'Instant Coffee', short: 'Coffee', type: 'food', w: 1, h: 1, color: '#5a3a20', value: 1800, food: 0, water: 10, fatigue: 25 },
+  chips: { name: 'Bag of Chips', short: 'Chips', type: 'food', w: 1, h: 1, color: '#d8b030', value: 1200, food: 15, water: -8 },
+  rice: { name: 'Bag of Rice', short: 'Rice', type: 'food', w: 1, h: 1, color: '#e8e0c8', value: 2600, food: 40, water: -12 },
+  mre: { name: 'MRE Ration', short: 'MRE', type: 'food', w: 1, h: 2, color: '#6a6a40', value: 8000, food: 65, water: 15 },
   painkillers: { name: 'Painkillers', short: 'Pills', type: 'med', w: 1, h: 1, color: '#eee', value: 3000, painkiller: 60, uses: 4 },
 
   // --- valuables / barter ---
@@ -72,6 +82,15 @@ export const ITEMS = {
   chain: { name: 'Gold Chain', short: 'Chain', type: 'loot', w: 1, h: 1, color: '#d4af37', value: 25000 },
   roler: { name: 'Roler Watch', short: 'Roler', type: 'loot', w: 1, h: 1, color: '#e5c84a', value: 38000 },
   gpu: { name: 'Graphics Card', short: 'GPU', type: 'loot', w: 2, h: 1, color: '#2a6a3a', value: 110000 },
+  paper: { name: 'Printer Paper', short: 'Paper', type: 'loot', w: 1, h: 1, color: '#f0f0f0', value: 900 },
+  office: { name: 'Office Supplies', short: 'Supplies', type: 'loot', w: 1, h: 1, color: '#4a7ac8', value: 1600 },
+  folder: { name: 'Intelligence Folder', short: 'Intel', type: 'loot', w: 1, h: 1, color: '#c8a050', value: 95000 },
+  flashdrive: { name: 'Secure Flash Drive', short: 'Flash', type: 'loot', w: 1, h: 1, color: '#3a8a6a', value: 55000 },
+  hdd: { name: 'Hard Drive', short: 'HDD', type: 'loot', w: 1, h: 1, color: '#555560', value: 16000 },
+  laptop: { name: 'Laptop', short: 'Laptop', type: 'loot', w: 2, h: 1, color: '#2a2a30', value: 48000 },
+  mil_battery: { name: 'Military Battery', short: 'Mil batt', type: 'loot', w: 2, h: 1, color: '#4a5a3a', value: 160000 },
+  mil_cable: { name: 'Military Cable', short: 'Mil cable', type: 'loot', w: 1, h: 1, color: '#3a4a2a', value: 28000 },
+  dogtag: { name: 'Dog Tag', short: 'Dogtag', type: 'loot', w: 1, h: 1, color: '#9aa0a8', value: 6000 },
   ledx: { name: 'LEDX Transilluminator', short: 'LEDX', type: 'loot', w: 1, h: 1, color: '#6ad', value: 280000 },
 };
 
@@ -87,6 +106,8 @@ const KG = {
   bandage: 0.05, ai2: 0.1, salewa: 0.6, antiviral: 0.05, painkillers: 0.05,
   bolts: 0.3, tape: 0.2, wires: 0.2, battery: 12, chain: 0.05, roler: 0.1, gpu: 0.6, ledx: 0.3,
   planks: 1.2, nails: 0.01, log: 8,
+  helmet_6b47: 1.3, bp_mil: 2.0, vitamins: 0.1, antibiotics: 0.05, morphine: 0.05, surgical: 0.8, coffee: 0.2, chips: 0.15, rice: 1.0, mre: 0.7,
+  paper: 0.5, office: 0.3, folder: 0.3, flashdrive: 0.02, hdd: 0.4, laptop: 2.2, mil_battery: 5, mil_cable: 0.4, dogtag: 0.02,
   sight_reddot: 0.2, sight_holo: 0.35, scope_pso: 0.6, scope_6x: 0.7,
   supp_pm: 0.2, supp_rifle: 0.5, brake_ak: 0.15, grip_vert: 0.15,
 };
@@ -163,8 +184,30 @@ export const LOOT_TABLES = {
   cabinet: [['mag_pm', 1.5], ['sight_reddot', 0.3], ['bandage', 5], ['ai2', 3], ['painkillers', 3], ['bolts', 4], ['tape', 4], ['wires', 3], ['knife', 2], ['ammo_9x18', 3], ['chain', 1], ['roler', 0.4], ['nails', 2], ['hammer', 0.8], ['bp_scav', 0.8], ['beans', 2]],
   toolbox: [['hammer', 4], ['saw', 3], ['nails', 6], ['tape', 3], ['bolts', 3], ['crowbar', 1], ['wires', 2]],
   lumber: [['planks', 8], ['log', 2], ['nails', 3]],
-  crate: [['mag_ak30', 3], ['mag_ak45', 0.6], ['mag_sks', 2], ['mag_pm', 1.5], ['sight_reddot', 1], ['sight_holo', 0.6], ['scope_pso', 0.5], ['scope_6x', 0.3],
-    ['supp_rifle', 0.35], ['supp_pm', 0.4], ['brake_ak', 0.8], ['grip_vert', 0.8], ['ammo_545', 4], ['ammo_12g', 4], ['ammo_9x18', 4], ['ammo_762', 3], ['pm', 2], ['mp133', 1.2], ['sks', 0.6], ['ak74', 0.35], ['crowbar', 1.5], ['axe', 0.6], ['bp_scav', 1], ['helmet_ssh', 0.8], ['armor_paca', 0.6], ['bandage', 2]],
+  // Civilian storage crates: hunting and work gear, no military hardware.
+  crate: [['mag_sks', 1], ['ammo_12g', 4], ['ammo_762', 2], ['ammo_9x18', 2], ['mp133', 1], ['sks', 0.4], ['scope_6x', 0.2], ['sight_reddot', 0.3],
+    ['crowbar', 1.5], ['axe', 1], ['bp_scav', 1], ['bolts', 3], ['tape', 2], ['wires', 2], ['battery', 0.6], ['planks', 1], ['nails', 2]],
+  // --- medical ---
+  pillshelf: [['painkillers', 5], ['vitamins', 5], ['bandage', 4], ['antibiotics', 2.5], ['ai2', 2], ['salewa', 0.4], ['morphine', 0.3], ['antiviral', 0.25]],
+  medcab: [['antibiotics', 3], ['morphine', 2], ['salewa', 1.5], ['surgical', 0.8], ['bandage', 3], ['ai2', 3], ['antiviral', 0.6], ['ledx', 0.15]],
+  surgical: [['surgical', 3], ['salewa', 2], ['morphine', 2], ['bandage', 2], ['ledx', 0.3]],
+  // --- office ---
+  desk: [['paper', 5], ['office', 4], ['coffee', 3], ['flashdrive', 0.7], ['folder', 0.4], ['laptop', 0.4], ['crackers', 1.5], ['wires', 1], ['painkillers', 0.6]],
+  filing: [['paper', 6], ['office', 3], ['folder', 1], ['flashdrive', 0.4], ['tape', 1]],
+  server: [['hdd', 4], ['wires', 3], ['gpu', 1], ['flashdrive', 1], ['mil_cable', 0.2]],
+  safe: [['chain', 3], ['roler', 2], ['folder', 2.5], ['flashdrive', 2], ['ledx', 0.3], ['gpu', 0.6]],
+  // --- stores ---
+  foodshelf: [['beans', 5], ['crackers', 4], ['chips', 5], ['rice', 3], ['soda', 4], ['water', 4], ['coffee', 2]],
+  toolshelf: [['hammer', 3], ['saw', 2.5], ['nails', 6], ['tape', 4], ['bolts', 4], ['wires', 3], ['planks', 2], ['axe', 0.8], ['crowbar', 1]],
+  // --- police ---
+  policelocker: [['pm', 1.5], ['mag_pm', 3], ['ammo_9x18', 4], ['ammo_12g', 1.5], ['mp133', 0.5], ['armor_paca', 0.6], ['helmet_ssh', 0.4], ['bandage', 2], ['supp_pm', 0.25]],
+  evidence: [['chain', 2], ['roler', 1], ['flashdrive', 1], ['gpu', 0.5], ['knife', 2], ['ammo_9x18', 2], ['pm', 0.6]],
+  // --- military ---
+  milcrate: [['ak74', 0.9], ['sks', 0.5], ['mag_ak30', 4], ['mag_ak45', 0.7], ['ammo_545', 4], ['ammo_762', 1.5], ['scope_pso', 0.5], ['sight_reddot', 0.6], ['sight_holo', 0.4],
+    ['supp_rifle', 0.3], ['brake_ak', 0.6], ['grip_vert', 0.6], ['armor_6b13', 0.35], ['helmet_6b47', 0.35]],
+  ammobox: [['ammo_545', 6], ['ammo_762', 3], ['ammo_12g', 2], ['ammo_9x18', 2], ['mag_ak30', 1.5]],
+  duffel: [['mre', 4], ['water', 2], ['bandage', 2], ['ai2', 2], ['morphine', 0.6], ['mil_battery', 0.25], ['mil_cable', 0.8], ['bp_mil', 0.3], ['armor_6b13', 0.15], ['helmet_6b47', 0.2]],
+  soldier: [['dogtag', 6], ['ammo_545', 3], ['mag_ak30', 2], ['mre', 1.5], ['bandage', 1.5], ['morphine', 0.4], ['mil_cable', 0.3]],
   medbox: [['bandage', 5], ['ai2', 5], ['salewa', 2], ['painkillers', 3], ['antiviral', 0.8], ['ledx', 0.25]],
   pc: [['gpu', 0.8], ['wires', 4], ['battery', 0.5], ['chain', 0.8]],
   trunk: [['battery', 2], ['bolts', 3], ['tape', 3], ['water', 2], ['ammo_12g', 2], ['bp_tri', 0.3], ['armor_6b13', 0.15], ['crowbar', 1]],
@@ -192,4 +235,19 @@ export const CONTAINER_TYPES = {
   lumber: { name: 'Lumber Pile', w: 6, h: 4, rolls: [2, 4], color: 0x9a7a4a, size: [1.6, 0.5, 0.8] },
   trunk: { name: 'Car Trunk', w: 6, h: 4, rolls: [0, 3], color: 0x000000, size: [0, 0, 0] },
   body: { name: 'Corpse', w: 5, h: 4, rolls: [1, 3], color: 0x000000, size: [0, 0, 0] },
+  soldier: { name: 'Dead Soldier', w: 5, h: 4, rolls: [1, 3], color: 0x000000, size: [0, 0, 0] },
+  pillshelf: { name: 'Pharmacy Shelf', w: 5, h: 4, rolls: [2, 5], color: 0xe8ece8, size: [1.6, 1.6, 0.45] },
+  medcab: { name: 'Medicine Cabinet', w: 4, h: 4, rolls: [1, 3], color: 0xdde4e8, size: [0.9, 1.8, 0.45] },
+  surgical: { name: 'Surgical Cart', w: 4, h: 3, rolls: [1, 2], color: 0x8ab0a8, size: [0.8, 0.95, 0.5] },
+  desk: { name: 'Desk', w: 4, h: 3, rolls: [0, 3], color: 0x6a5240, size: [1.4, 0.75, 0.7] },
+  filing: { name: 'Filing Cabinet', w: 3, h: 4, rolls: [0, 3], color: 0x7a7e82, size: [0.5, 1.3, 0.6] },
+  server: { name: 'Server Rack', w: 4, h: 5, rolls: [1, 3], color: 0x1e1e24, size: [0.7, 2.0, 0.9] },
+  safe: { name: 'Safe', w: 3, h: 3, rolls: [1, 3], color: 0x3a3e3a, size: [0.7, 0.8, 0.7] },
+  foodshelf: { name: 'Store Shelf', w: 5, h: 4, rolls: [2, 5], color: 0xb8b0a0, size: [1.6, 1.5, 0.5] },
+  toolshelf: { name: 'Tool Rack', w: 5, h: 4, rolls: [2, 4], color: 0x8a6a3a, size: [1.6, 1.8, 0.5] },
+  policelocker: { name: 'Police Locker', w: 4, h: 5, rolls: [1, 3], color: 0x3a4a6a, size: [0.6, 1.8, 0.5] },
+  evidence: { name: 'Evidence Locker', w: 4, h: 4, rolls: [1, 3], color: 0x5a5a6a, size: [0.9, 1.6, 0.5] },
+  milcrate: { name: 'Military Crate', w: 6, h: 4, rolls: [2, 4], color: 0x3a4a2a, size: [1.3, 0.6, 0.7] },
+  ammobox: { name: 'Ammo Box', w: 4, h: 3, rolls: [1, 3], color: 0x4a5a30, size: [0.6, 0.35, 0.35] },
+  duffel: { name: 'Military Duffel Bag', w: 5, h: 4, rolls: [1, 3], color: 0x4a5a3a, size: [0.9, 0.4, 0.4] },
 };

@@ -19,6 +19,21 @@ npm run build    # static build in dist/
 5. **Survive the nights.** One in-game minute passes per real second, so a full day takes 24 minutes. At night zombies move faster, and more of them spawn as the days go by. Sleep in a bed to recover fatigue and health. Sleeping outside your safehouse may wake you to company.
 6. **Death is permanent.** Your corpse stays in the world with all your gear, and your base keeps standing. The next survivor you create spawns into the same world. Fallen characters are listed in the graveyard on the title screen.
 
+## The town
+
+Every world is generated from a seed, laid out in districts, with loot that fits where you find it:
+
+| Where | What's there |
+| --- | --- |
+| **Downtown** (centre) | A **skyscraper**: corporate offices with desks, filing cabinets, server racks and executive safes. Expect intel folders, flash drives, laptops and hard drives. |
+| **Civic & commercial ring** | The **hospital** (three floors; wards with beds and corridors of rooms holding medicine cabinets and surgical carts, full of infected patients), **office blocks** (open-plan desk floors), a second tower, the **police station** (police lockers with sidearms, ammo and armor; evidence lockers; patrol cars), a **pharmacy** (aisles of pill shelves), a **grocery store** and shops. |
+| **Outskirts** | Houses, a **hardware store** (tools, nails, lumber), a **gas station** (snacks and drinks), warehouses, a clinic, parks and parking lots. |
+| **Military** | A fenced **military outpost** in one corner (command post, tents, watchtowers, a helipad and a truck) and **checkpoints** on the streets (barriers, sandbags, a guard booth and a military truck). This is the only place to find AK-74s, AK mags, PSO scopes, 6B13 armor, 6B47 helmets, military rucksacks, MREs and military batteries. Guarded by armored soldier zombies: aim for the head. |
+
+Buildings carry signs (pharmacy cross, HOSPITAL, POLICE, company names), offices and the hospital have lit upper floors, and the map (**M**) labels every landmark.
+
+New consumables: **vitamins**, **antibiotics** (slow a zombie infection, don't cure it), **morphine**, **surgical kits** (restore a destroyed limb), **coffee** (fights fatigue), chips, rice and MREs.
+
 ## Systems
 
 - **Zombies.** Walkers, runners and brutes. They hear noise (gunshots, sprinting, hammering) and need line of sight to spot you; Stealth and crouching make you harder to see. They follow a flow field to route through open doorways. Closed doors and anything you build block them, so they bash their way through instead (brutes do triple damage).
@@ -99,6 +114,7 @@ The command line has Tab completion and ↑/↓ history. Type `help` for the ful
 give ak74            give mag_ak30 3      kit Rifleman        kit Marksman
 give scope_pso       give supp_rifle      kit Builder         spawn brute 3
 survivor hostile 2   survivors            trust 40            spawn walker 5
+tp hospital          tp military          tp checkpoint       tp pharmacy
 tp 0 0               tp safehouse         time 22:00          time +8
 speed 20             skill carpentry 8    set fatigue 90      killall 25
 god / noclip / invis / freeze / freebuild                    js player.skill
@@ -111,7 +127,7 @@ god / noclip / invis / freeze / freebuild                    js player.skill
 | `src/main.js` | Game state machine (menu → creation → play → death), save/load, day/night, interactions, sleep, safehouse |
 | `src/character.js` | Professions, skills and the character creation screen |
 | `src/build.js` | Carpentry: placing, saving and dismantling structures |
-| `src/world.js` | Seeded procedural town: roads, buildings with doors and roofs, beds, cars, trees, containers |
+| `src/world.js` | Seeded procedural town: districts, themed building archetypes (layouts, signs, loot), military sites, cars, trees; batches static scenery |
 | `src/player.js` | First-person controller, leaning, melee, body-part health, status effects |
 | `src/weapons.js` | Firearms: weapon/optic models, PIP scopes, sway/recoil physics, animations, magazines, attachments |
 | `src/survivors.js` | AI survivors: dispositions and trust, A* pathfinding, combat, following, dialogue, trading |

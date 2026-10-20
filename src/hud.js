@@ -171,11 +171,27 @@ export class HUD {
     for (const [x, z] of game.world.trees) ctx.fillRect(tx(x) - 1, tx(z) - 1, 3, 3);
     ctx.fillStyle = '#3a3a3a';
     for (let k = -100; k <= 100; k += 40) { ctx.fillRect(tx(k) - 4 * S, tx(-104), 8 * S, 208 * S); ctx.fillRect(tx(-104), tx(k) - 4 * S, 208 * S, 8 * S); }
-    const colors = { house: '#8a7a62', shop: '#6a7a8a', clinic: '#c8c8c0', warehouse: '#5a5a4a' };
+    const colors = {
+      house: '#8a7a62', shop: '#6a7a8a', clinic: '#c8c8c0', warehouse: '#5a5a4a', pharmacy: '#6ac08a', hospital: '#e8e8e0',
+      office: '#7a8aa8', skyscraper: '#9aaac8', police: '#4a6ab8', grocery: '#b8984a', hardware: '#a86a3a', gas: '#c85a3a', military: '#5a6a3a',
+    };
     for (const b of game.world.buildings) {
-      ctx.fillStyle = colors[b.kind];
+      if (b.area) { ctx.strokeStyle = '#7a8a4a'; ctx.setLineDash([4, 3]); ctx.strokeRect(tx(b.x0), tx(b.z0), (b.x1 - b.x0) * S, (b.z1 - b.z0) * S); ctx.setLineDash([]); continue; }
+      ctx.fillStyle = colors[b.kind] || '#777';
       ctx.fillRect(tx(b.x0), tx(b.z0), (b.x1 - b.x0) * S, (b.z1 - b.z0) * S);
     }
+    // Named places (hospital, pharmacies, police, military sites...)
+    ctx.font = 'bold 10px monospace';
+    ctx.textAlign = 'center';
+    for (const l of game.world.landmarks || []) {
+      const mil = l.kind === 'military' || l.kind === 'checkpoint';
+      if (l.kind === 'checkpoint') { ctx.fillStyle = '#c84a3a'; ctx.fillRect(tx(l.x) - 4, tx(l.z) - 4, 8, 8); }
+      ctx.fillStyle = mil ? '#e8d8a0' : '#fff';
+      ctx.strokeStyle = '#000'; ctx.lineWidth = 3;
+      ctx.strokeText(l.name, tx(l.x), tx(l.z) - (l.kind === 'checkpoint' ? 7 : 0));
+      ctx.fillText(l.name, tx(l.x), tx(l.z) - (l.kind === 'checkpoint' ? 7 : 0));
+    }
+    ctx.textAlign = 'left';
     ctx.fillStyle = '#a8834a';
     for (const st of game.builder.structures) ctx.fillRect(tx(st.box.minX), tx(st.box.minZ), Math.max(2, (st.box.maxX - st.box.minX) * S), Math.max(2, (st.box.maxZ - st.box.minZ) * S));
     // Survivors you've met (green friendly, yellow wary, red hostile)

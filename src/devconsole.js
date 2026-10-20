@@ -704,7 +704,7 @@ export class DevConsole {
     else if (parts[0] === 'kit') pool = Object.keys(KITS);
     else if (parts[0] === 'skill') pool = Object.keys(STATS);
     else if (parts[0] === 'flag') pool = Object.keys(FLAGS);
-    else if (parts[0] === 'tp') pool = ['safehouse', 'spawn'];
+    else if (parts[0] === 'tp') pool = ['safehouse', 'spawn', 'hospital', 'pharmacy', 'police', 'office', 'skyscraper', 'grocery', 'hardware', 'gas', 'military', 'checkpoint', 'clinic'];
     else return;
     const hits = pool.filter((k) => k.toLowerCase().startsWith(last));
     if (hits.length === 1) { parts[parts.length - 1] = hits[0]; this.cmd.value = parts.join(' ') + ' '; }
@@ -740,10 +740,13 @@ export class DevConsole {
         for (const z of victims) g.zombies.kill(z);
         this.log(`Killed ${victims.length} zombies`);
       } },
-      tp: { u: '<x> <z> | safehouse | spawn', d: 'Teleport', f: (a) => {
+      tp: { u: '<x> <z> | safehouse | spawn | <place>', d: 'Teleport (places: hospital, pharmacy, police, office, military, checkpoint...)', f: (a) => {
         need();
         if (a[0] === 'safehouse') { const s = g.safehouse; if (!s) throw new Error('No safehouse'); return this.teleport((s.x0 + s.x1) / 2, (s.z0 + s.z1) / 2); }
         if (a[0] === 'spawn') { const h = g.world.houses[Math.floor(Math.random() * g.world.houses.length)]; return this.teleport((h.x0 + h.x1) / 2, (h.z0 + h.z1) / 2); }
+        // tp hospital / pharmacy / police / military / checkpoint / office...
+        const lm = (g.world.landmarks || []).filter((l) => l.kind.startsWith(a[0]) || l.name.toLowerCase().includes(a[0].toLowerCase()));
+        if (lm.length) { const l = lm[Math.floor(Math.random() * lm.length)]; this.log(`→ ${esc(l.name)}`); return this.teleport(l.x + 3, l.z + 3); }
         if (a.length < 2) throw new Error('Usage: tp <x> <z>');
         this.teleport(+a[0], +a[1]);
       } },

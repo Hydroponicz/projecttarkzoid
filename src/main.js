@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { buildWorld, corpseMesh, setDoor } from './world.js';
+import { buildWorld, corpseMesh, setDoor, WORLD_VERSION } from './world.js';
 import { Zombies } from './zombies.js';
 import { Player } from './player.js';
 import { Input } from './input.js';
@@ -167,7 +167,7 @@ class Game {
 
   // ---------- world lifecycle ----------
   spawnCharacter(ch) {
-    if (!this.save) this.save = { seed: Math.floor(Math.random() * 2 ** 31), time: START_TIME, safehouse: null, world: null, graveyard: [] };
+    if (!this.save) this.save = { seed: Math.floor(Math.random() * 2 ** 31), worldVersion: WORLD_VERSION, time: START_TIME, safehouse: null, world: null, graveyard: [] };
     ch.spawnTime = this.save.time;
     this.save.character = ch;
     writeSave(this.save);
@@ -189,6 +189,14 @@ class Game {
     this.safehouse = s.safehouse;
     this.profile = s.character;
     this.migrateSave(s);
+    if ((s.worldVersion || 1) !== WORLD_VERSION) {
+      // The town layout changed: keep the character and their gear, but start
+      // the world state (loot, doors, base, zombies) fresh on the new layout.
+      if (s.world) this.worldRegenerated = true;
+      s.world = null;
+      s.safehouse = this.safehouse = null;
+      s.worldVersion = WORLD_VERSION;
+    }
     this.world = buildWorld(this.scene, s.seed);
     const w = s.world;
     if (w) {
@@ -209,6 +217,7 @@ class Game {
     this.player = new Player(this.camera, this.scene, this);
     const ch = this.profile;
     if (ch.player) this.player.restore(ch.player);
+    if (this.worldRegenerated) this.placeNewCharacter(false); // old position may be inside a new building
     else this.placeNewCharacter(!!w);
     if (w) this.zombies.restore(w.zombies);
     else this.zombies.populate(85, this.player.pos);
@@ -223,6 +232,7 @@ class Game {
     $('loading').style.display = 'none';
     this.hud.show(true);
     this.hud.message(ch.player ? `Welcome back, ${ch.name}.` : `${ch.name}. Day ${this.day}. Find supplies, find shelter. Press V inside a building to claim it.`, 6);
+    if (this.worldRegenerated) { this.worldRegenerated = false; this.hud.message('The town has been rebuilt by a game update. Your gear is safe; your old base and loot are gone.', 8); }
     this.input.lock();
     this.updatePause();
   }
