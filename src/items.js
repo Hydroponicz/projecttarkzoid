@@ -125,6 +125,12 @@ export const ITEMS = {
   honey: { name: 'Jar of Honey', short: 'Honey', type: 'food', w: 1, h: 1, color: '#e0a020', value: 4500, food: 28, water: -4 },
   milk: { name: 'Carton of Milk', short: 'Milk', type: 'food', w: 1, h: 2, color: '#f4f4f0', value: 2200, food: 12, water: 30 },
 
+  // --- clothing (worn in the clothing slot: warmth in °C, rainproof 0..1) ---
+  hoodie: { name: 'Hoodie', short: 'Hoodie', type: 'clothing', w: 2, h: 2, color: '#5a5a6a', value: 1500, warmth: 3, rainproof: 0 },
+  raincoat: { name: 'Raincoat', short: 'Raincoat', type: 'clothing', w: 2, h: 2, color: '#d8b830', value: 4500, warmth: 2, rainproof: 0.8 },
+  winter_coat: { name: 'Winter Coat', short: 'Coat', type: 'clothing', w: 2, h: 3, color: '#4a3a5a', value: 9000, warmth: 8, rainproof: 0.35 },
+  parka: { name: 'Military Parka', short: 'Parka', type: 'clothing', w: 2, h: 3, color: '#4a5a3a', value: 16000, warmth: 9, rainproof: 0.55 },
+
   // --- quest items (placed in the world when a trader's quest is accepted) ---
   q_case: { name: 'Sealed Medical Case', short: 'Med case', type: 'quest', w: 2, h: 1, color: '#d8d8d0', value: 0 },
   q_parts: { name: 'Box of Rifle Parts', short: 'Parts', type: 'quest', w: 2, h: 1, color: '#5a5040', value: 0 },
@@ -151,6 +157,7 @@ const KG = {
   supp_pm: 0.2, supp_rifle: 0.5, brake_ak: 0.15, grip_vert: 0.15,
   tire: 9, brakes: 2, headlight: 1, spark_plugs: 0.2, engine_parts: 4, scrap: 1, wrench: 0.6, jack: 4, gas_can: 1.5,
   shovel: 1.8, watering_can: 0.8, fertilizer: 3, seeds_carrot: 0.02, seeds_potato: 0.15, seeds_tomato: 0.02, seeds_cabbage: 0.02, seeds_corn: 0.03,
+  hoodie: 0.6, raincoat: 0.5, winter_coat: 1.8, parka: 2.2,
   carrot: 0.1, potato: 0.2, tomato: 0.15, cabbage: 1.0, corn: 0.3, apple: 0.15, berries: 0.1, eggs: 0.4, preserves: 0.5, honey: 0.4, milk: 1.0,
 };
 for (const k in ITEMS) ITEMS[k].kg = KG[k] ?? 0.3;
@@ -235,14 +242,14 @@ export const LOOT_TABLES = {
   cabinet: [['mag_pm', 1.5], ['sight_reddot', 0.3], ['bandage', 5], ['ai2', 3], ['painkillers', 3], ['bolts', 4], ['tape', 4], ['wires', 3], ['knife', 2], ['ammo_9x18', 3], ['chain', 1], ['roler', 0.4], ['nails', 2], ['hammer', 0.8], ['bp_scav', 0.8], ['beans', 2]],
   toolbox: [['hammer', 4], ['saw', 3], ['nails', 6], ['tape', 3], ['bolts', 3], ['crowbar', 1], ['wires', 2], ['wrench', 1.5], ['spark_plugs', 0.6]],
   // --- farms ---
-  farm_shelf: [['shovel', 1.5], ['watering_can', 1.5], ['fertilizer', 2.5], ['seeds_carrot', 1.5], ['seeds_potato', 1.5], ['seeds_tomato', 1], ['seeds_cabbage', 1], ['seeds_corn', 1],
+  farm_shelf: [['raincoat', 0.8], ['shovel', 1.5], ['watering_can', 1.5], ['fertilizer', 2.5], ['seeds_carrot', 1.5], ['seeds_potato', 1.5], ['seeds_tomato', 1], ['seeds_cabbage', 1], ['seeds_corn', 1],
     ['hammer', 0.6], ['saw', 0.5], ['nails', 1], ['tape', 0.8], ['axe', 0.3], ['gas_can', 0.5]],
   seed_rack: [['seeds_carrot', 3], ['seeds_potato', 3], ['seeds_tomato', 2.5], ['seeds_cabbage', 2.5], ['seeds_corn', 2.5], ['fertilizer', 0.8]],
   produce_crate: [['potato', 4], ['carrot', 4], ['apple', 3], ['cabbage', 2], ['corn', 2], ['tomato', 2]],
   chicken_coop: [['eggs', 6], ['seeds_corn', 0.6]],
   pantry: [['preserves', 4], ['honey', 2], ['potato', 2], ['rice', 2], ['beans', 2], ['milk', 1.5], ['eggs', 1], ['water', 1]],
   hay: [['seeds_corn', 1], ['seeds_potato', 0.6], ['shovel', 0.3], ['scrap', 0.5], ['bolts', 0.4]],
-  hunting: [['sks', 0.35], ['mp133', 0.5], ['ammo_762', 2.5], ['ammo_12g', 3], ['scope_6x', 0.25], ['knife', 1.5], ['axe', 0.8], ['bandage', 1.5], ['mre', 1], ['water', 1], ['bp_tri', 0.3]],
+  hunting: [['winter_coat', 1], ['sks', 0.35], ['mp133', 0.5], ['ammo_762', 2.5], ['ammo_12g', 3], ['scope_6x', 0.25], ['knife', 1.5], ['axe', 0.8], ['bandage', 1.5], ['mre', 1], ['water', 1], ['bp_tri', 0.3]],
   parts_shelf: [['tire', 1.5], ['battery', 1.2], ['brakes', 2], ['headlight', 2], ['spark_plugs', 3], ['engine_parts', 1.2], ['wrench', 0.6], ['gas_can', 0.8], ['scrap', 1.2]],
   toolbench: [['wrench', 3], ['jack', 2], ['tape', 2], ['scrap', 3], ['spark_plugs', 1.5], ['gas_can', 1], ['bolts', 2], ['wires', 1], ['engine_parts', 0.4]],
   tire_rack: [['tire', 6]],
@@ -263,18 +270,18 @@ export const LOOT_TABLES = {
   foodshelf: [['beans', 5], ['crackers', 4], ['chips', 5], ['rice', 3], ['soda', 4], ['water', 4], ['coffee', 2], ['potato', 1], ['apple', 1], ['honey', 0.4], ['preserves', 0.6]],
   toolshelf: [['hammer', 3], ['saw', 2.5], ['nails', 6], ['tape', 4], ['bolts', 4], ['wires', 3], ['planks', 2], ['axe', 0.8], ['crowbar', 1], ['shovel', 0.8], ['watering_can', 0.6], ['seeds_carrot', 0.5], ['seeds_tomato', 0.5], ['fertilizer', 0.4]],
   // --- police ---
-  policelocker: [['pm', 1.5], ['mag_pm', 3], ['ammo_9x18', 4], ['ammo_12g', 1.5], ['mp133', 0.5], ['armor_paca', 0.6], ['helmet_ssh', 0.4], ['bandage', 2], ['supp_pm', 0.25]],
+  policelocker: [['raincoat', 0.8], ['pm', 1.5], ['mag_pm', 3], ['ammo_9x18', 4], ['ammo_12g', 1.5], ['mp133', 0.5], ['armor_paca', 0.6], ['helmet_ssh', 0.4], ['bandage', 2], ['supp_pm', 0.25]],
   evidence: [['chain', 2], ['roler', 1], ['flashdrive', 1], ['gpu', 0.5], ['knife', 2], ['ammo_9x18', 2], ['pm', 0.6]],
   // --- military ---
   milcrate: [['ak74', 0.9], ['sks', 0.5], ['mag_ak30', 4], ['mag_ak45', 0.7], ['ammo_545', 4], ['ammo_762', 1.5], ['scope_pso', 0.5], ['sight_reddot', 0.6], ['sight_holo', 0.4],
     ['supp_rifle', 0.3], ['brake_ak', 0.6], ['grip_vert', 0.6], ['armor_6b13', 0.35], ['helmet_6b47', 0.35]],
   ammobox: [['ammo_545', 6], ['ammo_762', 3], ['ammo_12g', 2], ['ammo_9x18', 2], ['mag_ak30', 1.5]],
-  duffel: [['mre', 4], ['water', 2], ['bandage', 2], ['ai2', 2], ['morphine', 0.6], ['mil_battery', 0.25], ['mil_cable', 0.8], ['bp_mil', 0.3], ['armor_6b13', 0.15], ['helmet_6b47', 0.2]],
+  duffel: [['parka', 0.8], ['mre', 4], ['water', 2], ['bandage', 2], ['ai2', 2], ['morphine', 0.6], ['mil_battery', 0.25], ['mil_cable', 0.8], ['bp_mil', 0.3], ['armor_6b13', 0.15], ['helmet_6b47', 0.2]],
   soldier: [['dogtag', 6], ['ammo_545', 3], ['mag_ak30', 2], ['mre', 1.5], ['bandage', 1.5], ['morphine', 0.4], ['mil_cable', 0.3]],
   kitchen: [['beans', 4], ['rice', 3], ['crackers', 3], ['coffee', 3], ['chips', 2], ['knife', 1.5], ['water', 1.5], ['soda', 1], ['tape', 0.6], ['painkillers', 0.4]],
-  wardrobe: [['bp_scav', 1.2], ['bp_tri', 0.25], ['tape', 1], ['bandage', 1], ['chain', 0.6], ['roler', 0.25], ['helmet_ssh', 0.15], ['armor_paca', 0.08], ['wires', 0.6], ['crowbar', 0.3]],
+  wardrobe: [['hoodie', 2], ['winter_coat', 1.2], ['raincoat', 0.8], ['bp_scav', 1.2], ['bp_tri', 0.25], ['tape', 1], ['bandage', 1], ['chain', 0.6], ['roler', 0.25], ['helmet_ssh', 0.15], ['armor_paca', 0.08], ['wires', 0.6], ['crowbar', 0.3]],
   nightstand: [['painkillers', 3], ['vitamins', 2], ['coffee', 1], ['chain', 1], ['roler', 0.4], ['ammo_9x18', 1], ['pm', 0.25], ['bandage', 1], ['flashdrive', 0.3]],
-  dresser: [['tape', 1], ['bandage', 1.5], ['chain', 0.8], ['roler', 0.3], ['wires', 1], ['paper', 1], ['hdd', 0.3]],
+  dresser: [['hoodie', 1.2], ['tape', 1], ['bandage', 1.5], ['chain', 0.8], ['roler', 0.3], ['wires', 1], ['paper', 1], ['hdd', 0.3]],
   bathroom: [['painkillers', 4], ['bandage', 4], ['vitamins', 3], ['antibiotics', 1], ['ai2', 1], ['morphine', 0.15]],
   register: [['chain', 0.6], ['roler', 0.2], ['flashdrive', 0.3], ['paper', 2], ['office', 1]],
   drinkfridge: [['soda', 6], ['water', 6], ['coffee', 2]],

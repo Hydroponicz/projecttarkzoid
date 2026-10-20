@@ -763,6 +763,7 @@ export class GunController {
     if (p.prone) amp *= 0.45;
     else if (p.crouch) amp *= 0.7;
     if (p.fatigue > 80) amp *= 1.4;
+    if (p.shiver) amp *= 1 + p.shiver * 1.6; // shivering with cold
     amp *= 1 - 0.05 * aimSkill;
     amp *= 1 + (1 - this.ads) * 1.8;
     // Holding breath steadies the gun gradually, and lets go gradually.

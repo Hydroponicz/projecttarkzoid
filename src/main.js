@@ -20,6 +20,7 @@ import { setupCreation } from './character.js';
 import { DevConsole } from './devconsole.js';
 import { Survivors } from './survivors.js';
 import { Farming } from './farming.js';
+import { Weather } from './weather.js';
 
 const $ = (id) => document.getElementById(id);
 const SCREENS = ['menu', 'create', 'death'];
@@ -114,7 +115,7 @@ class Game {
   // ---------- time ----------
   get day() { return Math.floor(this.time / 1440) + 1; }
   get hour() { return (this.time % 1440) / 60; }
-  get isNight() { const h = this.hour; return h >= 21 || h < 5.5; }
+  get isNight() { const h = this.hour; return this.weather ? this.weather.isNight(h) : h >= 21 || h < 5.5; }
   clockText() {
     const m = Math.floor(this.time % 1440);
     return `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
@@ -122,16 +123,22 @@ class Game {
 
   updateLighting() {
     const h = this.hour;
-    const d = this.dev.fullbright ? 1 : smooth(5, 7.5, h) - smooth(19, 21.5, h); // 0 = night, 1 = day
+    // Sunrise and sunset move with the seasons
+    const W = this.weather;
+    const d = this.dev.fullbright ? 1 : W ? W.daylight(h) : smooth(5, 7.5, h) - smooth(19, 21.5, h); // 0 = night, 1 = day
     this.daylight = d;
     this.scene.background.copy(NIGHT).lerp(DAY, d);
+    if (W && !this.dev.fullbright) W.applySky(this.scene.background, d);
     this.scene.fog.color.copy(this.scene.background);
-    this.scene.fog.density = this.dev.noFog ? 0 : 0.026 - 0.014 * d;
+    this.scene.fog.density = this.dev.noFog ? 0 : 0.026 - 0.014 * d + (W && !this.dev.fullbright ? W.fogAdd : 0);
     // Nothing past the point where fog is ~opaque gets drawn
     const far = this.dev.noFog ? 300 : Math.min(300, Math.round(2.0 / this.scene.fog.density));
     if (far !== this.camera.far) { this.camera.far = far; this.camera.updateProjectionMatrix(); }
-    this.hemi.intensity = 1.1 + 1.3 * d;
-    this.sun.intensity = 0.9 + 1.6 * d;
+    // Countryside chunks a little short of that (the fog is near-opaque there)
+    if (this.world && this.camera) this.world.cull(this.camera.position.x, this.camera.position.z, Math.min(far, this.dev.noFog ? 300 : Math.round(1.6 / this.scene.fog.density)));
+    const cloud = W && !this.dev.fullbright ? W.sunMul : 1, flash = W ? W.flashLight : 0;
+    this.hemi.intensity = (1.1 + 1.3 * d) * (0.75 + 0.25 * cloud) + flash;
+    this.sun.intensity = (0.9 + 1.6 * d) * cloud;
     this.sun.color.setHex(0x9aaad8).lerp(new THREE.Color(0xfff0d8), d);
   }
 
@@ -214,6 +221,7 @@ class Game {
     this.world = buildWorld(this.scene, s.seed);
     this.ragdolls = new RagdollSystem(this);
     const w = s.world;
+    this.weather = new Weather(this, w?.weather || null);
     if (w) {
       w.containers.forEach((grid, i) => { if (this.world.containers[i]) this.world.containers[i].grid = grid; });
       for (const c of w.extra) this.addExtraContainer(c);
@@ -266,6 +274,7 @@ class Game {
   migrateSave(s) {
     const ch = s.character;
     if (ch) {
+      if (!('clothing' in ch.equip)) ch.equip.clothing = null; // slot added with the weather
       for (const k in ch.equip) if (ch.equip[k]) migrateItem(ch.equip[k]);
       ch.pockets.items.forEach(migrateItem);
     }
@@ -348,6 +357,7 @@ class Game {
       traders: this.traders?.serialize(),
       vehicles: this.vehicles?.serialize(),
       farming: this.farming?.serialize(),
+      weather: this.weather?.serialize(),
     };
     writeSave(this.save);
   }
@@ -367,6 +377,8 @@ class Game {
     this.vehicles = null;
     this.farming?.dispose();
     this.farming = null;
+    this.weather?.dispose();
+    this.weather = null;
     this.traders?.dispose();
     this.traders = null;
     this.progress?.togglePanel(false);
@@ -551,7 +563,7 @@ class Game {
     if (this.vehicles) out.push(...this.vehicles.interactables(), ...this.world.pumps);
     if (this.farming) out.push(...this.farming.interactables());
     for (const d of this.world.doors) if (!d.broken) out.push(d);
-    for (const s of this.builder.structures) if (s.grid || s.door || s.type === 'bed') out.push(s);
+    for (const s of this.builder.structures) if (s.grid || s.door || s.type === 'bed' || s.type === 'rain_barrel') out.push(s);
     for (const s of this.survivors.list) if (!s.dead && s.disp !== 'hostile') out.push(s);
     return out;
   }
@@ -582,6 +594,8 @@ class Game {
       this.vehicles.openPanel(t.v);
     } else if (t.kind === 'pump') {
       this.vehicles.usePump(t);
+    } else if (t.type === 'rain_barrel') {
+      this.weather.useBarrel(t);
     } else if (t.kind === 'plot' || t.kind === 'forage' || t.kind === 'water') {
       this.farming.interact(t);
     } else if (t.kind === 'window') {
@@ -844,7 +858,7 @@ class Game {
     const driving = !!this.player.vehicle;
     if (pressed('KeyB') && !this.invOpen && !driving) {
       this.builder.toggle();
-      this.hud.message(this.builder.active ? 'Build mode: 1–7 select, R rotate, LMB build, X dismantle, B exit' : 'Build mode off');
+      this.hud.message(this.builder.active ? 'Build mode: 1–8 select, R rotate, LMB build, X dismantle, B exit' : 'Build mode off');
     }
     if (pressed('KeyV') && !this.invOpen && !driving) this.claimSafehouse();
     if (inp.interact && !this.invOpen && this.lookTarget) this.interact(this.lookTarget);
@@ -857,7 +871,10 @@ class Game {
 
     this.time += dt * this.dev.timeScale; // one in-game minute per real second at 1x
     this.updateLighting();
+    this.weather.update(dt);
     this.player.update(dt, inp);
+    if (this.state !== 'play') return;
+    if (!this.dev.god) this.weather.updatePlayer(dt);
     if (this.state !== 'play') return;
     this.dev.applyCheats();
     if (!this.dev.freeze) this.zombies.update(dt, this.player, this);

@@ -4,8 +4,8 @@ import { ITEMS, itemValue, makeItem } from './items.js';
 import { canPlace, removeItem, addItem, itemSize } from './inventory.js';
 
 const CELL = 42;
-const SLOT_TYPES = { weapon: 'weapon', melee: 'melee', armor: 'armor', helmet: 'helmet', backpack: 'backpack' };
-const SLOT_LABELS = { weapon: 'Primary', melee: 'Melee', helmet: 'Helmet', armor: 'Body Armor', backpack: 'Backpack' };
+const SLOT_TYPES = { weapon: 'weapon', melee: 'melee', armor: 'armor', helmet: 'helmet', backpack: 'backpack', clothing: 'clothing' };
+const SLOT_LABELS = { weapon: 'Primary', melee: 'Melee', helmet: 'Helmet', armor: 'Body Armor', backpack: 'Backpack', clothing: 'Clothing' };
 
 export class InventoryUI {
   constructor(root) {

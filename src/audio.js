@@ -63,7 +63,44 @@ export function engineSound() {
   };
 }
 
+// Looping weather ambience: filtered noise. set(volume 0..1, filter Hz)
+let loopBuf = null;
+export function ambientLoop(kind) {
+  if (!ctx) return { set() {}, stop() {} };
+  if (!loopBuf) {
+    // 4 s of brown-ish noise for wind, white for rain (two channels)
+    loopBuf = ctx.createBuffer(2, ctx.sampleRate * 4, ctx.sampleRate);
+    const w = loopBuf.getChannelData(0), b = loopBuf.getChannelData(1);
+    let last = 0;
+    for (let i = 0; i < w.length; i++) { w[i] = Math.random() * 2 - 1; last = (last + 0.02 * (Math.random() * 2 - 1)) / 1.02; b[i] = last * 3.5; }
+  }
+  const src = ctx.createBufferSource();
+  src.buffer = loopBuf; src.loop = true;
+  const split = ctx.createChannelSplitter(2);
+  const f = ctx.createBiquadFilter();
+  f.type = kind === 'rain' ? 'lowpass' : 'bandpass';
+  f.frequency.value = kind === 'rain' ? 4000 : 400; f.Q.value = kind === 'rain' ? 0.3 : 0.6;
+  const g = ctx.createGain(); g.gain.value = 0;
+  src.connect(split); split.connect(f, kind === 'rain' ? 0 : 1); f.connect(g); g.connect(master);
+  src.start();
+  return {
+    set(vol, freq) {
+      const t = ctx.currentTime;
+      g.gain.setTargetAtTime(vol, t, 0.6);
+      if (freq) f.frequency.setTargetAtTime(freq, t, 0.6);
+    },
+    stop() { try { src.stop(); } catch { /* already stopped */ } },
+  };
+}
+
 export const sfx = {
+  // Thunder: a crack when close, then a long low rumble
+  thunder(vol = 1, close = false) {
+    if (close) { noise(0.25, 2500, 0.7, 0.6 * vol, 'highpass', 0.2); tone(45, 0.5, 0.4 * vol, 'sawtooth', -15); }
+    noise(1.5, 140, 0.8, 0.9 * vol, 'lowpass', 1.4);
+    setTimeout(() => noise(1.5, 90, 0.8, 0.7 * vol, 'lowpass', 1.5), 300 + Math.random() * 500);
+    setTimeout(() => noise(1.2, 70, 0.8, 0.45 * vol, 'lowpass', 1.2), 1100 + Math.random() * 700);
+  },
   // vol < 1 for distant shots (other survivors); distance also muffles them.
   shot(kind, suppressed, vol = 1) {
     if (vol < 0.02) return;

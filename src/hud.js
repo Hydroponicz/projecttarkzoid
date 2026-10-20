@@ -76,6 +76,15 @@ export class HUD {
     if (p.exhausted) status.push('<b class="red">WINDED</b>');
     if (p.food <= 10) status.push('<b class="red">STARVING</b>');
     if (p.water <= 10) status.push('<b class="red">DEHYDRATED</b>');
+    // Weather on the body
+    if (p.wet > 60) status.push('<b class="blue">SOAKED</b>');
+    else if (p.wet > 20) status.push('<b class="blue">WET</b>');
+    const bt = p.bodyTemp ?? 37;
+    if (bt < 33.8) status.push(`<b class="red">HYPOTHERMIA ${bt.toFixed(1)}°</b>`);
+    else if (bt < 35) status.push(`<b class="red">FREEZING ${bt.toFixed(1)}°</b>`);
+    else if (bt < 36) status.push(`<b class="blue">COLD ${bt.toFixed(1)}°</b>`);
+    else if (bt > 39.2) status.push(`<b class="red">HEATSTROKE ${bt.toFixed(1)}°</b>`);
+    else if (bt > 38) status.push(`<b>OVERHEATING ${bt.toFixed(1)}°</b>`);
 
     // Weapon
     // Weapon panel: like Tarkov there's no exact ammo counter — press T to check.
@@ -104,6 +113,7 @@ export class HUD {
 
     // Clock + character info
     $('clock').textContent = `Day ${game.day} · ${game.clockText()}${game.isNight ? ' · NIGHT' : ''}`;
+    $('weather').textContent = game.weather ? game.weather.hudText() : '';
     const ch = game.profile;
     const inSafe = game.inSafehouse(p.pos.x, p.pos.z);
     $('info').innerHTML = `${ch.name} <span class="dim">— ${ch.professionName}</span>` +

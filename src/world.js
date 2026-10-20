@@ -1246,6 +1246,7 @@ export function buildWorld(scene, seed) {
     wallMesh.castShadow = true;
     wallMesh.receiveShadow = true;
     wallMesh.computeBoundingSphere();
+    wallMesh.userData.far = list !== wallRegions.get('town');
     group.add(wallMesh);
   }
 
@@ -1279,13 +1280,22 @@ export function buildWorld(scene, seed) {
 
   mergeStatic(group);
 
+  // Countryside pieces: hidden past view range (fog hides them anyway), so
+  // the town doesn't draw the farms and woods behind the haze.
+  const far = [];
+  for (const o of group.children) {
+    if (!o.userData.far) continue;
+    const bs = o.isInstancedMesh ? o.boundingSphere : (o.geometry.computeBoundingSphere(), o.geometry.boundingSphere);
+    if (bs) far.push({ o, c: bs.center.clone().applyMatrix4(o.matrixWorld), r: bs.radius });
+  }
+
   const generatedContainers = containers.length;
   const houses = buildings.filter((b) => b.kind === 'house');
 
   return {
     group, hash, containers, generatedContainers, buildings, houses, roads, trees, doors, beds, windows, zombieSpawns, landmarks, vehicleSpawns, pumps,
     dirtRoads: country.dirtRoads, features: country.features, gardens: country.gardens, forage: country.forage, waterSources: country.water,
-    setFruit: forest.setFruit, setBerries: country.setBerries,
+    setFruit: forest.setFruit, setBerries: country.setBerries, foliage: forest.foliage, size: HALF * 2 + 80,
     addBox, addContainer: (type, x, z) => addContainer(type, x, z, 0, {}), felled,
     // Cut down a tree: hide its instances and remove its collider.
     fellTree(i) {
@@ -1303,6 +1313,9 @@ export function buildWorld(scene, seed) {
         if (d < bd) { bd = d; best = b.tree; }
       }
       return best;
+    },
+    cull(x, z, range) {
+      for (const f of far) f.o.visible = Math.hypot(f.c.x - x, f.c.z - z) - f.r < range;
     },
     buildingAt(x, z) { return buildings.find((b) => !b.area && x > b.x0 && x < b.x1 && z > b.z0 && z < b.z1) || null; },
     dispose: () => scene.remove(group),
@@ -1386,10 +1399,11 @@ function mergeStatic(group) {
     victims.push(o);
   });
   for (const o of victims) o.parent.remove(o);
-  for (const { mat, geos, shadow } of buckets.values()) {
+  for (const [key, { mat, geos, shadow }] of buckets) {
     const merged = mergeGeometries(geos);
     if (!merged) continue;
     const mesh = new THREE.Mesh(merged, mat);
+    mesh.userData.far = !key.startsWith('town');
     mesh.castShadow = shadow;
     mesh.receiveShadow = true;
     group.add(mesh);

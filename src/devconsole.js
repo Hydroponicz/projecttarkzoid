@@ -1,6 +1,7 @@
 // In-game developer console: tabs of cheats, sliders and debug overlays plus
 // a command line. Toggle with ` (backquote) or F1. Settings persist in
 // localStorage so toggles survive a reload.
+import { STATES, SEASONS, SEASON_DAYS } from './weather.js';
 import * as THREE from 'three';
 import { ITEMS, makeItem, LOOT_TABLES, rollLoot } from './items.js';
 import { addItem, makeGrid } from './inventory.js';
@@ -483,7 +484,7 @@ export class DevConsole {
     const look = g.lookTarget?.grid;
     if (target === 'look' && !look) { this.log('Not looking at a container — dropping instead', 'warn'); dest = 'drop'; }
     let dropped = 0;
-    const slots = { weapon: 'weapon', melee: 'melee', armor: 'armor', helmet: 'helmet', backpack: 'backpack' };
+    const slots = { weapon: 'weapon', melee: 'melee', armor: 'armor', helmet: 'helmet', backpack: 'backpack', clothing: 'clothing' };
     for (const it of items) {
       // Fill an empty equipment slot first (weapon, armor, backpack...).
       const slot = slots[def.type];
@@ -769,6 +770,26 @@ export class DevConsole {
         v.fuel = v.def.tank;
         this.log(`Spawned a ${v.name}`);
       } },
+      weather: { u: '[clear|cloudy|overcast|fog|rain|storm|snow|blizzard] [hours]', d: 'Show or set the weather (blends in over a minute; add "now" to snap)', f: (a) => {
+        need();
+        const W = g.weather;
+        if (a[0]) {
+          if (!STATES[a[0]]) throw new Error('Unknown weather: ' + Object.keys(STATES).join(', '));
+          W.setState(a[0], +a[1] || undefined);
+          if (a.includes('now')) { const st = STATES[a[0]]; Object.assign(W.mix, { cloud: st.cloud, fog: st.fog, rain: st.rain, snow: st.snow }); W.mix.wind = W.windTarget; }
+        }
+        this.log(`${esc(W.hudText())} · next ${W.next} in ${Math.round(W.left)} min · snow ${W.snowCover.toFixed(2)} · wet ground ${W.wetGround.toFixed(2)} · body ${(g.player.bodyTemp ?? 37).toFixed(1)}°C wet ${Math.round(g.player.wet || 0)}`);
+      } },
+      season: { u: '<spring|summer|autumn|winter>', d: 'Jump to the start of a season (shifts the calendar, not the clock)', f: (a) => {
+        need();
+        const i = SEASONS.findIndex((s) => s.id === a[0]);
+        if (i < 0) throw new Error('Unknown season');
+        const W = g.weather, Y = SEASON_DAYS * 4;
+        W.offset = ((i * SEASON_DAYS - (g.day - 1)) % Y + Y) % Y;
+        W.pickNext();
+        this.log(`Now ${W.season.name}, day ${W.seasonDay}`);
+      } },
+      lightning: { d: 'Strike lightning at your crosshair', f: () => { need(); const p = g.player; const r = g.weather.strike({ x: p.pos.x - Math.sin(p.yaw) * 30, z: p.pos.z - Math.cos(p.yaw) * 30 }); this.log(`Strike ${r.d.toFixed(0)} m away`); } },
       grow: { u: '[hours]', d: 'Advance every garden plot (default: until ripe)', f: (a) => {
         need();
         const F = g.farming;

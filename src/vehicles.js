@@ -366,12 +366,14 @@ export class Vehicles {
     // --- physics: bicycle model with momentum ---
     const eng = P.engine / 100;
     const flats = v.flats();
+    const grip = g.weather?.grip ?? 1; // wet or snowy roads (weather.js)
     let top = D.top * (0.35 + 0.65 * eng);
     if (flats.length) top = Math.min(top, 4.5);
     const fwd = v.running ? throttleKey : 0;
     if (fwd) v.speed += D.power * (0.45 + 0.55 * eng) * dt * (v.speed < 0 ? 2 : 1);
     if (brakeKey) {
-      if (v.speed > 0.4) v.speed = Math.max(0, v.speed - (P.brakes == null ? 1.5 : 2 + 8 * (P.brakes / 100)) * dt);
+      // Wet and snowy roads: longer stops
+      if (v.speed > 0.4) v.speed = Math.max(0, v.speed - (P.brakes == null ? 1.5 : 2 + 8 * (P.brakes / 100)) * (0.35 + 0.65 * grip) * dt);
       else if (v.running) v.speed = Math.max(-5, v.speed - D.power * 0.6 * dt); // reverse
     }
     if (input.jump) v.speed -= Math.sign(v.speed) * Math.min(Math.abs(v.speed), 6 * dt); // handbrake
@@ -379,7 +381,8 @@ export class Vehicles {
     v.speed -= Math.sign(v.speed) * Math.min(Math.abs(v.speed), (0.35 + 0.012 * v.speed * v.speed + (flats.length ? 1.5 : 0)) * dt);
     v.speed = Math.max(-5, Math.min(top, v.speed));
     // steering: softer at speed; flats pull to their side
-    const steerIn = (input.l - input.r) * 0.55 / (1 + Math.abs(v.speed) * 0.05);
+    // ...and the car washes out wide in corners at speed
+    const steerIn = (input.l - input.r) * 0.55 / (1 + Math.abs(v.speed) * 0.05 * (2 - grip));
     v.steer += (steerIn - v.steer) * Math.min(1, dt * 4);
     let pull = 0;
     for (const t of flats) pull += t.endsWith('l') ? 0.06 : -0.06;

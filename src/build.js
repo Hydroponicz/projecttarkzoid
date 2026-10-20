@@ -15,6 +15,7 @@ export const BUILDABLES = [
   { type: 'crate', name: 'Storage Crate', w: 1.0, d: 0.8, h: 0.8, cost: { planks: 3, nails: 2 }, hp: 200, skill: 0 },
   { type: 'bed', name: 'Bed', w: 1.0, d: 2.0, h: 0.55, cost: { planks: 4, nails: 4 }, hp: 200, skill: 2 },
   { type: 'campfire', name: 'Campfire', w: 0.8, d: 0.8, h: 0.3, cost: { planks: 2, nails: 0 }, hp: 100, skill: 0 },
+  { type: 'rain_barrel', name: 'Rain Barrel', w: 0.9, d: 0.9, h: 1.1, cost: { planks: 3, nails: 4 }, hp: 150, skill: 1 },
   // Dug with a shovel, outdoors; farming.js owns plots once they exist
   { type: 'plot', name: 'Garden Plot', w: 2.0, d: 2.0, h: 0.15, cost: {}, hp: 0, skill: 0, tool: 'shovel' },
 ];
@@ -169,6 +170,15 @@ export class Builder {
     } else if (type === 'bed') {
       box(def.w, 0.4, def.d, darkWood, 0, 0.2, 0);
       box(def.w - 0.05, 0.1, def.d - 0.3, new THREE.MeshStandardMaterial({ color: 0x7a7a6a }), 0, 0.45, 0.12);
+    } else if (type === 'rain_barrel') {
+      // A barrel under a funnel; fills when it rains (weather.js)
+      const staves = new THREE.Mesh(new THREE.CylinderGeometry(0.4, 0.36, 0.95, 12), darkWood);
+      staves.position.y = 0.48; staves.castShadow = true; g.add(staves);
+      for (const y of [0.18, 0.78]) { const hoop = new THREE.Mesh(new THREE.CylinderGeometry(0.41, 0.41, 0.05, 12), stone); hoop.position.y = y; g.add(hoop); }
+      const funnel = new THREE.Mesh(new THREE.CylinderGeometry(0.55, 0.2, 0.2, 12, 1, true), new THREE.MeshStandardMaterial({ color: 0x8a6a42, roughness: 0.9, side: THREE.DoubleSide }));
+      funnel.position.y = 1.02; g.add(funnel);
+      s.water = saved.water ?? 0;
+      s.prompt = () => `[F] Rain barrel (${s.water.toFixed(1)} / 40 L): drink, fill watering cans`;
     } else if (type === 'campfire') {
       for (let i = 0; i < 8; i++) { const a = (i / 8) * Math.PI * 2; box(0.18, 0.14, 0.18, stone, Math.cos(a) * 0.35, 0.07, Math.sin(a) * 0.35); }
       box(0.5, 0.08, 0.08, darkWood, 0, 0.1, 0).rotation.y = 0.6;
@@ -261,7 +271,7 @@ export class Builder {
   }
 
   serialize() {
-    return this.structures.map((s) => ({ type: s.type, x: s.x, z: s.z, rot: s.rot, hp: Math.round(s.hp), maxHp: s.maxHp, open: s.open || undefined, grid: s.grid }));
+    return this.structures.map((s) => ({ type: s.type, x: s.x, z: s.z, rot: s.rot, hp: Math.round(s.hp), maxHp: s.maxHp, open: s.open || undefined, grid: s.grid, water: s.water != null ? +s.water.toFixed(1) : undefined }));
   }
 
   restore(list) {

@@ -30,7 +30,7 @@ const FIRST = ['Kate', 'Bob', 'Marcus', 'Elena', 'Dmitri', 'Jo', 'Sam', 'Alex', 
 const LAST = ['Smith', 'Petrov', 'Hale', 'Moreno', 'Kowalski', 'Reyes', 'Novak', 'Grant', 'Volkov', 'Baker', 'Lindqvist', 'Okafor', 'Price', 'Doyle'];
 export const randomName = () => `${FIRST[Math.floor(Math.random() * FIRST.length)]} ${LAST[Math.floor(Math.random() * LAST.length)]}`;
 
-const SLOT_FOR_TYPE = { weapon: 'weapon', melee: 'melee', armor: 'armor', helmet: 'helmet', backpack: 'backpack' };
+const SLOT_FOR_TYPE = { weapon: 'weapon', melee: 'melee', armor: 'armor', helmet: 'helmet', backpack: 'backpack', clothing: 'clothing' };
 
 export function makeCharacter(name, profKey, bought) {
   const prof = PROFESSIONS[profKey];
@@ -38,11 +38,11 @@ export function makeCharacter(name, profKey, bought) {
   for (const k in STATS) stats[k] = Math.min(MAX_SKILL, (prof.bonus[k] || 0) + (bought[k] || 0));
   const ch = {
     name, profession: profKey, professionName: prof.name, stats,
-    equip: { weapon: null, melee: null, armor: null, helmet: null, backpack: null },
+    equip: { weapon: null, melee: null, armor: null, helmet: null, backpack: null, clothing: null },
     pockets: makeGrid(4, 2),
     daysSurvived: 0, kills: 0,
   };
-  const kit = [...prof.kit, 'water', 'crackers'];
+  const kit = [...prof.kit, 'water', 'crackers', 'hoodie'];
   // Backpacks first so later items have room.
   kit.sort((a, b) => (b === 'bp_scav') - (a === 'bp_scav'));
   for (const entry of kit) {
@@ -104,7 +104,7 @@ export function setupCreation(onDone) {
       });
       $('cc-stats').appendChild(row);
     }
-    const kit = [...PROFESSIONS[prof].kit, 'water', 'crackers'].map((e) => {
+    const kit = [...PROFESSIONS[prof].kit, 'water', 'crackers', 'hoodie'].map((e) => {
       const [key, opts] = Array.isArray(e) ? e : [e, {}];
       return ITEMS[key].name + (opts.count ? ` ×${opts.count}` : '');
     });

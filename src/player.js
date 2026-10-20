@@ -199,6 +199,10 @@ export class Player {
     if (Math.abs(this.lean) > 0.3) maxSpeed *= 0.7;
     maxSpeed *= 1 - 0.35 * over;
     if (kg > 60) maxSpeed = Math.min(maxSpeed, 0.8);
+    // Wading through snow; stiff with cold
+    const W = g.weather;
+    if (W && W.snowCover > 0.2 && !g.world.buildingAt(this.pos.x, this.pos.z)) maxSpeed *= 1 - 0.2 * (W.snowCover - 0.2) / 0.8;
+    if (this.bodyTemp < 35) maxSpeed *= 0.85;
 
     const fx = -Math.sin(this.yaw), fz = -Math.cos(this.yaw);
     const rx = -fz, rz = fx;
@@ -283,7 +287,7 @@ export class Player {
     if (wantSprint && moving) this.stamina = Math.max(0, this.stamina - 8.5 * (1 + over * 1.5) * (1 - 0.08 * fit) * dt);
     else {
       let regen = moving ? 3.5 : this.crouch ? 8 : 6.5;
-      regen *= (1 + 0.1 * fit) * (1 - 0.5 * over) * (this.fatigue >= 100 ? 0.5 : 1) * (this.exhausted ? 0.6 : 1);
+      regen *= (1 + 0.1 * fit) * (1 - 0.5 * over) * (this.fatigue >= 100 ? 0.5 : 1) * (this.exhausted ? 0.6 : 1) * (this.coldMul || 1);
       this.stamina = Math.min(100, this.stamina + regen * dt);
     }
     // Heavy breathing when winded
@@ -620,7 +624,7 @@ export class Player {
   updateBody(dt) {
     this.fatigue = Math.min(100, this.fatigue + dt * 0.09);
     this.food = Math.max(0, this.food - dt * 0.09);
-    this.water = Math.max(0, this.water - dt * 0.13);
+    this.water = Math.max(0, this.water - dt * 0.13 * (this.thirstMul || 1)); // heat (weather.js)
     if (this.food <= 0) this.damagePart('stomach', dt * 0.4);
     if (this.water <= 0) this.damagePart('thorax', dt * 0.3);
     for (const part of this.bleeding) this.damagePart(part, dt * 0.7);
@@ -719,6 +723,7 @@ export class Player {
       food: this.food, water: this.water, fatigue: this.fatigue, stamina: this.stamina,
       infected: this.infected, infection: this.infection, painkiller: this.painkiller, kills: this.kills,
       flashlight: this.flashlight, active: this.active, stance: this.stance, pace: this.pace, vehicle: this.vehicle ? this.vehicle.index : undefined,
+      wet: Math.round(this.wet || 0), bodyTemp: +(this.bodyTemp ?? 37).toFixed(2),
     };
   }
 
@@ -727,7 +732,7 @@ export class Player {
     this.yaw = s.yaw;
     Object.assign(this.hp, s.hp);
     this.bleeding = new Set(s.bleeding);
-    for (const k of ['food', 'water', 'fatigue', 'stamina', 'infected', 'infection', 'painkiller', 'kills', 'flashlight', 'active', 'stance', 'pace']) if (s[k] !== undefined) this[k] = s[k];
+    for (const k of ['food', 'water', 'fatigue', 'stamina', 'infected', 'infection', 'painkiller', 'kills', 'flashlight', 'active', 'stance', 'pace', 'wet', 'bodyTemp']) if (s[k] !== undefined) this[k] = s[k];
     this.buildViewmodel();
   }
 

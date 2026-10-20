@@ -23,7 +23,7 @@ npm run build    # static build in dist/
    Each chapter pays out gear. **J** opens the goals panel; **K** (while it's open) skips the tutorial.
 3. **Wake up in a random house** in a persistent, procedurally generated town. Loot doesn't respawn. The world is saved automatically (every 30 seconds, when you sleep, and when you close the tab).
 3. **Make a home.** Claim the building you're standing in as your safehouse with **V**. Outdoors, **V** claims a 20×20 m camp instead. Zombies never respawn near your safehouse.
-4. **Build.** Press **B** to build walls, barricades, doors, storage crates, beds and campfires out of planks and nails, or dig garden plots with a shovel. You need a hammer. Planks come from lumber piles in warehouses, or you can chop trees with an axe and saw the logs into planks. Hammering is loud and draws zombies.
+4. **Build.** Press **B** to build walls, barricades, doors, storage crates, beds, campfires and rain barrels out of planks and nails, or dig garden plots with a shovel. You need a hammer. Planks come from lumber piles in warehouses, or you can chop trees with an axe and saw the logs into planks. Hammering is loud and draws zombies.
 5. **Survive the nights.** One in-game minute passes per real second, so a full day takes 24 minutes. At night zombies move faster, and more of them spawn as the days go by. Sleep in a bed to recover fatigue and health. Sleeping outside your safehouse may wake you to company.
 6. **Death is permanent.** Your corpse stays in the world with all your gear, and your base keeps standing. The next survivor you create spawns into the same world. Fallen characters are listed in the graveyard on the title screen.
 
@@ -81,9 +81,51 @@ New loot: farm supply shelves (shovels, watering cans, fertilizer, seeds), seed 
 
 Most zombies are in town; the countryside is quieter. Everything far away is hidden by fog, and the scenery is split into chunks so only what's near you gets drawn.
 
+## Weather and seasons
+
+- **Seasons.** A year is four 7-day seasons, and a new world starts late in spring. Each season changes:
+  - **Temperature:** around 12 °C in spring, 24 °C in summer, 10 °C in autumn and −4 °C in winter. It's warmest mid-afternoon and varies day to day.
+  - **Day length:** summer nights are short and winter days are short. Zombies are more dangerous at night.
+  - **Which weather is likely.**
+  - **Crops:** good growth in summer, slower in autumn, none in winter.
+  - **The trees:** fresh in spring, orange and brown in autumn, bare and snow-dusted in winter.
+
+  Seasons blend over their first two days.
+- **Weather fronts.** Clear, cloudy, overcast, fog, rain, thunderstorm, snow and blizzard, each lasting a few hours and blending in over about an in-game hour. What comes next depends on what's here now and on the season:
+  - Thunderstorms grow out of overcast or cloudy skies and leave as rain. They're most common in summer.
+  - Blizzards come out of snow.
+  - Rain falls as snow below freezing.
+  - Before a storm or blizzard the sky darkens, the wind rises, and you get a warning.
+- **What you see and hear.**
+  - Rain streaks and snowflakes blow with the wind but don't fall indoors.
+  - Fog and storms close in the view and grey the sky.
+  - Lightning bolts flash the sky, followed by thunder that arrives late for distant strikes and cracks for close ones.
+  - Wind and rain have their own sound. Indoors you hear a muffled drumming on the roof.
+  - The ground darkens when soaked, and snow builds up and turns it white, then melts.
+- **Your body.**
+  - Rain and snow soak you unless you're indoors or in a car. A raincoat or parka keeps most of it off.
+  - Wet clothes, wind chill and cold air bring your **body temperature** down. Clothing, shelter, a campfire and a running car's heater warm you up.
+  - Cold makes you shiver, which spoils your aim, and stamina comes back slower.
+  - Freezing slows you, tires you and hurts. Hypothermia can kill.
+  - Summer heat makes you thirsty. Overheating in heavy clothes can lead to heatstroke.
+  - The HUD shows WET, SOAKED, COLD, FREEZING, HYPOTHERMIA, OVERHEATING or HEATSTROKE with your body temperature.
+- **Clothing slot.** Hoodie (everyone starts with one), raincoat, winter coat and military parka, each with warmth and rain protection. Find them in wardrobes, dressers, police lockers, farm shelves, hunting lockers and military duffels.
+- **Zombies.**
+  - Rain and wind drown out noise (footsteps, doors, even some gunfire carries less).
+  - Fog, rain and snow cut how far zombies see.
+  - Hard frost makes them sluggish.
+  - Lightning strikes draw the dead.
+- **Driving.** Wet and snowy roads mean longer stops and wider corners.
+- **Snow** slows you on foot outdoors.
+- **Farming.**
+  - Rain waters every plot. Heat dries plots faster.
+  - Frost damages crops, and nothing grows in the cold. Foraged plants barely regrow in winter.
+  - **Rain barrels** (build item 7, Carpentry 1) collect rainwater to drink and to fill watering cans.
+- **Saved:** the calendar, the current front and the next one, snow cover, wet ground, your wetness and body temperature.
+
 ## Farming
 
-- **Dig a plot.** Build mode (**B**), item 7: a 2×2 m garden plot. Needs a shovel, outdoors only. The farms' kitchen gardens are already dug, and some are ready to pick.
+- **Dig a plot.** Build mode (**B**), item 8: a 2×2 m garden plot. Needs a shovel, outdoors only. The farms' kitchen gardens are already dug, and some are ready to pick.
 - **Tend it.** Look at a plot and press **F**:
   - **Plant** carrots, cabbages, potatoes, tomatoes or corn.
   - **Water** with a watering can (2 L per watering) or a water bottle.
@@ -253,7 +295,7 @@ Zombies and survivors react physically to what hits them.
 | H | Quick-heal (bandage if bleeding, otherwise a medkit) |
 | L | Flashlight |
 | M | Map (your safehouse is outlined in yellow) |
-| B | Build mode: 1–7 select a piece (7 = garden plot), R rotate, LMB build, X dismantle |
+| B | Build mode: 1–8 select a piece (7 = rain barrel, 8 = garden plot), R rotate, LMB build, X dismantle |
 | V | Claim a safehouse |
 | Esc | Pause. The game goes fullscreen when you spawn; hold Esc or use the pause menu to leave fullscreen. |
 
@@ -281,6 +323,7 @@ car                  car military         fixcar              kit Mechanic
 traders              tp trader            tp trader medic     rep 25
 speed 20             skill carpentry 8    set fatigue 90      killall 25
 kit Farmer           grow                 grow 12             farmxp 100
+weather storm now    weather snow 6       season winter       lightning
 tp farm              tp orchard           tp cabin            tp camp
 god / noclip / invis / freeze / freebuild                    js player.skill
 ```
@@ -294,6 +337,7 @@ god / noclip / invis / freeze / freebuild                    js player.skill
 | `src/build.js` | Carpentry: placing, saving and dismantling structures |
 | `src/world.js` | Seeded procedural town: districts, building archetypes (including farmhouses, barns and cabins with pitched roofs), house room layouts, furnishing by room and business, doors and windows, military sites, cars; merges static scenery (vertex colours; the town as one batch, the countryside in chunks) |
 | `src/countryside.js` | Farmland and wilderness: dirt tracks, farms, fields, orchards, forests with clearings, meadows and ponds, instanced trees by species, rocks, bushes and corn |
+| `src/weather.js` | Seasons, weather fronts, temperature, rain and snow particles, lightning and thunder, snow cover, wetness and body temperature, rain barrels, seasonal foliage |
 | `src/farming.js` | Garden plots, crops and growth, watering and fertilizer, harvests, wells and ponds, foraging, the Farming skill and the plot screen |
 | `src/furniture.js` | Box-built furniture and container models (kitchens, beds, sofas, shelving, racks, desks…) |
 | `src/player.js` | First-person controller, leaning, melee, body-part health, status effects |

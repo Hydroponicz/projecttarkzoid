@@ -55,6 +55,7 @@ function chunked(group, geo, mat, items, { shadow = true, receive = false } = {}
     });
     m.castShadow = shadow; m.receiveShadow = receive;
     m.computeBoundingSphere();
+    m.userData.far = true; // culled by distance (World.cull)
     group.add(m);
   }
   return where;
@@ -75,7 +76,26 @@ const SPECIES = ['pine', 'oak', 'birch', 'apple'];
 
 // Instanced trees (town park trees, forests, orchards). Returns handles to
 // fell a tree and to show or hide the fruit on an apple tree.
+// Foliage colour hooks for the seasons (weather.js drives the uniforms):
+// leaf tint multiplies greenish vertex colours only (not trunks), snow
+// lightens them.
+function seasonal(mat, u) {
+  mat.onBeforeCompile = (sh) => {
+    sh.uniforms.uLeafTint = u.uLeafTint; sh.uniforms.uSnow = u.uSnow;
+    sh.fragmentShader = 'uniform vec3 uLeafTint;\nuniform float uSnow;\n' + sh.fragmentShader.replace('#include <color_fragment>', `#include <color_fragment>
+      float leafy = step(vColor.r + 0.02, vColor.g);
+      diffuseColor.rgb = mix(diffuseColor.rgb, clamp(diffuseColor.rgb * uLeafTint, 0.0, 1.0), leafy);
+      diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.86, 0.9, 0.95), uSnow * leafy);`);
+  };
+  mat.customProgramCacheKey = () => 'seasonal';
+  return mat;
+}
+
 export function plantTrees({ group, trees, addBox, rnd }) {
+  const foliage = {
+    deciduous: { uLeafTint: { value: new THREE.Vector3(1, 1, 1) }, uSnow: { value: 0 } },
+    pine: { uLeafTint: { value: new THREE.Vector3(1, 1, 1) }, uSnow: { value: 0 } },
+  };
   const q = new THREE.Quaternion(), up = new THREE.Vector3(0, 1, 0), pos = new THREE.Vector3(), scl = new THREE.Vector3();
   const boxes = [];
   const items = Object.fromEntries(SPECIES.map((sp) => [sp, []]));
@@ -96,7 +116,8 @@ export function plantTrees({ group, trees, addBox, rnd }) {
   const where = new Map();
   for (const sp of SPECIES) {
     if (!items[sp].length) continue;
-    for (const [k, v] of chunked(group, speciesGeometry(sp), vcMat(), items[sp], { receive: true })) where.set(k, v);
+    const mat = seasonal(vcMat(), sp === 'pine' ? foliage.pine : foliage.deciduous);
+    for (const [k, v] of chunked(group, speciesGeometry(sp), mat, items[sp], { receive: true })) where.set(k, v);
   }
   // Apples: a cluster of fruit on each apple tree, hidden once picked.
   if (fruitItems.length) {
@@ -112,7 +133,7 @@ export function plantTrees({ group, trees, addBox, rnd }) {
   const zero = new THREE.Matrix4().makeScale(0, 0, 0);
   const set = (it, m) => { const w = where.get(it); w.mesh.setMatrixAt(w.k, m); w.mesh.instanceMatrix.needsUpdate = true; };
   return {
-    boxes,
+    boxes, foliage,
     fell(i) {
       const r = ref[i];
       set(r.it, zero);

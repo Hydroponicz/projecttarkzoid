@@ -136,7 +136,8 @@ export class Farming {
     let stage = p.growth < 0.2 ? 'seedlings' : p.growth < 0.5 ? 'growing' : p.growth < 0.8 ? 'well along' : 'almost ready';
     if (lvl >= 3) stage += ` ${Math.floor(p.growth * 100)}%`;
     const thirst = p.water <= 0 ? ', parched' : p.water < 25 ? ', dry' : '';
-    return `${c.name} (${stage}${thirst})`;
+    const W = this.game.weather, cold = W && W.cropMul === 0 ? (W.temp < 0 ? ', frostbitten' : ', dormant in the cold') : '';
+    return `${c.name} (${stage}${thirst}${cold})`;
   }
 
   // Rebuild a plot's mesh when what it looks like changes.
@@ -200,14 +201,21 @@ export class Farming {
   }
 
   tick(hours) {
-    const lvl = this.skill;
+    const lvl = this.skill, W = this.game.weather;
+    // Rain waters every plot; heat dries them faster. Seasons set the pace
+    // of growth (nothing grows in the cold), and frost hurts crops.
+    const rain = W ? W.mix.rain + W.mix.snow * 0.2 : 0, temp = W ? W.temp : 15;
+    const season = W ? W.cropMul : 1, frost = temp < 0 ? Math.min(1, -temp / 6) : 0;
+    const dry = (hours * 100) / DRY_HOURS * (temp > 25 ? 1.4 : temp < 8 ? 0.7 : 1);
     for (const p of this.plots) {
-      if (!p.crop || p.dead) { p.water = Math.max(0, p.water - (hours * 100) / DRY_HOURS); continue; }
+      p.water = Math.min(100, p.water + hours * rain * 120);
+      if (!p.crop || p.dead) { p.water = Math.max(0, p.water - dry); continue; }
       const c = CROPS[p.crop];
       const wet = p.water > 0;
-      p.water = Math.max(0, p.water - (hours * 100) / DRY_HOURS);
+      p.water = Math.max(0, p.water - dry);
+      if (frost) p.health -= hours * frost * 10 * (1 - 0.05 * lvl);
       if (p.growth < 1) {
-        const speed = (p.fert ? 1.35 : 1) * (1 + 0.06 * lvl) * (wet ? 1 : 0.2);
+        const speed = (p.fert ? 1.35 : 1) * (1 + 0.06 * lvl) * (wet ? 1 : 0.2) * season;
         p.growth = Math.min(1, p.growth + (hours / (c.days * 24)) * speed);
       } else p.ripeFor += hours;
       if (!wet) p.health -= ((hours * 100) / THIRST_HOURS) * (1 - 0.06 * lvl);
@@ -216,7 +224,7 @@ export class Farming {
     }
     for (const f of this.forage) {
       if (f.n >= f.max) continue;
-      f.acc = (f.acc || 0) + (hours / 24) * f.regen;
+      f.acc = (f.acc || 0) + (hours / 24) * f.regen * (W ? W.forageMul : 1);
       while (f.acc >= 1 && f.n < f.max) { f.acc -= 1; f.n++; this.showForage(f); }
     }
   }
@@ -418,7 +426,7 @@ export class Farming {
       <div class="vh-parts">${rows.join('')}</div>
       <div class="vh-foot">${actions}</div>
       <div class="fm-skill">Farming ${lvl} <div class="vh-bar"><i style="width:${xp.frac * 100}%;background:#a8c86a"></i><b>${xp.text}</b></div></div>
-      <div class="hint">${c ? `Ripens in about ${c.days} days with steady water; ripe crops rot after two days.` : 'Dig more plots in build mode (B) with a shovel.'} Esc or walk away to close.</div></div>`;
+      <div class="hint">${c ? `Ripens in about ${c.days} days with steady water; ripe crops rot after two days. Rain waters plots; frost hurts crops and nothing grows in winter.` : 'Dig more plots in build mode (B) with a shovel.'} Esc or walk away to close.</div></div>`;
     el.querySelector('.tr-close').onclick = () => this.closePanel();
     el.querySelectorAll('[data-a]').forEach((b) => {
       b.onclick = () => {
