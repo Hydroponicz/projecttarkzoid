@@ -69,6 +69,7 @@ class Game {
     this.chopHits = new Map();
     this.shaking = new Set(); // doors being beaten
 
+    this.watchFullscreen();
     addEventListener('resize', () => this.resize());
     this.resize();
     this.canvas.addEventListener('click', () => {
@@ -147,14 +148,41 @@ class Game {
   enterFullscreen() {
     const el = document.documentElement;
     if (document.fullscreenElement || !el.requestFullscreen) return;
+    this.wantFullscreen = true;
     el.requestFullscreen({ navigationUI: 'hide' })
       // Capture Esc (Chrome/Edge) so closing menus doesn't also exit fullscreen.
       // Holding Esc still leaves fullscreen.
       .then(() => navigator.keyboard?.lock?.(['Escape']))
-      .catch(() => {});
+      .catch(() => { this.wantFullscreen = !!document.fullscreenElement; });
+  }
+
+  // Esc that closes a menu shouldn't drop fullscreen. Where the browser can't
+  // capture Esc (Firefox, Safari, non-https pages) it leaves fullscreen anyway;
+  // then the next click or key puts it back (browsers don't count Esc itself
+  // as a gesture that may enter fullscreen).
+  watchFullscreen() {
+    const uiOpen = () => this.state === 'play' && (this.invOpen || this.hud.mapOpen || this.dialogOpen || this.traderOpen || this.vehicleOpen || this.farmOpen || this.progress?.panelOpen || this.builder.active);
+    document.addEventListener('keydown', (e) => {
+      if (e.code === 'Escape') { this.escAt = performance.now(); this.escUi = uiOpen() || this.awaitingRelock; return; }
+      this.restoreFullscreenNow();
+    }, true);
+    document.addEventListener('pointerdown', () => this.restoreFullscreenNow(), true);
+    document.addEventListener('fullscreenchange', () => {
+      if (document.fullscreenElement) { navigator.keyboard?.lock?.(['Escape']).catch(() => {}); this.restoreFullscreen = false; return; }
+      // Left fullscreen right after Esc closed a menu: not on purpose
+      if (this.wantFullscreen && this.state === 'play' && this.escUi && performance.now() - (this.escAt || 0) < 1500) this.restoreFullscreen = true;
+      else this.wantFullscreen = false;
+    });
+  }
+
+  restoreFullscreenNow() {
+    if (!this.restoreFullscreen || this.state !== 'play' || document.fullscreenElement) return;
+    this.restoreFullscreen = false;
+    this.enterFullscreen();
   }
 
   exitFullscreen() {
+    this.wantFullscreen = false;
     navigator.keyboard?.unlock?.();
     if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
   }
