@@ -208,7 +208,16 @@ export class Player {
     if (dl > 1e-5) { this.vel.x += (dvx / dl) * step; this.vel.z += (dvz / dl) * step; }
 
     const bx = this.pos.x, bz = this.pos.z;
-    if (g.dev?.noclip) { this.pos.x += mx * 8 * dt; this.pos.z += mz * 8 * dt; this.vel.set(0, 0, 0); }
+    if (this.vault) {
+      // Climbing through a window: over the sill and down the other side.
+      const v = this.vault;
+      v.t = Math.min(1, v.t + dt / v.dur);
+      const k = v.t < 0.5 ? 2 * v.t * v.t : 1 - (-2 * v.t + 2) ** 2 / 2;
+      this.pos.x = v.from.x + (v.to.x - v.from.x) * k;
+      this.pos.z = v.from.z + (v.to.z - v.from.z) * k;
+      this.vel.set(0, 0, 0);
+      if (v.t >= 1) { this.vault = null; this.y = 0; moveCircle(hash, this.pos, this.radius, 0, 0); sfx.step(0.2); }
+    } else if (g.dev?.noclip) { this.pos.x += mx * 8 * dt; this.pos.z += mz * 8 * dt; this.vel.set(0, 0, 0); }
     else {
       moveCircle(hash, this.pos, this.radius, this.vel.x * dt, this.vel.z * dt);
       // Running into a wall kills the momentum in that direction.
@@ -224,13 +233,18 @@ export class Player {
     const moving = speed > 0.15;
 
     // Jumping (Space): costs stamina, not while prone or exhausted.
-    if (input.jump && grounded && this.stance !== 'prone' && this.stamina > 12 && kg < 60 && !legsBroken) {
+    if (input.jump && grounded && !this.vault && this.stance !== 'prone' && this.stamina > 12 && kg < 60 && !legsBroken && this.tryVault(over)) {
+      // vaulting through a window instead of jumping
+    } else if (input.jump && grounded && !this.vault && this.stance !== 'prone' && this.stamina > 12 && kg < 60 && !legsBroken) {
       this.stance = 'stand'; this.crouch = false;
       this.vy = 3.1 * (1 - 0.4 * over);
       this.stamina -= 12 * (1 + over);
       sfx.step(0.1);
     }
-    if (!grounded || this.vy > 0) {
+    if (this.vault) {
+      this.vy = 0;
+      this.y = Math.sin(this.vault.t * Math.PI) * (this.vault.w.sill * 0.55 + 0.15);
+    } else if (!grounded || this.vy > 0) {
       this.vy -= 9.81 * dt;
       this.y += this.vy * dt;
       if (this.y <= 0) {
@@ -340,14 +354,23 @@ export class Player {
     const hash = this.game.world.hash;
     const boxes = hash.query(Math.min(origin.x, end.x), Math.min(origin.z, end.z), Math.max(origin.x, end.x), Math.max(origin.z, end.z), []);
     let tw = 1, wallBox = null;
+    const glass = [];
     for (const b of boxes) {
+      if (b.window?.state === 'closed') {
+        // Window glass doesn't stop a bullet, it shatters
+        const t = segBox(origin.x, origin.z, end.x, end.z, b);
+        const y = origin.y + dir.y * t * maxD;
+        if (t >= 0 && y > b.window.sill && y < b.window.top) glass.push([t * maxD, b.window]);
+        continue;
+      }
       if (!b.blocksShot) continue;
       const t = segBox(origin.x, origin.z, end.x, end.z, b);
       if (t < 0 || t >= tw) continue;
       const y = origin.y + dir.y * t * maxD;
-      if (y > (b.h ?? 3)) continue;
+      if (y > (b.h ?? 3) || y < (b.y0 ?? 0)) continue;
       tw = t; wallBox = b;
     }
+    const breakGlass = (stopD) => { for (const [d, w] of glass) if (d < stopD) this.game.breakWindow(w, origin.clone().addScaledVector(dir, d), dir); };
     let wallD = tw * maxD;
     if (dir.y < 0 && -origin.y / dir.y < wallD) { wallD = -origin.y / dir.y; wallBox = null; }
     const wallPoint = origin.clone().addScaledVector(dir, wallD - 0.01);
@@ -365,6 +388,7 @@ export class Player {
     const sv = g.survivors?.raycast(origin, dir, z ? z.t : wallD);
     const rd = g.ragdolls?.raycast(origin, dir, sv ? sv.t : z ? z.t : wallD);
     const tHit = rd ? rd.t : sv ? sv.t : z ? z.t : null;
+    breakGlass(tHit ?? wallD);
     if (tHit == null) {
       if (wallD < maxD) {
         g.fx.impact(wallPoint, normal, wallBox?.decalParent, wallBox?.decalInset);
@@ -473,6 +497,43 @@ export class Player {
     }
     if (!hit) this.game.meleeWorld?.(this.melee?.key);
     this.game.zombies.noise(this.pos.x, this.pos.z, 3);
+  }
+
+  // Space at an open or smashed window you're facing: climb through it.
+  tryVault(over = 0) {
+    const fx = -Math.sin(this.yaw), fz = -Math.cos(this.yaw);
+    let best = null, bd = 1.3;
+    for (const w of this.game.world.windows) {
+      if (w.state === 'closed' || w.sill >= 1.2) continue;
+      const d = Math.hypot(w.x - this.pos.x, w.z - this.pos.z);
+      if (d > bd) continue;
+      const nx = w.ax === 'x' ? 0 : 1, nz = w.ax === 'x' ? 1 : 0;
+      const side = Math.sign((this.pos.x - w.x) * nx + (this.pos.z - w.z) * nz) || 1;
+      if (-(fx * nx + fz * nz) * side < 0.45) continue; // must face through it
+      const along = w.ax === 'x' ? this.pos.x - w.x : this.pos.z - w.z;
+      if (Math.abs(along) > w.w / 2 + 0.1) continue;
+      bd = d; best = { w, nx, nz, side, along: Math.max(-w.w / 2 + 0.35, Math.min(w.w / 2 - 0.35, along)) };
+    }
+    if (!best) return false;
+    const { w, nx, nz, side, along } = best;
+    const ux = w.ax === 'x' ? 1 : 0, uz = w.ax === 'x' ? 0 : 1;
+    this.vault = {
+      t: 0, dur: 0.85 + over * 0.7, w,
+      from: { x: this.pos.x, z: this.pos.z },
+      to: { x: w.x + ux * along - nx * side * 0.75, z: w.z + uz * along - nz * side * 0.75 },
+    };
+    this.stance = 'stand'; this.crouch = this.prone = false;
+    this.stamina -= 10 * (1 + over);
+    sfx.step(0.2);
+    this.game.zombies.noise(this.pos.x, this.pos.z, 5);
+    if (w.state === 'broken' && Math.random() < 0.3) {
+      const part = ['armL', 'armR', 'legL', 'legR'][Math.floor(Math.random() * 4)];
+      this.damagePart(part, 4);
+      this.bleeding.add(part);
+      this.game.hud.message('You cut yourself on the broken glass', 3);
+      sfx.hurt();
+    }
+    return true;
   }
 
   onKill(target) { this.kills++; this.game.hud.message('Kill confirmed'); this.game.traders?.onKill(target); }

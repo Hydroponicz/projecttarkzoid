@@ -92,13 +92,16 @@ export class Zombies {
       for (let j = j0; j <= j1; j++) {
         const x = -HALF + (i + 0.5) * NAV_CELL, z = -HALF + (j + 0.5) * NAV_CELL;
         const boxes = this.world.hash.query(x - r, z - r, x + r, z + r, tmp);
-        let b = 0;
+        let b = 0, win = false;
         for (const box of boxes) {
           // Doors count as walkable: zombies head for them and bash them down.
           if (box.noCollide || box.door) continue;
-          if (x > box.minX - r && x < box.maxX + r && z > box.minZ - r && z < box.maxZ + r) { b = 1; break; }
+          if (!(x > box.minX - r && x < box.maxX + r && z > box.minZ - r && z < box.maxZ + r)) continue;
+          // Low windows too (2 = zombies only: they smash and climb through)
+          if (box.window && box.window.sill < 1.2) { win = true; continue; }
+          b = 1; break;
         }
-        this.blocked[i * NAV_N + j] = b;
+        this.blocked[i * NAV_N + j] = b ? 1 : win ? 2 : 0;
       }
     }
     this.fieldTimer = 0;
@@ -126,7 +129,7 @@ export class Zombies {
         const idx = ni * W + nj;
         if (f[idx] !== 65535) continue;
         const gi = oi + ni, gj = oj + nj;
-        if (gi < 0 || gj < 0 || gi >= NAV_N || gj >= NAV_N || this.blocked[gi * NAV_N + gj]) continue;
+        if (gi < 0 || gj < 0 || gi >= NAV_N || gj >= NAV_N || this.blocked[gi * NAV_N + gj] === 1) continue;
         f[idx] = d;
         q[qt++] = idx;
       }
@@ -166,12 +169,12 @@ export class Zombies {
     const N = NAV_N, cell = (x) => Math.max(0, Math.min(N - 1, Math.floor((x + HALF) / NAV_CELL)));
     let si = cell(sx), sj = cell(sz), ti = cell(tx), tj = cell(tz);
     const B = this.blocked;
-    if (B[ti * N + tj]) {
+    if (B[ti * N + tj] === 1) {
       // Target inside an obstacle: use the nearest open cell.
       let best = -1, bd = Infinity;
       for (let di = -4; di <= 4; di++) for (let dj = -4; dj <= 4; dj++) {
         const i = ti + di, j = tj + dj;
-        if (i < 0 || j < 0 || i >= N || j >= N || B[i * N + j]) continue;
+        if (i < 0 || j < 0 || i >= N || j >= N || B[i * N + j] === 1) continue;
         const d = di * di + dj * dj;
         if (d < bd) { bd = d; best = i * N + j; }
       }
@@ -197,9 +200,9 @@ export class Zombies {
           const ni = ci + di, nj = cj + dj;
           if (ni < 0 || nj < 0 || ni >= N || nj >= N) continue;
           const nIdx = ni * N + nj;
-          if (B[nIdx] && nIdx !== start) continue;
-          if (di && dj && (B[ci * N + nj] || B[ni * N + cj])) continue;
-          const ng = gc + (di && dj ? 1.414 : 1);
+          if (B[nIdx] === 1 && nIdx !== start) continue;
+          if (di && dj && (B[ci * N + nj] === 1 || B[ni * N + cj] === 1)) continue;
+          const ng = gc + (di && dj ? 1.414 : 1) + (B[nIdx] === 2 ? 4 : 0); // prefer doors to windows
           if (st[nIdx] === id && g[nIdx] <= ng) continue;
           st[nIdx] = id; g[nIdx] = ng; came[nIdx] = cur;
           heap.push(nIdx, ng + h(ni, nj));
@@ -502,6 +505,7 @@ export class Zombies {
     this.pathBudget = 3; // A* searches allowed this frame
     for (const zb of this.list) {
       if (zb.down) { this.updateDown(zb, dt); continue; }
+      if (zb.vault) { this.updateVault(zb, dt); continue; }
       // A zombie hunts either the player or an AI survivor ("prey").
       if (zb.prey && zb.prey.dead) { zb.prey = null; if (zb.state === 'chase') zb.state = 'wander'; }
       const prey = zb.prey;
@@ -597,6 +601,21 @@ export class Zombies {
         }
       }
 
+      // A closed door or window between it and what it's after: beat on it
+      // (or climb through, if the window's already open or smashed).
+      if (zb.state !== 'wander' && !(zb.rise > 0) && (zb.attackCd <= 0 || zb.stuck > 0.2)) {
+        const s = this.structureNear(zb);
+        const gx = zb.state === 'chase' ? tx0 : zb.target.x, gz = zb.state === 'chase' ? tz0 : zb.target.z;
+        if (s && (s.kind === 'door' || s.kind === 'window') && this.across(s, zb.pos.x, zb.pos.z, gx, gz)) {
+          if (s.kind === 'window' && s.state !== 'closed' && s.sill < 1.2) { this.startVault(zb, s); continue; }
+          if (zb.attackCd <= 0 && (s.kind === 'door' || s.state === 'closed')) {
+            zb.attackCd = 1.5;
+            zb.dir = Math.atan2(s.x - zb.pos.x, s.z - zb.pos.z);
+            game.damageStructure(s, zb.def.dmg[1] * (zb.type === 'brute' ? 3 : 1) * (s.kind === 'door' ? 1.5 : 1), zb.pos);
+          }
+        }
+      }
+
       const ml = Math.hypot(mx, mz);
       if (ml > 0.01 && speed > 0) {
         const before = { x: zb.pos.x, z: zb.pos.z };
@@ -611,9 +630,11 @@ export class Zombies {
         // barricade in the way; if it's a plain wall, sidestep and repath.
         if (zb.state !== 'wander' && moved < speed * dt * 0.3) {
           zb.stuck += dt;
-          if (zb.stuck > 0.6 && zb.attackCd <= 0) {
-            const s = this.structureNear(zb);
-            if (s) { zb.attackCd = 1.5; game.damageStructure(s, zb.def.dmg[1] * (zb.type === 'brute' ? 3 : 1)); }
+          const s = zb.stuck > 0.3 ? this.structureNear(zb) : null;
+          const climbable = s?.kind === 'window' && s.state !== 'closed';
+          if (climbable && s.sill < 1.2) this.startVault(zb, s);
+          else if (zb.stuck > 0.6 && zb.attackCd <= 0) {
+            if (s && !climbable) { zb.attackCd = 1.5; game.damageStructure(s, zb.def.dmg[1] * (zb.type === 'brute' ? 3 : 1) * (s.kind === 'door' ? 1.5 : 1), zb.pos); }
             else if (!(zb.detour > 0)) { zb.detour = 0.5 + Math.random() * 0.5; zb.detourSide = Math.random() < 0.5 ? 1 : -1; zb.pathT = 0; zb.stuck = 0; }
           }
         } else zb.stuck = 0;
@@ -669,12 +690,61 @@ export class Zombies {
 
   structureNear(zb) {
     const r = zb.radius + 0.5;
+    let best = null, bd = r;
     for (const b of this.world.hash.query(zb.pos.x - r, zb.pos.z - r, zb.pos.x + r, zb.pos.z + r, [])) {
       if (!b.structure || b.noCollide) continue;
       const cx = Math.max(b.minX, Math.min(zb.pos.x, b.maxX)), cz = Math.max(b.minZ, Math.min(zb.pos.z, b.maxZ));
-      if (Math.hypot(zb.pos.x - cx, zb.pos.z - cz) < r) return b.structure;
+      const d = Math.hypot(zb.pos.x - cx, zb.pos.z - cz);
+      if (d < bd) { bd = d; best = b.structure; }
     }
-    return null;
+    return best;
+  }
+
+  // Are (ax, az) and (bx, bz) on opposite sides of this door or window?
+  across(s, ax, az, bx, bz) {
+    const nx = s.ax === 'x' ? 0 : 1, nz = s.ax === 'x' ? 1 : 0;
+    return Math.sign((ax - s.x) * nx + (az - s.z) * nz) * Math.sign((bx - s.x) * nx + (bz - s.z) * nz) < 0;
+  }
+
+  // Climb through an open or smashed window: over the sill and down the
+  // other side, sometimes tumbling through in a heap.
+  startVault(zb, w) {
+    const nx = w.ax === 'x' ? 0 : 1, nz = w.ax === 'x' ? 1 : 0;
+    const side = Math.sign((zb.pos.x - w.x) * nx + (zb.pos.z - w.z) * nz) || 1;
+    const along = Math.max(-w.w / 2 + 0.35, Math.min(w.w / 2 - 0.35, w.ax === 'x' ? zb.pos.x - w.x : zb.pos.z - w.z));
+    const ux = w.ax === 'x' ? 1 : 0, uz = w.ax === 'x' ? 0 : 1;
+    zb.vault = {
+      t: 0, dur: 1.2 + Math.random() * 0.6, w, dirX: -nx * side, dirZ: -nz * side,
+      from: { x: zb.pos.x, z: zb.pos.z },
+      to: { x: w.x + ux * along - nx * side * 0.8, z: w.z + uz * along - nz * side * 0.8 },
+    };
+    zb.dir = Math.atan2(-nx * side, -nz * side);
+    zb.stuck = 0;
+    zb.path = null;
+  }
+
+  updateVault(zb, dt) {
+    const v = zb.vault;
+    v.t = Math.min(1, v.t + dt / v.dur);
+    const k = v.t;
+    zb.pos.x = v.from.x + (v.to.x - v.from.x) * k;
+    zb.pos.z = v.from.z + (v.to.z - v.from.z) * k;
+    zb.pos.y = Math.sin(k * Math.PI) * (v.w.sill * 0.7);
+    zb.mesh.rotation.y = zb.dir;
+    zb.mesh.rotation.x = Math.sin(k * Math.PI) * 0.9; // folded over the sill
+    const p = zb.parts;
+    p.armL.rotation.x = p.armR.rotation.x = 0.4 + Math.sin(k * Math.PI) * 0.8;
+    p.legL.rotation.x = -Math.sin(k * Math.PI) * 0.9; p.legR.rotation.x = -Math.sin(k * Math.PI) * 0.6;
+    if (k < 1) return;
+    zb.vault = null;
+    zb.pos.y = 0;
+    zb.mesh.rotation.x = 0;
+    moveCircle(this.world.hash, zb.pos, zb.radius, 0, 0);
+    // Zombies are clumsy: a fair share fall in head first
+    if (Math.random() < 0.35 && this.game?.ragdolls) {
+      const dir = new THREE.Vector3(v.dirX, -0.2, v.dirZ).normalize();
+      this.knockDown(zb, { point: new THREE.Vector3(zb.pos.x, 1.3 * zb.def.scale, zb.pos.z), dir, force: 2.5 });
+    }
   }
 
   // 3D ray test against zombies. Returns { zb, t, head } for the closest hit.

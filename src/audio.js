@@ -87,6 +87,15 @@ export const sfx = {
     noise(0.22, 300, 0.8, 0.6 * vol, 'lowpass', 0.2);
     setTimeout(() => noise(0.08, 1200, 1.5, 0.15 * vol, 'bandpass', 0.07), 70 + Math.random() * 60);
   },
+  // Glass: a sharp crash with tinkling shards falling after it
+  glass(vol = 1) {
+    noise(0.25, 4200, 1.2, 0.7 * vol, 'highpass', 0.22);
+    noise(0.12, 1800, 2, 0.4 * vol, 'bandpass', 0.1);
+    for (let i = 0; i < 7; i++) setTimeout(() => tone(2800 + Math.random() * 3500, 0.06, 0.06 * vol, 'triangle'), 60 + i * (40 + Math.random() * 60));
+  },
+  glassHit(vol = 1) { noise(0.06, 2600, 3, 0.35 * vol, 'bandpass', 0.06); tone(1400, 0.05, 0.06 * vol, 'triangle'); },
+  doorBreak(vol = 1) { noise(0.4, 600, 0.8, 0.9 * vol, 'lowpass', 0.35); noise(0.15, 2400, 2, 0.4 * vol, 'bandpass', 0.12); tone(70, 0.3, 0.5 * vol, 'sine', -30); },
+  windowSlide() { noise(0.3, 1200, 2, 0.12, 'bandpass', 0.3); },
   // Meaty melee impact (blunt or blade)
   meleeHit(heavy) { noise(0.14, heavy ? 300 : 600, 1, 0.65, 'lowpass', 0.13); tone(heavy ? 60 : 90, 0.14, 0.45, 'sine', -30); if (heavy) noise(0.04, 2200, 2, 0.25, 'bandpass', 0.04); },
   hurt() { tone(220, 0.25, 0.3, 'sawtooth', -120); noise(0.2, 500, 1, 0.3); },

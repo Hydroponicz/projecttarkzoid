@@ -125,6 +125,7 @@ export class HUD {
       const hp = t.hp != null && t.hp < t.maxHp ? ` (${Math.ceil(t.hp)}/${t.maxHp})` : '';
       if (t.kind === 'survivor' && t.trader) text = `[F] Trade with ${t.name} (${t.trader.def.title})`;
       else if (t.kind === 'survivor') text = `[F] Talk to ${t.met ? t.name : 'the stranger'}`;
+      else if (t.kind === 'window') text = t.state === 'broken' ? '[Space] Climb through (broken glass)' : t.state === 'open' ? '[F] Close window · [Space] Climb through' : '[F] Open window';
       else if (t.door || t.kind === 'door') text = `[F] ${t.open ? 'Close' : 'Open'} ${t.name}${hp}`;
       else if (t.kind === 'bed' || t.type === 'bed') text = '[F] Sleep';
       else text = `[F] Search ${t.name}`;

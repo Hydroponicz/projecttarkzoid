@@ -815,9 +815,10 @@ export class DevConsole {
       freebuild: { d: 'Toggle free building', f: flagCmd('freeBuild') },
       repair: { d: 'Repair all doors and structures', f: () => {
         need();
-        for (const d of g.world.doors) d.hp = d.maxHp;
+        for (const d of g.world.doors) { d.hp = d.maxHp; d.mesh.children[0]?.material?.color.setHex(d.w < 1.6 ? 0x7a5a3a : 0x5a3a22); }
         for (const s of g.builder.structures) s.hp = s.maxHp;
-        this.log('Everything repaired (broken doors stay broken)');
+        for (const w of g.world.windows) { w.hp = w.maxHp; if (w.state === 'broken') g.setWindow(w, 'closed'); }
+        this.log('Everything repaired and reglazed (broken doors stay broken)');
       } },
       restock: { d: 'Re-roll loot in every generated container', f: () => {
         need();

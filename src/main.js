@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { buildWorld, setDoor, WORLD_VERSION } from './world.js';
+import { buildWorld, setDoor, setWindow, WORLD_VERSION } from './world.js';
 import { Zombies } from './zombies.js';
 import { Player } from './player.js';
 import { Input } from './input.js';
@@ -62,6 +62,7 @@ class Game {
     this.invOpen = false;
     this.save = loadSave();
     this.chopHits = new Map();
+    this.shaking = new Set(); // doors being beaten
 
     addEventListener('resize', () => this.resize());
     this.resize();
@@ -213,9 +214,10 @@ class Game {
         const door = this.world.doors[i];
         if (!door) return;
         door.hp = d.hp;
-        if (d.broken) this.breakDoor(door, true); else setDoor(door, d.open);
+        if (d.broken) this.breakDoor(door, true); else { setDoor(door, d.open); this.doorTint(door); }
       });
       for (const i of w.felled) this.world.fellTree(i);
+      (w.windows || []).forEach((st, i) => { const wn = this.world.windows[i]; if (wn && st) setWindow(wn, st === 1 ? 'open' : 'broken'); });
     }
     this.builder.structures = [];
     this.zombies = this.player = null;
@@ -328,6 +330,7 @@ class Game {
       })),
       doors: W.doors.map((d) => ({ open: d.open, hp: d.hp, broken: d.broken || undefined })),
       felled: [...W.felled],
+      windows: W.windows.map((wn) => (wn.state === 'open' ? 1 : wn.state === 'broken' ? 2 : 0)),
       structures: this.builder.serialize(),
       zombies: this.zombies.serialize(),
       survivors: this.survivors.serialize(),
@@ -522,6 +525,7 @@ class Game {
   // ---------- world interaction ----------
   interactables() {
     const out = [...this.world.containers, ...this.world.beds];
+    for (const w of this.world.windows) if (w.sill < 1.2) out.push(w);
     for (const d of this.world.doors) if (!d.broken) out.push(d);
     for (const s of this.builder.structures) if (s.grid || s.door || s.type === 'bed') out.push(s);
     for (const s of this.survivors.list) if (!s.dead && s.disp !== 'hostile') out.push(s);
@@ -550,6 +554,11 @@ class Game {
       this.zombies.updateNavRegion(t.box.minX, t.box.minZ, t.box.maxX, t.box.maxZ);
       sfx.door();
       this.zombies.noise(t.x, t.z, 3);
+    } else if (t.kind === 'window') {
+      if (t.state === 'broken') return this.hud.message('The glass is smashed. Space to climb through.', 2);
+      setWindow(t, t.state === 'open' ? 'closed' : 'open');
+      sfx.windowSlide();
+      this.zombies.noise(t.x, t.z, 2);
     } else if (t.door) {
       this.builder.toggleDoor(t);
       sfx.door();
@@ -624,8 +633,16 @@ class Game {
 
   // Melee swing that hit no zombie: an axe chops the tree in front of you.
   meleeWorld(key) {
-    if (key !== 'axe') return;
     const p = this.player;
+    // Smash a window or hack at a door in front of you
+    const fx = -Math.sin(p.yaw), fz = -Math.cos(p.yaw);
+    const ahead = (o, r) => { const dx = o.x - p.pos.x, dz = o.z - p.pos.z, d = Math.hypot(dx, dz); return d < r && (dx * fx + dz * fz) / (d || 1) > 0.6; };
+    const win = this.world.windows.find((w) => w.state === 'closed' && ahead(w, 1.7));
+    if (win) { this.breakWindow(win, new THREE.Vector3(win.x, (win.sill + win.top) / 2, win.z), new THREE.Vector3(fx, 0, fz)); return; }
+    const dmg = key ? ITEMS[key].damage : 0;
+    const door = (key === 'axe' || key === 'crowbar') && this.world.doors.find((d) => !d.broken && !d.open && ahead(d, 1.8));
+    if (door) { this.damageStructure(door, dmg * 0.6, p.pos); return; }
+    if (key !== 'axe') return;
     const x = p.pos.x - Math.sin(p.yaw) * 1.0, z = p.pos.z - Math.cos(p.yaw) * 1.0;
     const tree = this.world.nearestTree(x, z, 1.2);
     if (tree < 0) return;
@@ -640,19 +657,76 @@ class Game {
     this.hud.message('Timber! Two logs dropped at your feet. Saw them into planks.', 4);
   }
 
-  damageStructure(s, dmg) {
+  // from: who's hitting it (for which way splinters and planks fly)
+  damageStructure(s, dmg, from) {
+    if (s.kind === 'window') {
+      if (s.state !== 'closed') return;
+      s.hp -= dmg;
+      sfx.glassHit(this.player.pos.distanceTo(new THREE.Vector3(s.x, 0, s.z)) < 25 ? 1 : 0.3);
+      if (s.hp <= 0) this.breakWindow(s, new THREE.Vector3(s.x, (s.sill + s.top) / 2, s.z), from ? new THREE.Vector3(s.x - from.x, 0, s.z - from.z).normalize() : null);
+      return;
+    }
     s.hp -= dmg;
     const p = this.player.pos;
     const near = Math.hypot(s.x - p.x, s.z - p.z) < 30;
     if (near) sfx.bash();
+    if (s.kind === 'door') {
+      // The door shakes, splinters and darkens as it's beaten
+      s.shake = 0.3;
+      this.shaking.add(s);
+      this.doorTint(s);
+      const dir = from ? new THREE.Vector3(s.x - from.x, 0, s.z - from.z).normalize() : new THREE.Vector3(0, 0, 0);
+      this.fx.burst(new THREE.Vector3(s.x, 0.8 + Math.random() * 1.0, s.z).addScaledVector(dir, -0.15), new THREE.Color(0x8a6a42), 6, 2.5, 0.6, 0.04);
+    }
     if (s.hp > 0) return;
-    if (s.kind === 'door') this.breakDoor(s);
+    if (s.kind === 'door') this.breakDoor(s, false, from);
     else this.builder.remove(s);
     if (near) this.hud.message(`A ${s.name.toLowerCase()} was smashed!`);
   }
 
-  breakDoor(d, silent) {
+  setWindow(w, state) { setWindow(w, state); }
+
+  // Beaten doors darken and splinter as they lose hit points.
+  doorTint(d) {
+    const panel = d.mesh.children[0];
+    if (panel?.material) panel.material.color.setHex(d.w < 1.6 ? 0x7a5a3a : 0x5a3a22).lerp(new THREE.Color(0x1e140c), 1 - Math.max(0, d.hp) / d.maxHp);
+  }
+
+  // Glass gone: shards, noise, and the window can be climbed through.
+  breakWindow(w, point, dir) {
+    if (w.state === 'broken') return;
+    setWindow(w, 'broken');
+    const d = this.player.pos.distanceTo(new THREE.Vector3(w.x, 0, w.z));
+    sfx.glass(Math.max(0.15, 1 - d / 40));
+    const p = point || new THREE.Vector3(w.x, (w.sill + w.top) / 2, w.z);
+    const glass = new THREE.Color(0xc8e0e8);
+    for (let i = 0; i < 26; i++) {
+      const v = new THREE.Vector3(Math.random() - 0.5, Math.random() * 0.6, Math.random() - 0.5).multiplyScalar(2.5);
+      if (dir) v.addScaledVector(dir, 1.5 + Math.random() * 2);
+      const at = p.clone().add(new THREE.Vector3((Math.random() - 0.5) * (w.ax === 'x' ? w.w : 0.1), (Math.random() - 0.5) * (w.top - w.sill), (Math.random() - 0.5) * (w.ax === 'z' ? w.w : 0.1)));
+      this.fx.particle(at, v, glass, 0.02 + Math.random() * 0.04, 0.9 + Math.random() * 0.5, { drag: 0.5 });
+    }
+    this.zombies.noise(w.x, w.z, 20);
+  }
+
+  breakDoor(d, silent, from) {
     d.broken = true;
+    this.shaking.delete(d);
+    if (!silent && this.ragdolls) {
+      // It bursts: planks fly away from whoever broke it
+      sfx.doorBreak(Math.max(0.2, 1 - this.player.pos.distanceTo(new THREE.Vector3(d.x, 0, d.z)) / 40));
+      const dir = from ? new THREE.Vector3(d.x - from.x, 0, d.z - from.z).normalize() : new THREE.Vector3();
+      const along = d.ax === 'x' ? new THREE.Vector3(1, 0, 0) : new THREE.Vector3(0, 0, 1);
+      const mat = d.mesh.children[0]?.material || new THREE.MeshStandardMaterial({ color: 0x5a3a22 });
+      for (let i = 0; i < 4; i++) {
+        const y = 0.3 + i * 0.5, off = (Math.random() - 0.5) * 0.6;
+        const a = new THREE.Vector3(d.x, y, d.z).addScaledVector(along, off - 0.4), b = new THREE.Vector3(d.x, y + (Math.random() - 0.5) * 0.3, d.z).addScaledVector(along, off + 0.4);
+        const plank = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.04, 0.8), mat);
+        plank.castShadow = true;
+        this.ragdolls.dropProp(plank, a, b, dir.clone().multiplyScalar(2 + Math.random() * 2.5).add(new THREE.Vector3((Math.random() - 0.5) * 1.5, 1 + Math.random() * 1.5, (Math.random() - 0.5) * 1.5)));
+      }
+      this.fx.burst(new THREE.Vector3(d.x, 1.1, d.z), new THREE.Color(0x8a6a42), 18, 3.5, 0.8, 0.05);
+    }
     d.box.noCollide = true;
     d.box.blocksShot = d.box.blocksSight = false;
     d.box.structure = null;
@@ -748,6 +822,12 @@ class Game {
     if (this.state !== 'play') return;
     this.ragdolls.update(dt);
     this.traders.update(dt);
+    for (const d of this.shaking) {
+      d.shake -= dt;
+      const base = d.baseRot + (d.open ? Math.PI / 2 : 0);
+      d.mesh.rotation.y = base + (d.shake > 0 ? Math.sin(d.shake * 70) * 0.025 * (d.shake / 0.3) : 0);
+      if (d.shake <= 0) this.shaking.delete(d);
+    }
     this.fx.update(dt);
     this.builder.flicker(now);
 

@@ -32,6 +32,29 @@ Every world is generated from a seed, laid out in districts, with loot that fits
 
 Buildings carry signs (pharmacy cross, HOSPITAL, POLICE, company names), offices and the hospital have lit upper floors, and the map (**M**) labels every landmark.
 
+**Interiors.** Buildings are laid out and furnished for what they are.
+- **Houses** are split into real rooms joined by interior doors:
+  - A living room with a sofa facing the TV, a coffee table on a rug, armchairs and bookshelves.
+  - A kitchen with a run of cupboards, sink, stove and fridge along one wall, and a dining table with chairs.
+  - Bedrooms with a bed, nightstands, a wardrobe, a dresser and sometimes a desk.
+  - A small tiled bathroom (tub, toilet, sink with a mirrored cabinet) next to a laundry room.
+
+  Kitchens and bathrooms have tiled floors and bedrooms are carpeted. Loot follows the furniture: food in kitchen cupboards, pills in the bathroom cabinet, backpacks in wardrobes, valuables in nightstands.
+- **Shops** have shelving along the walls and down the middle, a checkout with a cash register by the door, drinks fridges and freezers, and a stocked back storeroom.
+- **Clinics** have a waiting room (reception, rows of chairs, a water cooler) and exam rooms.
+- **Offices** are desk floors with monitors and chairs, filing cabinets, plants and vending machines.
+- **Police stations** have offices, a locker room, an evidence room and a holding cell behind bars.
+- **Warehouses** have rows of pallet racking, pallets and a forklift.
+- **The hospital** has wards, exam rooms with hospital beds, and supply rooms.
+
+Furniture never blocks doorways or door swings, and tall pieces don't stand in front of windows.
+
+**Windows.** Ground floors have real windows: sash windows on houses, big storefront glass on shops, rows of windows on offices and corridor buildings, and high windows on warehouses.
+- **F** opens or closes a window. **Space** while facing an open or smashed one climbs through it. Climbing over broken glass can cut you and start a bleed.
+- Bullets shatter glass and keep going, and any melee weapon smashes it.
+- Zombies can see you through glass. They path to windows as well as doors, smash the glass and climb in, and sometimes tumble through head first.
+- Window states are saved.
+
 New consumables: **vitamins**, **antibiotics** (slow a zombie infection, don't cure it), **morphine**, **surgical kits** (restore a destroyed limb), **coffee** (fights fatigue), chips, rice and MREs.
 
 ## Systems
@@ -52,7 +75,9 @@ New consumables: **vitamins**, **antibiotics** (slow a zombie infection, don't c
   - **Talking:** press **F** on a friendly or wary survivor to talk. You can ask who they are, ask for rumors about where loot is, or trade. Friendly survivors who trust you will follow you as a companion who fights alongside you; you can also tell them to wait or go their own way.
   - **Trust:** it goes up with fair trades, gifts and reassurance. Stealing during a trade, shooting them or aiming at them lowers it, and other survivors who see you shoot someone lose trust in you too. Enough trust turns a wary survivor friendly; too little turns anyone hostile.
   - **On the map:** survivors you've met are marked green (friendly), yellow (wary) or red (hostile). When they die, their body keeps everything they carried.
-- **Doors.** Every building has real doors. Open and close them with **F**. An open door's panel is solid, so you and zombies go around it. Bullet holes and blood on a door swing with it. Zombies can break doors down for good, and you can barricade over a doorway.
+- **Doors.** Every building has real doors. Open and close them with **F**. An open door's panel is solid, so you and zombies go around it. Bullet holes and blood on a door swing with it.
+  - Zombies after something on the other side of a closed door beat on it: it shakes, splinters and darkens, then bursts into flying planks. A few walkers get through in about ten seconds.
+  - You can hack doors down with an axe or crowbar, and barricade over a doorway.
 - **Health.** Seven body parts. Bleeding, broken limbs and spreading damage work like Tarkov's. Painkillers mask limb damage. Bites can infect you, and you have about 6 minutes to find an antiviral before you turn.
 - **Needs.** Hunger, thirst, stamina and fatigue. When you're exhausted you move slower and shoot worse.
 - **Movement.** You're an average person, not a super-soldier:
@@ -175,7 +200,8 @@ god / noclip / invis / freeze / freebuild                    js player.skill
 | `src/main.js` | Game state machine (menu → creation → play → death), save/load, day/night, interactions, sleep, safehouse |
 | `src/character.js` | Professions, skills and the character creation screen |
 | `src/build.js` | Carpentry: placing, saving and dismantling structures |
-| `src/world.js` | Seeded procedural town: districts, themed building archetypes (layouts, signs, loot), military sites, cars, trees; batches static scenery |
+| `src/world.js` | Seeded procedural town: districts, building archetypes, house room layouts, furnishing by room and business, doors and windows, military sites, cars, trees; merges static scenery (vertex colours, ~50 draw calls) |
+| `src/furniture.js` | Box-built furniture and container models (kitchens, beds, sofas, shelving, racks, desks…) |
 | `src/player.js` | First-person controller, leaning, melee, body-part health, status effects |
 | `src/weapons.js` | Firearms: weapon/optic models, PIP scopes, sway/recoil physics, animations, magazines, attachments |
 | `src/survivors.js` | AI survivors: dispositions and trust, A* pathfinding, combat, following, dialogue, trading |

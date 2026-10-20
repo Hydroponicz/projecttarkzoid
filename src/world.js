@@ -6,10 +6,11 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
 import { SpatialHash } from './collision.js';
 import { CONTAINER_TYPES, rollLoot } from './items.js';
 import { makeGrid, addItem } from './inventory.js';
+import { createFurnisher, FOOT, footRect } from './furniture.js';
 
 export const HALF = 120;      // map half-size
 // Bump when generation changes so old saves don't map loot onto new layouts.
-export const WORLD_VERSION = 2;
+export const WORLD_VERSION = 3;
 const BLOCK = 40;             // road grid spacing
 const ROAD = 8;
 const WALL_H = 3.0;
@@ -41,8 +42,10 @@ export function buildWorld(scene, seed) {
   const trees = [];
   const doors = [];
   const beds = [];
+  const windows = [];
   const group = new THREE.Group();
   scene.add(group);
+  const fur = createFurnisher(group);
 
   const ctAssets = {}; // shared geometry/material per container type
   const addBox = (minX, minZ, maxX, maxZ, props) => {
@@ -79,15 +82,15 @@ export function buildWorld(scene, seed) {
     }
   }
 
-  function addDoor(x, z, ax, closed) {
+  function addDoor(x, z, ax, closed, width = DOOR) {
     const pivot = new THREE.Group();
-    const half = DOOR / 2;
+    const half = width / 2;
     // Hinge at one end of the gap; the panel swings 90 degrees when opened.
     pivot.position.set(ax === 'x' ? x - half : x, 0, ax === 'x' ? z : z - half);
-    const panel = new THREE.Mesh(new THREE.BoxGeometry(DOOR - 0.04, 2.15, 0.07), new THREE.MeshStandardMaterial({ color: 0x5a3a22, roughness: 0.8 }));
+    const panel = new THREE.Mesh(new THREE.BoxGeometry(width - 0.04, 2.15, 0.07), new THREE.MeshStandardMaterial({ color: width < 1.6 ? 0x7a5a3a : 0x5a3a22, roughness: 0.8 }));
     panel.position.set(half, 1.08, 0);
     const knob = new THREE.Mesh(new THREE.SphereGeometry(0.04, 6, 4), new THREE.MeshStandardMaterial({ color: 0xccaa55, metalness: 0.8 }));
-    knob.position.set(DOOR - 0.2, 1.0, 0.06);
+    knob.position.set(width - 0.15, 1.0, 0.06);
     panel.castShadow = true;
     pivot.add(panel, knob);
     if (ax === 'z') pivot.rotation.y = -Math.PI / 2;
@@ -96,10 +99,10 @@ export function buildWorld(scene, seed) {
     const t = 0.08;
     const box = addBox(ax === 'x' ? x - half : x - t, ax === 'x' ? z - t : z - half, ax === 'x' ? x + half : x + t, ax === 'x' ? z + t : z + half, { h: 2.2 });
     // The open door panel is solid too: you (and zombies) go around it.
-    const r = pivot.rotation.y + Math.PI / 2, ex = Math.cos(r) * (DOOR - 0.1), ez = -Math.sin(r) * (DOOR - 0.1);
+    const r = pivot.rotation.y + Math.PI / 2, ex = Math.cos(r) * (width - 0.1), ez = -Math.sin(r) * (width - 0.1);
     const hx = pivot.position.x + Math.cos(r) * 0.1, hz = pivot.position.z - Math.sin(r) * 0.1;
     const leaf = addBox(Math.min(hx, hx + ex) - 0.05, Math.min(hz, hz + ez) - 0.05, Math.max(hx, hx + ex) + 0.05, Math.max(hz, hz + ez) + 0.05, { h: 2.2, blocksSight: false });
-    const d = { kind: 'door', name: 'Door', x, z, ax, open: false, hp: 400, maxHp: 400, box, leaf, mesh: pivot, baseRot: pivot.rotation.y, index: doors.length };
+    const d = { kind: 'door', name: 'Door', x, z, ax, w: width, open: false, hp: 300, maxHp: 300, box, leaf, mesh: pivot, baseRot: pivot.rotation.y, index: doors.length };
     box.structure = d;
     box.door = true;
     box.decalParent = leaf.decalParent = pivot;
@@ -110,20 +113,9 @@ export function buildWorld(scene, seed) {
   }
 
   function addBed(x, z, rot, sheetColor) {
-    const g = new THREE.Group();
-    const frame = new THREE.Mesh(new THREE.BoxGeometry(1.0, 0.45, 2.0), new THREE.MeshStandardMaterial({ color: 0x5a4030 }));
-    frame.position.y = 0.22;
-    const sheet = new THREE.Mesh(new THREE.BoxGeometry(0.95, 0.1, 1.7), new THREE.MeshStandardMaterial({ color: sheetColor ?? pick([0x6a7a9a, 0x9a6a6a, 0x7a8a6a]) }));
-    sheet.position.set(0, 0.5, 0.12);
-    const pillow = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.12, 0.3), new THREE.MeshStandardMaterial({ color: 0xdddddd }));
-    pillow.position.set(0, 0.52, -0.8);
-    g.add(frame, sheet, pillow);
-    g.position.set(x, 0, z);
-    g.rotation.y = rot;
-    g.traverse((o) => { o.castShadow = true; o.receiveShadow = true; });
-    group.add(g);
-    addBox(x - 0.5, z - 1.0, x + 0.5, z + 1.0, { blocksSight: false, h: 0.55 });
-    beds.push({ kind: 'bed', name: 'Bed', x, z, mesh: g });
+    fur.model('bed_single', x, z, rot, { sheet: sheetColor ?? pick([0x6a7a9a, 0x9a6a6a, 0x7a8a6a]) }, rand);
+    addBox(x - 0.5, z - 1.0, x + 0.5, z + 1.0, { blocksSight: false, h: 0.6 });
+    beds.push({ kind: 'bed', name: 'Bed', x, z });
   }
 
   function addWall(minX, minZ, maxX, maxZ, color) {
@@ -142,17 +134,20 @@ export function buildWorld(scene, seed) {
     for (const it of rollLoot(type, Math.floor(lo + rng() * (hi + 1 - lo)), rng)) addItem(grid, it);
     const c = { kind: 'container', type, name: ct.name, x, z, grid };
     if (sw > 0) {
-      if (!ctAssets[type]) ctAssets[type] = [new THREE.BoxGeometry(sw, sh, sd), new THREE.MeshStandardMaterial({ color: ct.color, roughness: 0.7 })];
-      const m = new THREE.Mesh(...ctAssets[type]);
-      m.position.set(x, sh / 2, z);
-      m.rotation.y = rot;
-      m.castShadow = true;
-      m.receiveShadow = true;
-      group.add(m);
-      c.mesh = m;
-      c.y = sh;
+      if (fur.has(type)) c.mesh = fur.model(type, x, z, rot, opts.model, rng);
+      else {
+        if (!ctAssets[type]) ctAssets[type] = [new THREE.BoxGeometry(sw, sh, sd), new THREE.MeshStandardMaterial({ color: ct.color, roughness: 0.7 })];
+        const m = new THREE.Mesh(...ctAssets[type]);
+        m.position.set(x, sh / 2, z);
+        m.rotation.y = rot;
+        m.castShadow = true;
+        m.receiveShadow = true;
+        group.add(m);
+        c.mesh = m;
+      }
+      c.y = ct.wall ? 1.2 : sh;
       const rw = Math.abs(Math.cos(rot)) > 0.5 ? sw : sd, rd = Math.abs(Math.cos(rot)) > 0.5 ? sd : sw;
-      addBox(x - rw / 2, z - rd / 2, x + rw / 2, z + rd / 2, { blocksSight: false, h: sh });
+      if (!ct.wall) addBox(x - rw / 2, z - rd / 2, x + rw / 2, z + rd / 2, { blocksSight: false, h: sh });
     }
     containers.push(c);
     return c;
@@ -162,20 +157,24 @@ export function buildWorld(scene, seed) {
   // Archetypes: look, signage, interior layout and which containers go where.
   // Loot follows a building's purpose (pills in pharmacies, paperwork in
   // offices, rifles only at military sites).
+  // Windows: width, spacing, sill and head height; shops get a big storefront
+  // on the side with the front door; corridor buildings only on the room sides.
+  const STORE_WIN = { w: 1.3, gap: 3.4, sill: 0.9, top: 2.1, skip: 0.35, front: { w: 2.6, gap: 3.3, sill: 0.45, top: 2.25 } };
+  const CORRIDOR_WIN = { w: 1.4, gap: 2.75, sill: 0.9, top: 2.1, sides: ['n', 's'], skip: 0.05 };
   const KINDS = {
-    house: { floor: 0x6b5a45, wall: [0xb8a68a, 0x9c8b77, 0xa7a29a, 0x8c7a6a], wallLoot: ['fridge', 'cabinet', 'cabinet', 'pc', 'toolbox'], beds: 1 },
-    shop: { floor: 0x55585a, wall: [0x7a8a9a, 0x8a7a6a], sign: { text: 'GENERAL STORE', bg: '#6a5a3a' }, wallLoot: ['cabinet', 'foodshelf', 'fridge', 'crate', 'toolbox'] },
+    house: { floor: 0x6b5a45, wall: [0xb8a68a, 0x9c8b77, 0xa7a29a, 0x8c7a6a], interior: [0xd8d0c0, 0xc8d0c8, 0xd8c8b8, 0xe0dcd0, 0xc0c8d0] },
+    shop: { floor: 0x55585a, wall: [0x7a8a9a, 0x8a7a6a], sign: { text: 'GENERAL STORE', bg: '#6a5a3a' }, windows: STORE_WIN, checkout: true, wallLoot: ['cabinet', 'foodshelf', 'fridge', 'crate', 'toolbox'] },
     clinic: { floor: 0xc8c8c0, wall: [0xd8d8d0], sign: { text: 'CLINIC', bg: '#2a6a9a', cross: true }, wallLoot: ['medbox', 'medbox', 'medcab', 'pc', 'pillshelf'], zombies: { type: 'patient', n: 3 } },
-    warehouse: { floor: 0x4a4a48, wall: [0x6a6a5a, 0x5a6050], wallLoot: ['crate', 'toolbox', 'cabinet', 'lumber', 'lumber', 'toolshelf'] },
-    pharmacy: { floor: 0xd8dcd8, wall: [0xe0e4e0, 0xcfd8d0], sign: { text: 'PHARMACY', bg: '#1f7a3a', cross: true }, wallLoot: ['pillshelf', 'pillshelf', 'medcab', 'fridge'], aisles: { type: 'pillshelf', rows: 2 }, zombies: { n: 3 } },
-    hospital: { floor: 0xd0d4d0, wall: [0xe4e4dc], sign: { text: 'HOSPITAL', bg: '#a02020', cross: true }, corridor: true, roomLoot: ['medcab', 'surgical', 'medbox', 'pillshelf', 'medcab'], wardBeds: true, storeys: 3, zombies: { type: 'patient', n: 16 } },
-    office: { floor: 0x5a5e62, wall: [0x8a9098, 0x9a8a7a], sign: { company: true, bg: '#2a3a5a' }, desks: true, wallLoot: ['filing', 'filing', 'filing', 'pc', 'server', 'fridge'], storeys: 2, zombies: { n: 5 } },
-    skyscraper: { floor: 0x4a4e52, wall: [0x6a7a8a, 0x5a6470], sign: { company: true, bg: '#14141e' }, corridor: true, roomLoot: ['desk', 'desk', 'filing', 'pc', 'server', 'safe'], roomDesks: true, tower: true, zombies: { n: 9 } },
-    police: { floor: 0x5a5a60, wall: [0x7a8aa0], sign: { text: 'POLICE', bg: '#1a3a8a' }, corridor: true, roomLoot: ['policelocker', 'policelocker', 'evidence', 'desk', 'filing'], storeys: 2, zombies: { n: 5 } },
-    grocery: { floor: 0xb0aca0, wall: [0xa89878, 0x9a8a6a], sign: { text: 'GROCERY', bg: '#8a5a1a' }, aisles: { type: 'foodshelf', rows: 3 }, wallLoot: ['fridge', 'fridge', 'fridge', 'foodshelf'], zombies: { n: 5 } },
-    hardware: { floor: 0x7a7468, wall: [0x9a6a3a, 0x8a7a5a], sign: { text: 'HARDWARE', bg: '#8a3a1a' }, aisles: { type: 'toolshelf', rows: 2 }, wallLoot: ['lumber', 'lumber', 'toolbox', 'toolshelf'], zombies: { n: 3 } },
-    gas: { floor: 0x8a8a84, wall: [0xd8d0c0], sign: { text: 'FUEL & SNACKS', bg: '#b03a1a' }, wallLoot: ['foodshelf', 'fridge', 'cabinet', 'foodshelf'] },
-    military: { floor: 0x5a5a4a, wall: [0x5a6a4a], sign: { text: 'COMMAND POST', bg: '#3a4a2a' }, wallLoot: ['milcrate', 'duffel', 'ammobox', 'milcrate', 'surgical'] },
+    warehouse: { floor: 0x4a4a48, wall: [0x6a6a5a, 0x5a6050], windows: { w: 1.6, gap: 4.5, sill: 1.9, top: 2.6, skip: 0.3 }, open: true, wallLoot: ['crate', 'toolbox', 'cabinet', 'lumber', 'lumber', 'toolshelf'] },
+    pharmacy: { floor: 0xd8dcd8, wall: [0xe0e4e0, 0xcfd8d0], sign: { text: 'PHARMACY', bg: '#1f7a3a', cross: true }, windows: STORE_WIN, checkout: true, wallLoot: ['pillshelf', 'pillshelf', 'medcab', 'fridge'], aisles: { type: 'pillshelf', rows: 2 }, zombies: { n: 3 } },
+    hospital: { floor: 0xd0d4d0, wall: [0xe4e4dc], sign: { text: 'HOSPITAL', bg: '#a02020', cross: true }, corridor: true, windows: CORRIDOR_WIN, roomRoles: ['exam', 'exam', 'supply', 'generic'], roomLoot: ['medcab', 'surgical', 'medbox', 'pillshelf', 'medcab'], wardBeds: true, storeys: 3, zombies: { type: 'patient', n: 16 } },
+    office: { floor: 0x5a5e62, wall: [0x8a9098, 0x9a8a7a], sign: { company: true, bg: '#2a3a5a' }, windows: { w: 1.6, gap: 2.6, sill: 0.8, top: 2.3 }, desks: true, wallLoot: ['filing', 'filing', 'filing', 'pc', 'server', 'fridge'], storeys: 2, zombies: { n: 5 } },
+    skyscraper: { floor: 0x4a4e52, wall: [0x6a7a8a, 0x5a6470], sign: { company: true, bg: '#14141e' }, corridor: true, windows: CORRIDOR_WIN, roomRoles: ['generic', 'generic', 'exec', 'server'], roomLoot: ['desk', 'desk', 'filing', 'pc', 'server', 'safe'], roomDesks: true, tower: true, zombies: { n: 9 } },
+    police: { floor: 0x5a5a60, wall: [0x7a8aa0], sign: { text: 'POLICE', bg: '#1a3a8a' }, corridor: true, cells: true, roomRoles: ['office', 'office', 'lockers', 'evidence', 'generic'], windows: { ...CORRIDOR_WIN, sill: 1.2, w: 1.0 }, roomLoot: ['policelocker', 'policelocker', 'evidence', 'desk', 'filing'], storeys: 2, zombies: { n: 5 } },
+    grocery: { floor: 0xb0aca0, wall: [0xa89878, 0x9a8a6a], sign: { text: 'GROCERY', bg: '#8a5a1a' }, windows: STORE_WIN, checkout: true, aisles: { type: 'foodshelf', rows: 3 }, wallLoot: ['fridge', 'fridge', 'fridge', 'foodshelf'], zombies: { n: 5 } },
+    hardware: { floor: 0x7a7468, wall: [0x9a6a3a, 0x8a7a5a], sign: { text: 'HARDWARE', bg: '#8a3a1a' }, windows: STORE_WIN, checkout: true, aisles: { type: 'toolshelf', rows: 2 }, wallLoot: ['lumber', 'lumber', 'toolbox', 'toolshelf'], zombies: { n: 3 } },
+    gas: { floor: 0x8a8a84, wall: [0xd8d0c0], sign: { text: 'FUEL & SNACKS', bg: '#b03a1a' }, windows: STORE_WIN, checkout: true, wallLoot: ['foodshelf', 'fridge', 'cabinet', 'foodshelf'] },
+    military: { floor: 0x5a5a4a, wall: [0x5a6a4a], sign: { text: 'COMMAND POST', bg: '#3a4a2a' }, windows: { w: 1.0, gap: 3.0, sill: 1.1, top: 1.9 }, wallLoot: ['milcrate', 'duffel', 'ammobox', 'milcrate', 'surgical'] },
   };
   const COMPANIES = ['VERTEX CAPITAL', 'NORDLINE LOGISTICS', 'HALVERSEN & KLINE', 'OKAFOR DYNAMICS', 'MERIDIAN INSURANCE', 'GREYSTONE PARTNERS', 'ARKWELL ENERGY', 'LUMEN BIOTECH'];
   const companies = shuffle([...COMPANIES]); // each firm appears once
@@ -243,32 +242,62 @@ export function buildWorld(scene, seed) {
     group.add(m);
   }
 
-  // A straight wall with door gaps (centres along its length). Returns the
-  // door positions so doors can be hung in them.
-  function wallWithGaps(ax, a0, a1, fixed, gaps, color) {
-    const out = [];
+  // A straight wall with openings: doors ({c, w, type: 'door'}) and windows
+  // ({c, w, type: 'window', sill, top}). Returns the doors and windows made.
+  function wallWithOpenings(ax, a0, a1, fixed, openings, color) {
+    const out = { doors: [], windows: [] };
+    const seg = (s0, s1, y0 = 0, y1 = WALL_H, box) => {
+      if (s1 - s0 < 0.02) return;
+      const r = ax === 'x' ? { minX: s0, maxX: s1, minZ: fixed - WALL_T / 2, maxZ: fixed + WALL_T / 2 } : { minX: fixed - WALL_T / 2, maxX: fixed + WALL_T / 2, minZ: s0, maxZ: s1 };
+      walls.push({ ...r, y0, y1, color });
+      if (box) addBox(r.minX, r.minZ, r.maxX, r.maxZ, box);
+    };
     let cur = a0;
-    const segs = [];
-    for (const g of [...gaps].sort((p, q) => p - q)) { segs.push([cur, g - DOOR / 2]); cur = g + DOOR / 2; out.push(ax === 'x' ? { x: g, z: fixed, ax } : { x: fixed, z: g, ax }); }
-    segs.push([cur, a1]);
-    segs.forEach(([s0, s1], i) => {
-      if (s1 - s0 > 0.05) {
-        if (ax === 'x') addWall(s0, fixed - WALL_T / 2, s1, fixed + WALL_T / 2, color);
-        else addWall(fixed - WALL_T / 2, s0, fixed + WALL_T / 2, s1, color);
+    for (const o of [...openings].sort((p, q) => p.c - q.c)) {
+      const g0 = o.c - o.w / 2, g1 = o.c + o.w / 2;
+      seg(cur, g0, 0, WALL_H, {});
+      cur = g1;
+      const pos = ax === 'x' ? { x: o.c, z: fixed } : { x: fixed, z: o.c };
+      if (o.type === 'door') {
+        seg(g0, g1, o.top ?? 2.2, WALL_H); // lintel
+        out.doors.push({ ...pos, ax, w: o.w });
+      } else {
+        // Sill and lintel stop bullets but not sight; the opening itself is
+        // the window (glass, open, or broken: you climb through).
+        seg(g0, g1, 0, o.sill, { noCollide: true, blocksSight: false, h: o.sill });
+        seg(g0, g1, o.top, WALL_H, { noCollide: true, blocksSight: false, y0: o.top, h: WALL_H });
+        out.windows.push(addWindow(pos.x, pos.z, ax, o.w, o.sill, o.top));
       }
-      if (i < segs.length - 1) {
-        const g0 = s1, g1 = s1 + DOOR; // lintel above the doorway
-        if (ax === 'x') walls.push({ minX: g0, maxX: g1, minZ: fixed - WALL_T / 2, maxZ: fixed + WALL_T / 2, y0: 2.2, y1: WALL_H, color });
-        else walls.push({ minX: fixed - WALL_T / 2, maxX: fixed + WALL_T / 2, minZ: g0, maxZ: g1, y0: 2.2, y1: WALL_H, color });
-      }
-    });
+    }
+    seg(cur, a1, 0, WALL_H, {});
     return out;
   }
 
+  // A window in a wall opening: frame, glass (instanced, see below) and the
+  // collider you vault over once it's open or smashed.
+  function addWindow(x, z, ax, w, sill, top) {
+    const along = ax === 'x' ? [1, 0] : [0, 1];
+    const half = w / 2, t = WALL_T / 2 + 0.01;
+    const r = ax === 'x' ? [x - half, z - t, x + half, z + t] : [x - t, z - half, x + t, z + half];
+    const win = { kind: 'window', name: 'Window', x, z, ax, w, sill, top, state: 'closed', hp: 30, maxHp: 30, index: windows.length };
+    win.box = addBox(r[0], r[1], r[2], r[3], { blocksShot: false, blocksSight: false, h: sill, window: win });
+    win.box.structure = win;
+    // Frame: jambs, head, sill ledge and a mullion
+    const fc = 0xe8e4dc, rot = ax === 'x' ? 0 : Math.PI / 2;
+    const fb = (lw, lh, ld, ox, oy) => prop(lw, lh, ld, fc, x + along[0] * ox, oy, z + along[1] * ox, rot);
+    fb(0.06, top - sill, WALL_T + 0.04, -half + 0.03, (sill + top) / 2);
+    fb(0.06, top - sill, WALL_T + 0.04, half - 0.03, (sill + top) / 2);
+    fb(w, 0.06, WALL_T + 0.04, 0, top - 0.03);
+    fb(w + 0.1, 0.05, WALL_T + 0.16, 0, sill + 0.025);
+    fb(w - 0.1, 0.04, 0.06, 0, (sill + top) / 2);
+    windows.push(win);
+    return win;
+  }
+
   // Try to place a container against one of a room's walls.
-  function placeAlong(rect, type, bDoors, keepOut) {
+  function placeAlong(rect, type, bDoors, keepOut, wins = []) {
     const ct = CONTAINER_TYPES[type];
-    const [sw, , sd] = ct.size;
+    const [sw, sh, sd] = ct.size;
     const { x0, x1, z0, z1 } = rect;
     for (let tries = 0; tries < 14; tries++) {
       const side = Math.floor(rand() * 4);
@@ -281,13 +310,15 @@ export function buildWorld(scene, seed) {
       if (bDoors.some((dr) => Math.hypot(dr.x - x, dr.z - z) < 2.2)) continue;
       if (containers.some((c) => Math.hypot(c.x - x, c.z - z) < 1.5)) continue;
       if (keepOut.some((k) => Math.hypot(k.x - x, k.z - z) < k.r)) continue;
+      // Tall furniture doesn't go in front of windows
+      if (sh > 1.1 && wins.some((wn) => Math.hypot(wn.x - x, wn.z - z) < wn.w / 2 + sw / 2 + 0.1)) continue;
       return addContainer(type, x, z, rot);
     }
     return null;
   }
 
   function prop(w, h, d, color, x, y, z, rot = 0, collide = false) {
-    const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), new THREE.MeshStandardMaterial({ color, roughness: 0.8 }));
+    const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), fur.M(color));
     m.position.set(x, y, z);
     m.rotation.y = rot;
     m.castShadow = m.receiveShadow = true;
@@ -296,27 +327,364 @@ export function buildWorld(scene, seed) {
     return m;
   }
 
+  // ---------- furnishing rooms ----------
+  // Places furniture against walls or in the open, keeping doorways, door
+  // swings and (for tall pieces) windows clear, never overlapping.
+  function roomPlacer(room, bDoors, wins, keepOut = []) {
+    const inner = { x0: room.x0 + WALL_T / 2, x1: room.x1 - WALL_T / 2, z0: room.z0 + WALL_T / 2, z1: room.z1 - WALL_T / 2 };
+    const occ = [];
+    const dims = (type) => (CONTAINER_TYPES[type] ? [CONTAINER_TYPES[type].size[0], CONTAINER_TYPES[type].size[2], CONTAINER_TYPES[type].size[1]] : FOOT[type]);
+    const rectDist = (r, x, z) => Math.hypot(Math.max(r.x0 - x, 0, x - r.x1), Math.max(r.z0 - z, 0, z - r.z1));
+    const ok = (r, tall, free = false) => {
+      if (r.x0 < inner.x0 - 1e-3 || r.x1 > inner.x1 + 1e-3 || r.z0 < inner.z0 - 1e-3 || r.z1 > inner.z1 + 1e-3) return false;
+      if (!free && occ.some((o) => r.x0 < o.x1 + 0.06 && r.x1 > o.x0 - 0.06 && r.z0 < o.z1 + 0.06 && r.z1 > o.z0 - 0.06)) return false;
+      if (bDoors.some((d) => rectDist(r, d.x, d.z) < (d.w ?? DOOR) / 2 + 0.75)) return false;
+      if (tall && wins.some((wn) => rectDist(r, wn.x, wn.z) < wn.w / 2 + 0.15)) return false;
+      if (!free && containers.some((c) => c.mesh && rectDist(r, c.x, c.z) < 0.45)) return false;
+      if (keepOut.some((k) => rectDist(r, k.x, k.z) < k.r * 0.6)) return false;
+      return true;
+    };
+    // Position of a piece standing against wall `side` (0 = z0, 1 = z1, 2 = x0, 3 = x1) at `t` along it.
+    const onWall = (type, side, along) => {
+      const [, d] = dims(type);
+      const off = d / 2 + 0.02;
+      if (side === 0) return { x: along, z: inner.z0 + off, rot: 0 };
+      if (side === 1) return { x: along, z: inner.z1 - off, rot: Math.PI };
+      if (side === 2) return { x: inner.x0 + off, z: along, rot: Math.PI / 2 };
+      return { x: inner.x1 - off, z: along, rot: -Math.PI / 2 };
+    };
+    const span = (side) => (side < 2 ? [inner.x0, inner.x1] : [inner.z0, inner.z1]);
+    const P = {
+      room, inner, occ,
+      // Put a piece down (container or furniture) and claim its footprint.
+      put(type, x, z, rot, opt = {}) {
+        const [w, d, h] = dims(type);
+        const r = footRect(x, z, w, d, rot);
+        if (!opt.noOcc) occ.push(r);
+        if (CONTAINER_TYPES[type]) return { c: addContainer(type, x, z, rot, { rng: true, model: opt }), x, z, rot, r, type };
+        fur.model(type, x, z, rot, opt, rand);
+        if (h > 0) addBox(r.x0 + 0.03, r.z0 + 0.03, r.x1 - 0.03, r.z1 - 0.03, { blocksSight: false, blocksShot: h > 0.8, h });
+        return { x, z, rot, r, type };
+      },
+      fits(type, x, z, rot) { const [w, d, h] = dims(type); return ok(footRect(x, z, w, d, rot), h > 1.05); },
+      // Against a wall, trying the given sides (default: all, shuffled).
+      wall(type, opt = {}) {
+        const [w, , h] = dims(type);
+        for (const side of opt.sides ?? shuffle([0, 1, 2, 3])) {
+          const [s0, s1] = span(side);
+          if (s1 - s0 < w + 0.05) continue;
+          const n = 10, k0 = Math.floor(rand() * n);
+          for (let k = 0; k < n; k++) {
+            const t = ((k0 + k) % n + 0.5) / n;
+            const pos = onWall(type, side, s0 + w / 2 + 0.03 + t * (s1 - s0 - w - 0.06));
+            const [ww, dd] = dims(type);
+            if (!ok(footRect(pos.x, pos.z, ww, dd, pos.rot), h > 1.05)) continue;
+            return { ...P.put(type, pos.x, pos.z, pos.rot, opt), side };
+          }
+        }
+        return null;
+      },
+      // Next to a placed piece along the same wall (dir -1 / 1).
+      beside(base, type, dir, opt = {}) {
+        const [w] = dims(type), [bw] = dims(base.type);
+        const ax = Math.abs(Math.sin(base.rot)) > 0.5 ? 'z' : 'x';
+        const off = dir * (bw / 2 + w / 2 + 0.05);
+        const pos = onWall(type, base.side, (ax === 'x' ? base.x : base.z) + off);
+        if (!P.fits(type, pos.x, pos.z, pos.rot)) return null;
+        return { ...P.put(type, pos.x, pos.z, pos.rot, opt), side: base.side };
+      },
+      // A contiguous run of pieces along one wall (kitchen counters).
+      run(types, opt = {}) {
+        for (const side of opt.sides ?? shuffle([0, 1, 2, 3])) {
+          const [s0, s1] = span(side);
+          const widths = types.map((t) => dims(t)[0]);
+          const total = widths.reduce((a, b) => a + b, 0);
+          if (s1 - s0 < total + 0.05) continue;
+          for (const fromEnd of rand() < 0.5 ? [0, 1] : [1, 0]) {
+            const spots = [];
+            let a = fromEnd ? s1 - 0.02 : s0 + 0.02;
+            for (let i = 0; i < types.length; i++) {
+              const wdt = widths[i];
+              const c = fromEnd ? a - wdt / 2 : a + wdt / 2;
+              a += fromEnd ? -wdt : wdt;
+              spots.push(onWall(types[i], side, c));
+            }
+            if (!spots.every((s, i) => P.fits(types[i], s.x, s.z, s.rot))) continue;
+            return spots.map((s, i) => ({ ...P.put(types[i], s.x, s.z, s.rot, opt), side }));
+          }
+        }
+        return null;
+      },
+      // In the open, near a point (rugs, tables).
+      open(type, x, z, rot = 0, opt = {}) {
+        for (let k = 0; k < (opt.exact ? 1 : 8); k++) {
+          const jx = x + (k ? (rand() - 0.5) * k * 0.4 : 0), jz = z + (k ? (rand() - 0.5) * k * 0.4 : 0);
+          const [w, d, h] = dims(type);
+          const r = footRect(jx, jz, w + (opt.pad || 0), d + (opt.pad || 0), rot);
+          if (!ok(r, h > 1.05, opt.free)) continue;
+          return P.put(type, jx, jz, rot, { ...opt, noOcc: opt.free });
+        }
+        return null;
+      },
+      centre() { return { x: (inner.x0 + inner.x1) / 2, z: (inner.z0 + inner.z1) / 2 }; },
+      size() { return [inner.x1 - inner.x0, inner.z1 - inner.z0]; },
+    };
+    return P;
+  }
+
+  // Front direction of a wall-standing piece (into the room)
+  const frontOf = (p) => ({ x: Math.sin(p.rot), z: Math.cos(p.rot) });
+  const opposite = (side) => [1, 0, 3, 2][side];
+  const KITCHEN_STYLES = [
+    { body: 0xe8e4dc, front: 0xd8d2c4, top: 0x3a3a38 }, { body: 0x6a4a30, front: 0x7a5a3a, top: 0xc8c0b0 },
+    { body: 0x3a4a5a, front: 0x4a5a6a, top: 0xd8d4cc }, { body: 0xb8c8b0, front: 0xc8d8c0, top: 0x5a5a58 },
+  ];
+
+  function furnishLiving(P, withKitchen) {
+    const sofa = P.wall('sofa');
+    if (sofa) {
+      const tv = P.wall('tv_stand', { sides: [opposite(sofa.side)] });
+      const f = frontOf(sofa);
+      P.open('rug', sofa.x + f.x * 1.25, sofa.z + f.z * 1.25, sofa.rot, { free: true });
+      P.open('coffee_table', sofa.x + f.x * 1.05, sofa.z + f.z * 1.05, sofa.rot);
+      if (!tv) P.wall('tv_stand');
+      if (rand() < 0.7) P.beside(sofa, rand() < 0.5 ? 'plant' : 'floor_lamp', rand() < 0.5 ? -1 : 1);
+    }
+    else { P.wall('armchair'); P.wall('armchair'); P.wall('tv_stand'); }
+    if (rand() < 0.7) P.wall('armchair');
+    if (rand() < 0.75) P.wall('bookshelf');
+    if (rand() < 0.5) P.wall('cabinet');
+    if (withKitchen) furnishKitchen(P, true);
+    else if (rand() < 0.5) P.wall('plant');
+  }
+
+  function furnishKitchen(P, small) {
+    const style = pick(KITCHEN_STYLES);
+    const run = ['fridge', 'kitchen', 'sink_counter', 'stove', 'kitchen'];
+    const r = P.run(small ? run.slice(0, 4) : run, style) || P.run(run.slice(0, 3), style);
+    if (!r) { P.wall('fridge'); P.wall('kitchen', style); }
+    const [w, d] = P.size();
+    if (w > 3.2 && d > 3.2) {
+      const c = P.centre();
+      const rot = w >= d ? 0 : Math.PI / 2;
+      const t = P.open('dining_table', c.x, c.z, rot, { pad: 1.0 });
+      if (t) {
+        const ax = Math.abs(Math.sin(rot)) > 0.5;
+        for (const s of [-1, 1]) for (const o of [-0.4, 0.4]) {
+          const cx = t.x + (ax ? s * 0.68 : o), cz = t.z + (ax ? o : s * 0.68);
+          P.put('chair', cx, cz, ax ? (s > 0 ? -Math.PI / 2 : Math.PI / 2) : (s > 0 ? Math.PI : 0), { noOcc: true });
+        }
+      }
+    }
+    if (!small && rand() < 0.5) P.wall('washer');
+  }
+
+  function furnishBedroom(P, single) {
+    const bed = P.wall(single ? 'bed_single' : 'bed_double');
+    if (bed) {
+      beds.push({ kind: 'bed', name: 'Bed', x: bed.x, z: bed.z });
+      P.beside(bed, 'nightstand', -1);
+      if (!single) P.beside(bed, 'nightstand', 1);
+      const f = frontOf(bed);
+      if (rand() < 0.6) P.open('rug', bed.x + f.x * 0.6, bed.z + f.z * 0.6, bed.rot, { free: true });
+    }
+    P.wall('wardrobe');
+    if (rand() < 0.6) P.wall('dresser');
+    if (single || rand() < 0.35) P.wall(rand() < 0.6 ? 'pc' : 'desk');
+    if (rand() < 0.4) P.wall('bookshelf');
+  }
+
+  function furnishBathroom(P) {
+    const [w, d] = P.size();
+    if (Math.max(w, d) > 2.0 && Math.min(w, d) > 1.0) P.wall('bathtub', { sides: w > d ? [2, 3] : [0, 1] }) || P.wall('bathtub');
+    P.wall('toilet');
+    const sink = P.wall('bath_sink');
+    if (sink) P.put('bathroom', sink.x, sink.z, sink.rot, { noOcc: true });
+    if (rand() < 0.4) P.wall('washer');
+  }
+
+  // Split a house into rooms with interior walls and doorways (BSP), then
+  // decide what each room is and furnish it.
+  function layoutHouse(b, ext, junc, bDoors, interiorColor) {
+    const { x0, x1, z0, z1 } = b;
+    const area = (r) => (r.x1 - r.x0) * (r.z1 - r.z0);
+    const total = area(b);
+    const target = total < 110 ? 3 : total < 170 ? 4 : 5;
+    let rs = [{ x0, x1, z0, z1 }];
+    const iDoors = [];
+    // Wall across room r at s (alongX: the wall runs along z at x = s), with a doorway.
+    const canSplit = (r, alongX, cand) => {
+      const [b0, b1] = alongX ? [r.z0, r.z1] : [r.x0, r.x1];
+      const hitsDoor = (alongX ? [['n', b0 === z0], ['s', b1 === z1]] : [['w', b0 === x0], ['e', b1 === x1]])
+        .some(([side, touches]) => touches && ext[side].some((o) => Math.abs(o.c - cand) < o.w / 2 + 0.45));
+      const hitsInner = iDoors.some((d) => (alongX ? Math.abs(d.x - cand) < 1.1 && (Math.abs(d.z - b0) < 0.2 || Math.abs(d.z - b1) < 0.2) : Math.abs(d.z - cand) < 1.1 && (Math.abs(d.x - b0) < 0.2 || Math.abs(d.x - b1) < 0.2)));
+      return !hitsDoor && !hitsInner && b1 - b0 > 2.5;
+    };
+    const split = (r, alongX, sv) => {
+      const [b0, b1] = alongX ? [r.z0, r.z1] : [r.x0, r.x1];
+      const gc = rnd(b0 + 1.2, b1 - 1.2);
+      const made = wallWithOpenings(alongX ? 'z' : 'x', b0, b1, sv, [{ c: gc, w: 1.3, type: 'door' }], interiorColor);
+      for (const dr of made.doors) { iDoors.push(dr); bDoors.push(dr); }
+      if (alongX) { if (b0 === z0) junc.n.push(sv); if (b1 === z1) junc.s.push(sv); }
+      else { if (b0 === x0) junc.w.push(sv); if (b1 === x1) junc.e.push(sv); }
+      rs.splice(rs.indexOf(r), 1);
+      const A = alongX ? { ...r, x1: sv } : { ...r, z1: sv }, B = alongX ? { ...r, x0: sv } : { ...r, z0: sv };
+      rs.push(A, B);
+      return [A, B];
+    };
+    for (let guard = 0; rs.length < target && guard < 12; guard++) {
+      rs.sort((a, c) => area(c) - area(a));
+      const r = rs.find((q) => Math.max(q.x1 - q.x0, q.z1 - q.z0) >= 5.0);
+      if (!r) break;
+      const alongX = r.x1 - r.x0 >= r.z1 - r.z0; // split the long side (wall runs along z)
+      const [c0, c1] = alongX ? [r.x0, r.x1] : [r.z0, r.z1];
+      let sv = null;
+      for (let tries = 0; tries < 12 && sv == null; tries++) {
+        const cand = c0 + (c1 - c0) * rnd(0.36, 0.64);
+        if (canSplit(r, alongX, cand)) sv = cand;
+      }
+      if (sv == null) break;
+      split(r, alongX, sv);
+    }
+    // Bathrooms are small: carve one out of the smallest room, the rest of
+    // it becomes a laundry / utility room.
+    rs.sort((a, c) => area(c) - area(a));
+    const sm = rs[rs.length - 1];
+    if (rs.length >= 3 && area(sm) > 10) {
+      const alongX = sm.x1 - sm.x0 >= sm.z1 - sm.z0;
+      const [c0, c1] = alongX ? [sm.x0, sm.x1] : [sm.z0, sm.z1];
+      for (const cand of rand() < 0.5 ? [c0 + 2.4, c1 - 2.4] : [c1 - 2.4, c0 + 2.4]) {
+        if (c1 - c0 < 4.6 || !canSplit(sm, alongX, cand)) continue;
+        const [A, B] = split(sm, alongX, cand);
+        const bath = area(A) < area(B) ? A : B;
+        bath.force = 'bathroom';
+        (bath === A ? B : A).force = 'laundry';
+        break;
+      }
+    }
+    // Room types: biggest is the living room, smallest the bathroom.
+    const forced = rs.filter((r) => r.force);
+    rs = rs.filter((r) => !r.force).sort((a, c) => area(c) - area(a));
+    const hasBath = forced.some((r) => r.force === 'bathroom');
+    const types = hasBath ? ['living_kitchen', 'bedroom', 'kitchen', 'bedroom_single'].slice(0, rs.length)
+      : rs.length === 1 ? ['studio'] : rs.length === 2 ? ['living_kitchen', 'bedroom']
+      : rs.length === 3 ? ['living_kitchen', 'bedroom', 'bathroom']
+        : rs.length === 4 ? ['living', 'bedroom', 'kitchen', 'bathroom'] : ['living', 'bedroom', 'kitchen', 'bedroom_single', 'bathroom'];
+    if (hasBath && rs.length >= 3) types[0] = 'living';
+    rs.forEach((r, i) => { r.type = types[i]; if (r.type === 'bathroom' && Math.min(r.x1 - r.x0, r.z1 - r.z0) < 1.9) r.type = 'storage'; });
+    for (const r of forced) r.type = r.force;
+    return [...rs, ...forced];
+  }
+
+  // Keep placing pieces from `types` against walls until n are down or it stops fitting.
+  function fill(P, types, n, opt) {
+    let placed = 0, fails = 0;
+    while (placed < n && fails < 5) { if (P.wall(pick(types), opt)) placed++; else fails++; }
+    return placed;
+  }
+
+  // Shops, clinics, offices, warehouses, the command post: furnished by what
+  // the business does. Lootable pieces are mixed in with decorative ones.
+  const STORES = {
+    shop: { loot: 'foodshelf', deco: 'store_shelf', extra: ['drinkfridge', 'freezer'] },
+    grocery: { loot: 'foodshelf', deco: 'store_shelf', extra: ['drinkfridge', 'freezer', 'freezer'] },
+    hardware: { loot: 'toolshelf', deco: 'tool_rack', extra: ['lumber', 'lumber'] },
+    pharmacy: { loot: 'pillshelf', deco: 'pharma_shelf', extra: ['medcab'] },
+    gas: { loot: 'foodshelf', deco: 'store_shelf', extra: ['drinkfridge', 'drinkfridge', 'vending'] },
+  };
+  function furnishBusiness(kindName, kind, rooms, outerDoors, bDoors, wins, keepOut, w, d) {
+    const dr = outerDoors[0];
+    const front = (dr && rooms.find((r) => dr.x >= r.x0 - 0.3 && dr.x <= r.x1 + 0.3 && dr.z >= r.z0 - 0.3 && dr.z <= r.z1 + 0.3)) || rooms[0];
+    const back = rooms.filter((r) => r !== front);
+    const P = roomPlacer(front, bDoors, wins, keepOut);
+    const st = STORES[kindName];
+    if (st) {
+      fill(P, st.extra, st.extra.length);
+      if (!kind.aisles) {
+        // A gondola row down the middle of the sales floor
+        const c = P.centre(), [rw] = P.size();
+        for (let x = c.x - rw / 2 + 2.4; x < c.x + rw / 2 - 2.4; x += 1.75) {
+          if (rand() < 0.15) continue;
+          P.open('store_shelf', x, c.z - 0.26, Math.PI, { exact: true }); P.open('store_shelf', x, c.z + 0.26, 0, { exact: true });
+        }
+      }
+      const n = fill(P, [st.loot, st.deco, st.deco], 14);
+      void n;
+      for (const r of back) {
+        const Q = roomPlacer(r, bDoors, wins, keepOut);
+        fill(Q, ['crate', 'tool_rack', 'cabinet', st.loot, 'toolbox'], 6);
+        const cc = Q.centre();
+        Q.open('pallet', cc.x, cc.z, 0); Q.open('pallet', cc.x + 1.5, cc.z, Math.PI / 2);
+      }
+      return;
+    }
+    if (kindName === 'clinic') {
+      P.wall('reception'); P.wall('waiting_chairs'); P.wall('waiting_chairs'); P.wall('plant'); P.wall('water_cooler'); P.wall('medbox');
+      const c = P.centre();
+      for (const dz of [-1.2, 1.2]) { P.open('waiting_chairs', c.x, c.z + dz, dz < 0 ? 0 : Math.PI, { exact: true }); }
+      P.open('plant', c.x + 1.6, c.z, 0, { exact: true }); P.wall('vending');
+      for (const r of back.length ? back : [front]) {
+        const Q = r === front ? P : roomPlacer(r, bDoors, wins, keepOut);
+        Q.wall('exam_bed'); Q.wall('exam_bed'); Q.wall('curtain');
+        fill(Q, ['medcab', 'medbox', 'surgical', 'pillshelf'], 3); Q.wall('bath_sink'); Q.wall('desk');
+      }
+      return;
+    }
+    if (kindName === 'office') {
+      fill(P, ['filing', 'filing', 'plant', 'water_cooler', 'whiteboard'], 7); P.wall('vending'); P.wall('pc'); P.wall('server');
+      return;
+    }
+    if (kindName === 'warehouse') {
+      // Racking in rows with aisles between, loot shelving round the walls
+      fill(P, ['crate', 'toolshelf', 'lumber', 'toolbox', 'cabinet'], 7);
+      const c = P.centre(), [rw, rd] = P.size();
+      for (let z = c.z - rd / 2 + 3.2; z < c.z + rd / 2 - 2.6; z += 3.4) {
+        for (let x = c.x - rw / 2 + 3.0; x < c.x + rw / 2 - 2.8; x += 2.5) if (rand() < 0.85) P.open('rack', x, z, 0, { exact: true });
+      }
+      for (let i = 0; i < 3; i++) P.open('pallet', c.x + rnd(-rw / 3, rw / 3), c.z + rnd(-rd / 3, rd / 3), rand() < 0.5 ? 0 : Math.PI / 2);
+      P.open('forklift', c.x + rnd(-3, 3), c.z + rnd(-3, 3), rand() < 0.5 ? 0 : Math.PI / 2);
+      return;
+    }
+    if (kindName === 'military') {
+      for (const r of rooms) {
+        const Q = r === front ? P : roomPlacer(r, bDoors, wins, keepOut);
+        Q.wall('bed_single', { sheet: 0x4a5a3a }); Q.wall('bed_single', { sheet: 0x4a5a3a });
+        fill(Q, ['milcrate', 'duffel', 'ammobox', 'lockers', 'desk', 'surgical'], 5);
+      }
+      return;
+    }
+    const n = Math.floor(rnd(2, 4 + (w * d) / 120));
+    for (let i = 0; i < n; i++) placeAlong(rooms[Math.floor(rand() * rooms.length)], pick(kind.wallLoot), bDoors, keepOut, wins);
+  }
+
+  function floorPatch(r, color) {
+    prop(r.x1 - r.x0 - WALL_T, 0.012, r.z1 - r.z0 - WALL_T, color, (r.x0 + r.x1) / 2, 0.066, (r.z0 + r.z1) / 2);
+  }
+
   function building(cx, cz, w, d, kindName) {
     const kind = KINDS[kindName];
     const color = pick(kind.wall);
+    const interiorColor = kind.interior ? pick(kind.interior) : color;
     const x0 = cx - w / 2, x1 = cx + w / 2, z0 = cz - d / 2, z1 = cz + d / 2;
     const zc = cz + rnd(-1, 1); // corridor centre line
-    const bDoors = [];
+    const b = { x0, x1, z0, z1, kind: kindName, name: null, doors: [], windows: [], index: buildings.length };
+    const bDoors = b.doors;
     const keepOut = [];
-    const rooms = [];
+    let rooms = [];
+    const ext = { n: [], s: [], w: [], e: [] };   // openings in each outside wall
+    const junc = { n: [], s: [], w: [], e: [] };  // where inside walls meet it
 
     // Exterior doors: corridor buildings get doors at both corridor ends.
     const sides = shuffle(['n', 's', 'e', 'w']);
-    const doorSides = kind.corridor ? new Set(['e', 'w']) : new Set(sides.slice(0, 2 + (rand() < 0.4 ? 1 : 0)));
-    const gapOn = (side, a0, a1) => (doorSides.has(side) ? [kind.corridor && (side === 'e' || side === 'w') ? zc : rnd(a0 + 2, a1 - 2)] : []);
-    bDoors.push(...wallWithGaps('x', x0, x1, z0, gapOn('n', x0, x1), color));
-    bDoors.push(...wallWithGaps('x', x0, x1, z1, gapOn('s', x0, x1), color));
-    bDoors.push(...wallWithGaps('z', z0, z1, x0, gapOn('w', z0, z1), color));
-    bDoors.push(...wallWithGaps('z', z0, z1, x1, gapOn('e', z0, z1), color));
-    const outerDoors = [...bDoors];
+    const doorSides = kind.corridor ? ['e', 'w'] : sides.slice(0, 2 + (rand() < 0.4 ? 1 : 0));
+    for (const side of doorSides) {
+      const [a0, a1] = side === 'n' || side === 's' ? [x0, x1] : [z0, z1];
+      ext[side].push({ c: kind.corridor && (side === 'e' || side === 'w') ? zc : rnd(a0 + 2, a1 - 2), w: DOOR, type: 'door' });
+    }
+    const frontSide = doorSides[0];
 
+    // Interior layout
     if (kind.corridor) {
-      // A corridor runs east-west; rooms open off it on both sides.
       const cw = 1.6;
       const roomW = 5.5;
       const nRooms = Math.max(2, Math.floor((w - 1) / roomW));
@@ -325,32 +693,64 @@ export function buildWorld(scene, seed) {
       for (let i = 0; i < nRooms; i++) {
         const rx0 = x0 + i * step, rx1 = x0 + (i + 1) * step;
         const mid = (rx0 + rx1) / 2;
-        northGaps.push(mid); southGaps.push(mid + rnd(-0.6, 0.6));
+        northGaps.push({ c: mid, w: 1.4, type: 'door' }); southGaps.push({ c: mid + rnd(-0.6, 0.6), w: 1.4, type: 'door' });
         if (i > 0) {
-          addWall(rx0 - WALL_T / 2, z0, rx0 + WALL_T / 2, zc - cw, color);
-          addWall(rx0 - WALL_T / 2, zc + cw, rx0 + WALL_T / 2, z1, color);
+          wallWithOpenings('z', z0, zc - cw, rx0, [], interiorColor);
+          wallWithOpenings('z', zc + cw, z1, rx0, [], interiorColor);
+          junc.n.push(rx0); junc.s.push(rx0);
         }
         rooms.push({ x0: rx0, x1: rx1, z0, z1: zc - cw, side: 'n' }, { x0: rx0, x1: rx1, z0: zc + cw, z1, side: 's' });
       }
-      bDoors.push(...wallWithGaps('x', x0, x1, zc - cw, northGaps, color));
-      bDoors.push(...wallWithGaps('x', x0, x1, zc + cw, southGaps, color));
-    } else if (w > 12 && !kind.aisles && !kind.desks) {
+      bDoors.push(...wallWithOpenings('x', x0, x1, zc - cw, northGaps, interiorColor).doors);
+      bDoors.push(...wallWithOpenings('x', x0, x1, zc + cw, southGaps, interiorColor).doors);
+      junc.e.push(zc - cw, zc + cw); junc.w.push(zc - cw, zc + cw);
+    } else if (kindName === 'house') {
+      rooms = layoutHouse(b, ext, junc, bDoors, interiorColor);
+    } else if (w > 12 && !kind.aisles && !kind.desks && !kind.open) {
       // Interior partition with a doorway
       const px = rnd(x0 + 5, x1 - 5);
       const dc = rnd(z0 + 2, z1 - 2);
-      bDoors.push(...wallWithGaps('z', z0, z1, px, [dc], color));
+      bDoors.push(...wallWithOpenings('z', z0, z1, px, [{ c: dc, w: 1.4, type: 'door' }], interiorColor).doors);
+      junc.n.push(px); junc.s.push(px);
       keepOut.push(...[0, 1, 2, 3, 4, 5, 6, 7].map((i) => ({ x: px, z: z0 + (i + 0.5) * (d / 8), r: 1.0 })));
       rooms.push({ x0, x1: px, z0, z1 }, { x0: px, x1, z0, z1 });
     } else rooms.push({ x0, x1, z0, z1 });
 
+    // Windows along the outside walls, clear of doors, corners and inside walls
+    const win = kind.windows || { w: 1.3, gap: 3.2, sill: 0.9, top: 2.1 };
+    for (const side of ['n', 's', 'w', 'e']) {
+      if (win.sides && !win.sides.includes(side)) continue;
+      const big = win.front && side === frontSide;
+      const ww = big ? win.front.w : win.w, gap = big ? win.front.gap : win.gap;
+      const [a0, a1] = side === 'n' || side === 's' ? [x0, x1] : [z0, z1];
+      const len = a1 - a0 - 2.4;
+      const n = Math.max(0, Math.floor(len / gap));
+      for (let i = 0; i < n; i++) {
+        const c = a0 + 1.2 + (len - (n - 1) * gap) / 2 + i * gap + rnd(-0.25, 0.25);
+        if (ext[side].some((o) => Math.abs(o.c - c) < o.w / 2 + ww / 2 + 0.35)) continue;
+        if (junc[side].some((j) => Math.abs(j - c) < ww / 2 + 0.4)) continue;
+        if (rand() < (win.skip ?? 0.12)) continue;
+        ext[side].push({ c, w: ww, type: 'window', sill: big ? win.front.sill : win.sill, top: big ? win.front.top : win.top });
+      }
+    }
+    // Build the outside walls
+    const outerDoors = [];
+    for (const [side, ax, a0, a1, fixed] of [['n', 'x', x0, x1, z0], ['s', 'x', x0, x1, z1], ['w', 'z', z0, z1, x0], ['e', 'z', z0, z1, x1]]) {
+      const made = wallWithOpenings(ax, a0, a1, fixed, ext[side], color);
+      outerDoors.push(...made.doors);
+      bDoors.push(...made.doors);
+      b.windows.push(...made.windows);
+    }
+    const wins = b.windows;
+
     // Floor, ceiling/roof, upper storeys, tower
-    const floor = new THREE.Mesh(new THREE.BoxGeometry(w, 0.06, d), new THREE.MeshStandardMaterial({ color: kind.floor, roughness: 0.9 }));
+    const floor = new THREE.Mesh(new THREE.BoxGeometry(w, 0.06, d), fur.M(kind.floor, 0.9));
     floor.position.set(cx, 0.03, cz);
     floor.receiveShadow = true;
     group.add(floor);
     const storeys = kind.storeys || 1;
     const roofY = WALL_H * storeys;
-    const ceil = new THREE.Mesh(new THREE.BoxGeometry(w + 0.6, 0.25, d + 0.6), new THREE.MeshStandardMaterial({ color: 0x3a3330, roughness: 1 }));
+    const ceil = new THREE.Mesh(new THREE.BoxGeometry(w + 0.6, 0.25, d + 0.6), fur.M(0x3a3330, 1));
     ceil.position.set(cx, WALL_H + 0.12, cz);
     ceil.castShadow = ceil.receiveShadow = true;
     group.add(ceil);
@@ -361,41 +761,64 @@ export function buildWorld(scene, seed) {
       prop(1.2, 4, 1.2, 0x555555, cx + w / 4, h + 2, cz); // rooftop antenna mast
     }
     for (const r of rooms) {
-      const lamp = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.05, 0.6), new THREE.MeshBasicMaterial({ color: 0x777766 }));
-      lamp.position.set((r.x0 + r.x1) / 2, WALL_H - 0.03, (r.z0 + r.z1) / 2);
-      group.add(lamp);
+      prop(0.5, 0.05, 0.5, 0xd8d8c8, (r.x0 + r.x1) / 2, WALL_H - 0.03, (r.z0 + r.z1) / 2); // ceiling light
     }
 
-    // Store aisles: rows of shelving through the middle of the floor.
-    if (kind.aisles) {
+    // --- furnishing ---
+    if (kindName === 'house') {
+      for (const r of rooms) {
+        const P = roomPlacer(r, bDoors, wins);
+        if (r.type === 'kitchen' || r.type === 'bathroom') floorPatch(r, r.type === 'kitchen' ? pick([0xb8b4a8, 0x8a8478, 0xc8c0b0]) : pick([0xd8dcd8, 0xa8b8c0, 0xe0d8d0]));
+        else if (r.type.startsWith('bedroom')) floorPatch(r, pick([0x6a5a4a, 0x5a4a5a, 0x7a6a5a, 0x4a5a6a]));
+        if (r.type === 'living' || r.type === 'living_kitchen' || r.type === 'studio') furnishLiving(P, r.type !== 'living');
+        else if (r.type === 'kitchen') furnishKitchen(P, false);
+        else if (r.type === 'bedroom' || r.type === 'bedroom_single') furnishBedroom(P, r.type === 'bedroom_single');
+        else if (r.type === 'bathroom') furnishBathroom(P);
+        else if (r.type === 'laundry') { P.wall('washer'); P.wall('washer'); P.wall('tool_rack'); P.wall('cabinet'); P.wall('toolbox'); }
+        else { P.wall('toolshelf'); P.wall('toolbox'); }
+        if (r.type === 'studio') furnishBedroom(P, true);
+      }
+    } else if (kind.aisles) {
+      // Store aisles: rows of shelving through the middle of the floor.
       const rows = kind.aisles.rows;
       for (let r = 0; r < rows; r++) {
         const z = z0 + ((r + 1) * d) / (rows + 1);
         for (let x = x0 + 2.6; x < x1 - 2.6; x += 1.75) {
           if (Math.abs(x - cx) < 1.1) continue; // cross-aisle
           if (bDoors.some((dr) => Math.hypot(dr.x - x, dr.z - z) < 2.4)) continue;
-          addContainer(kind.aisles.type, x, z, 0);
+          addContainer(kind.aisles.type, x, z, r % 2 ? Math.PI : 0);
         }
         keepOut.push({ x: cx, z, r: w / 2 });
       }
-      // Checkout counter near a door
+    }
+    // Checkout counter with a register by the front door of shops
+    if (kind.checkout) {
       const dr = outerDoors[0];
       if (dr) {
-        const inX = Math.max(x0 + 2, Math.min(x1 - 2, dr.x + (dr.x <= x0 + 0.2 ? 2 : dr.x >= x1 - 0.2 ? -2 : 1.8)));
-        const inZ = Math.max(z0 + 1.2, Math.min(z1 - 1.2, dr.z + (dr.z <= z0 + 0.2 ? 1.6 : dr.z >= z1 - 0.2 ? -1.6 : 0)));
-        if (!containers.some((c) => Math.hypot(c.x - inX, c.z - inZ) < 1.6)) addContainer('cabinet', inX, inZ, 0);
+        const nx = Math.abs(dr.x - x0) < 0.2 ? 1 : Math.abs(dr.x - x1) < 0.2 ? -1 : 0, nz = nx ? 0 : Math.abs(dr.z - z0) < 0.2 ? 1 : -1;
+        const ux = -nz, uz = nx; // along the wall
+        for (const side of [1, -1]) {
+          const px = dr.x + nx * 2.2 + ux * side * 2.4, pz = dr.z + nz * 2.2 + uz * side * 2.4;
+          if (px < x0 + 1.4 || px > x1 - 1.4 || pz < z0 + 1.4 || pz > z1 - 1.4) continue;
+          if (containers.some((c) => Math.hypot(c.x - px, c.z - pz) < 1.6)) continue;
+          const rot = Math.atan2(-uz, ux); // long side along the wall
+          const r = footRect(px, pz, FOOT.checkout[0], FOOT.checkout[1], rot);
+          fur.model('checkout', px, pz, rot, {}, rand);
+          addBox(r.x0, r.z0, r.x1, r.z1, { blocksSight: false, h: 1.0 });
+          addContainer('register', px + ux * side * 0.5, pz + uz * side * 0.5, rot);
+          keepOut.push({ x: px, z: pz, r: 1.6 });
+          break;
+        }
       }
     }
 
-    // Open-plan office: a grid of desks with chairs and monitors.
+    // Open-plan office: a grid of desks (each with its monitor and chair).
     const deskGrid = (r) => {
-      for (let z = r.z0 + 1.8; z < r.z1 - 1.4; z += 2.6) {
+      for (let z = r.z0 + 1.8; z < r.z1 - 1.6; z += 2.8) {
         for (let x = r.x0 + 1.9; x < r.x1 - 1.6; x += 2.4) {
           if (bDoors.some((dr) => Math.hypot(dr.x - x, dr.z - z) < 2.2)) continue;
           if (containers.some((c) => Math.hypot(c.x - x, c.z - z) < 1.4)) continue;
           addContainer('desk', x, z, 0);
-          prop(0.5, 0.32, 0.05, 0x111111, x, 0.92, z - 0.15); // monitor
-          prop(0.45, 0.45, 0.45, 0x2a2a2a, x, 0.23, z + 0.62); // chair
         }
       }
     };
@@ -403,6 +826,7 @@ export function buildWorld(scene, seed) {
 
     // Containers against the walls of each room
     if (kind.corridor) {
+      let cellDone = !kind.cells;
       for (const r of rooms) {
         if (kind.wardBeds && r.side === 'n') {
           // Hospital wards: beds against the outer wall
@@ -410,29 +834,42 @@ export function buildWorld(scene, seed) {
             if (bDoors.some((dr) => Math.hypot(dr.x - bx, dr.z - (r.z0 + 1.1)) < 2.0)) continue;
             addBed(bx, r.z0 + WALL_T / 2 + 1.05, 0, 0xe8ecec);
           }
-          if (rand() < 0.6) placeAlong(r, 'medcab', bDoors, keepOut);
+          if (rand() < 0.6) placeAlong(r, 'medcab', bDoors, keepOut, wins);
+          continue;
+        }
+        if (!cellDone && r.side === 'n' && r.x1 - r.x0 > 3.4) {
+          // Holding cell: bars across the room, a bunk and a toilet behind them
+          cellDone = true;
+          const cz2 = r.z0 + (r.z1 - r.z0) * 0.55, bw = r.x1 - r.x0 - WALL_T;
+          const g = fur.model('cell_bars', (r.x0 + r.x1) / 2, cz2, 0, {}, rand);
+          g.scale.x = bw / 3.0;
+          const gapX = (r.x0 + r.x1) / 2 + (-1.45 + 13.5 * 0.152) * (bw / 3.0);
+          addBox(r.x0, cz2 - 0.06, gapX - 0.35 * (bw / 3), cz2 + 0.06, { blocksSight: false, blocksShot: false, h: 2.6 });
+          addBox(gapX + 0.35 * (bw / 3), cz2 - 0.06, r.x1, cz2 + 0.06, { blocksSight: false, blocksShot: false, h: 2.6 });
+          const P = roomPlacer({ x0: r.x0, x1: r.x1, z0: r.z0, z1: cz2 }, bDoors, wins);
+          P.wall('bed_single', { sides: [0] }); P.wall('toilet', { sides: [0, 2, 3] });
           continue;
         }
         if (kind.roomDesks && rand() < 0.6) { deskGrid({ x0: r.x0 + 0.3, x1: r.x1, z0: r.z0, z1: r.z1 }); }
-        const n = 1 + Math.floor(rand() * 2.5);
-        for (let i = 0; i < n; i++) placeAlong(r, pick(kind.roomLoot), bDoors, keepOut);
+        const P = roomPlacer(r, bDoors, wins, keepOut);
+        const role = pick(kind.roomRoles || ['generic']);
+        if (role === 'office') { P.wall('desk'); P.wall('desk'); P.wall('filing'); P.wall('whiteboard'); P.wall('plant'); }
+        else if (role === 'lockers') { fill(P, ['policelocker', 'lockers', 'lockers'], 4); P.open('bench', (r.x0 + r.x1) / 2, (r.z0 + r.z1) / 2, 0); }
+        else if (role === 'evidence') { fill(P, ['evidence', 'tool_rack', 'evidence'], 4); }
+        else if (role === 'exam') { P.wall('hospital_bed'); P.wall('hospital_bed'); P.wall('medcab'); P.wall('surgical'); P.wall('bath_sink'); }
+        else if (role === 'supply') { fill(P, ['pillshelf', 'pharma_shelf', 'medcab', 'medbox'], 5); }
+        else if (role === 'exec') { P.wall('desk'); P.wall('safe'); P.wall('bookshelf'); P.wall('armchair'); P.wall('plant'); }
+        else if (role === 'server') { fill(P, ['server', 'server', 'filing'], 4); }
+        else {
+          const n = 1 + Math.floor(rand() * 2.5);
+          for (let i = 0; i < n; i++) placeAlong(r, pick(kind.roomLoot), bDoors, keepOut, wins);
+          if (rand() < 0.5) P.wall('plant');
+        }
       }
-    } else {
-      const n = Math.floor(rnd(2, 4 + (w * d) / 120));
-      for (let i = 0; i < n; i++) placeAlong(rooms[Math.floor(rand() * rooms.length)], pick(kind.wallLoot), bDoors, keepOut);
+    } else if (kindName !== 'house') {
+      furnishBusiness(kindName, kind, rooms, outerDoors, bDoors, wins, keepOut, w, d);
     }
-    // Houses get a bed you can sleep in.
-    if (kind.beds) {
-      for (let tries = 0; tries < 10; tries++) {
-        const bx = rnd(x0 + 1.2, x1 - 1.2), bz = z0 + WALL_T / 2 + 1.05;
-        if (bDoors.some((dr) => Math.hypot(dr.x - bx, dr.z - bz) < 2.4)) continue;
-        if (keepOut.some((k) => Math.hypot(k.x - bx, k.z - bz) < k.r + 0.4)) continue;
-        if (containers.some((c) => Math.hypot(c.x - bx, c.z - bz) < 1.8)) continue;
-        addBed(bx, bz, 0);
-        break;
-      }
-    }
-    for (const dr of bDoors) addDoor(dr.x, dr.z, dr.ax, rand() < 0.75);
+    for (const dr of bDoors) addDoor(dr.x, dr.z, dr.ax, rand() < 0.75, dr.w);
 
     // Sign over the first outside door
     let name = null;
@@ -447,7 +884,7 @@ export function buildWorld(scene, seed) {
       landmarks.push({ x: cx, z: cz, name: kind.sign.company ? name : labels[kindName] || name[0] + name.slice(1).toLowerCase(), kind: kindName });
     }
     if (kind.zombies) zombieSpawns.push({ x: cx, z: cz, r: Math.min(w, d) / 2 - 1, n: kind.zombies.n, type: kind.zombies.type || null });
-    const b = { x0, x1, z0, z1, kind: kindName, name, doors: bDoors, index: buildings.length };
+    b.name = name;
     buildings.push(b);
     return b;
   }
@@ -768,13 +1205,21 @@ export function buildWorld(scene, seed) {
     c.mesh = corpseMesh(group, x, z, 0x4a4a3a, rand() * Math.PI * 2);
   }
 
+  // Window glass: one instanced mesh (panes move when opened, vanish when smashed)
+  const glassMesh = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 0.02),
+    new THREE.MeshStandardMaterial({ color: 0x9ab8c8, transparent: true, opacity: 0.28, roughness: 0.05, metalness: 0.3, depthWrite: false }), Math.max(1, windows.length));
+  glassMesh.frustumCulled = false;
+  glassMesh.renderOrder = 2;
+  group.add(glassMesh);
+  windows.forEach((wn, i) => { wn.glass = glassMesh; wn.gi = i; setWindow(wn, 'closed'); });
+
   mergeStatic(group);
 
   const generatedContainers = containers.length;
   const houses = buildings.filter((b) => b.kind === 'house');
 
   return {
-    group, hash, containers, generatedContainers, buildings, houses, roads, trees, doors, beds, zombieSpawns, landmarks,
+    group, hash, containers, generatedContainers, buildings, houses, roads, trees, doors, beds, windows, zombieSpawns, landmarks,
     addBox, addContainer: (type, x, z) => addContainer(type, x, z, 0, {}), felled,
     // Cut down a tree: hide its instances and remove its collider.
     fellTree(i) {
@@ -798,6 +1243,21 @@ export function buildWorld(scene, seed) {
     buildingAt(x, z) { return buildings.find((b) => !b.area && x > b.x0 && x < b.x1 && z > b.z0 && z < b.z1) || null; },
     dispose: () => scene.remove(group),
   };
+}
+
+// Window states: closed (glass), open (pane slid up), broken (no glass).
+// Open and broken windows can be climbed through.
+const _wm = new THREE.Matrix4(), _wq = new THREE.Quaternion(), _wp = new THREE.Vector3(), _ws = new THREE.Vector3();
+export function setWindow(w, state) {
+  w.state = state;
+  if (!w.glass) return;
+  const h = w.top - w.sill - 0.08;
+  _wq.setFromAxisAngle(_wp.set(0, 1, 0), w.ax === 'x' ? 0 : Math.PI / 2);
+  if (state === 'broken') _ws.set(0, 0, 0);
+  else _ws.set(w.w - 0.1, state === 'open' ? h / 2 : h, 1);
+  _wp.set(w.x, state === 'open' ? w.top - 0.04 - h / 4 : (w.sill + w.top) / 2, w.z);
+  w.glass.setMatrixAt(w.gi, _wm.compose(_wp, _wq, _ws));
+  w.glass.instanceMatrix.needsUpdate = true;
 }
 
 export function setDoor(d, open) {
@@ -835,12 +1295,21 @@ function mergeStatic(group) {
     const m = o.material;
     if (m.map || m.transparent || m.emissiveMap) return;
     for (let p = o; p && p !== group; p = p.parent) if (p.userData.dynamic) return;
-    const key = [m.type, m.color.getHex(), m.roughness, m.metalness, m.emissive ? m.emissive.getHex() : 0, m.side].join('|');
+    // Plain materials merge regardless of colour (it goes into vertex
+    // colours), so all the furniture of one finish is a single draw call.
+    const plain = !m.emissive || m.emissive.getHex() === 0;
+    const rough = Math.round(m.roughness * 10) / 10, metal = Math.round(m.metalness * 10) / 10;
+    const key = plain ? ['vc', rough, metal, m.side].join('|') : [m.type, m.color.getHex(), m.roughness, m.metalness, m.emissive.getHex(), m.side].join('|');
     let geo = o.geometry.index ? o.geometry.toNonIndexed() : o.geometry.clone();
     for (const name of Object.keys(geo.attributes)) if (!['position', 'normal', 'uv'].includes(name)) geo.deleteAttribute(name);
     if (!geo.attributes.uv || !geo.attributes.normal) return;
     geo.applyMatrix4(o.matrixWorld);
-    if (!buckets.has(key)) buckets.set(key, { mat: m, geos: [], shadow: o.castShadow });
+    if (plain) {
+      const n = geo.attributes.position.count, col = new Float32Array(n * 3);
+      for (let i = 0; i < n; i++) { col[i * 3] = m.color.r; col[i * 3 + 1] = m.color.g; col[i * 3 + 2] = m.color.b; }
+      geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
+    }
+    if (!buckets.has(key)) buckets.set(key, { mat: plain ? new THREE.MeshStandardMaterial({ vertexColors: true, roughness: rough, metalness: metal, side: m.side }) : m, geos: [], shadow: o.castShadow });
     buckets.get(key).geos.push(geo);
     victims.push(o);
   });
@@ -849,7 +1318,7 @@ function mergeStatic(group) {
     const merged = mergeGeometries(geos);
     if (!merged) continue;
     const mesh = new THREE.Mesh(merged, mat);
-    mesh.castShadow = shadow;
+    mesh.castShadow = shadow || true;
     mesh.receiveShadow = true;
     group.add(mesh);
   }
