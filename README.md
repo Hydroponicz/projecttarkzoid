@@ -205,6 +205,25 @@ Guns work much like Tarkov's. Each firearm is a detailed procedural model, and i
 
 - **Magazines are items.** Load them in the inventory, round by round, by dragging ammo onto a magazine (or right-click → Load). Loading only continues while the inventory is open. Drag a magazine onto a weapon to insert it.
 - **Chambered rounds.** **R** swaps in your fullest spare magazine. A tactical reload keeps the chambered round (30+1). On an empty reload the bolt has to be racked. Double-tap **R** for a quick reload that drops the old mag on the ground. The MP-133 loads shell by shell; firing interrupts the loading, and you pump between shots. The PM's slide and the SKS bolt lock back when empty.
+- **Models.**
+  - Each gun is built from shaped parts:
+    - AK-74N: stamped receiver with rivets, plum handguards, curved ribbed magazines, a polymer stock with a rubber butt pad.
+    - SKS: one-piece wooden stock and folded bayonet.
+    - PM: blued slide with serrations and Bakelite grips.
+    - MP-133: walnut stock and a grooved pump.
+  - Textures are generated: wood grain, worn and blued metal, stippled polymer, Bakelite.
+  - Gloved hands have fingers wrapped round the grip, camo sleeves and a wristwatch.
+- **Reload animations.** Reloads are shown in full:
+  - The gun comes up and cants so you can see the magazine well.
+  - The left hand rocks the old magazine out (AK) or pulls it down (SKS, PM), then pockets it. A quick reload drops it instead.
+  - The hand brings the new magazine up from your gear, seats it and slaps it home. On an empty gun it reaches over and racks the charging handle (or lets the pistol's slide drop).
+  - The shotgun is loaded with a shell held in the fingers.
+- **Your condition shows in your hands.**
+  - **Rested:** reloads are quick and crisp.
+  - **Tired** (low stamina, exhausted, very fatigued or shivering): reloads are slower and the arms sag. You breathe hard, and at the hip the gun droops and heaves with each breath.
+  - **Injured arms:** slower still, held lower, with a tremor. A destroyed arm without painkillers is much slower.
+  - Shaky hands can **fumble** the magazine: it knocks the edge of the well, comes back out and goes in on the second try.
+  - All of this stays out of your sight picture when aiming. The steadiness there comes from the sway system.
 - **No ammo counter.** Press **T** to check your magazine, which gives a rough "About half" reading. **Z** switches fire mode on the AK.
 - **Aiming physics.**
   - **Mouse lag:** the gun lags behind your mouse, more loosely at a run.
@@ -360,7 +379,8 @@ god / noclip / invis / freeze / freebuild                    js player.skill
 | `src/farming.js` | Garden plots, crops and growth, watering and fertilizer, harvests, wells and ponds, foraging, the Farming skill and the plot screen |
 | `src/furniture.js` | Box-built furniture and container models (kitchens, beds, sofas, shelving, racks, desks…) |
 | `src/player.js` | First-person controller, leaning, melee, body-part health, status effects |
-| `src/weapons.js` | Firearms: weapon/optic models, PIP scopes, sway/recoil physics, animations, magazines, attachments |
+| `src/weapons.js` | Firearms: optics, PIP scopes, sway/recoil physics, reload timelines and condition variants, magazines, attachments |
+| `src/gunmodels.js` | Weapon, magazine and hand models; procedural wood, metal, polymer, fabric and camo textures |
 | `src/survivors.js` | AI survivors: dispositions and trust, A* pathfinding, combat, following, dialogue, trading |
 | `src/progress.js` | First-day tutorial, progression chapters and goals, the guide tracker and goals panel |
 | `src/vehicles.js` | Vehicles: models, parts and condition, driving physics, collisions and run-overs, the parts screen, fuel, saving |
