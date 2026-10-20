@@ -73,10 +73,16 @@ class Game {
     addEventListener('resize', () => this.resize());
     this.resize();
     this.canvas.addEventListener('click', () => {
-      if (this.state === 'play' && !this.invOpen && !this.hud.mapOpen) this.input.lock();
+      this.escCloseAt = 0; // a click starts fresh: a later Esc may pause again
+      // Only when the mouse isn't already captured: re-requesting the lock on
+      // every shot made Chrome re-lock (and drop mouse movement) each click.
+      if (this.state === 'play' && !this.invOpen && !this.hud.mapOpen && !this.input.locked) this.input.lock();
     });
     document.addEventListener('pointerlockchange', () => {
       if (this.input.locked) { this.awaitingRelock = false; this.input.softLive = false; }
+      // Lost right after Esc closed a menu: the browser's own Esc handling,
+      // not a request to pause. Keep playing; a click takes the mouse back.
+      else if (this.state === 'play' && performance.now() - (this.escCloseAt || -1e9) < 700) { this.awaitingRelock = true; this.input.softLive = true; }
       this.updatePause();
     });
     this.input.onLockFail = () => this.updatePause();
@@ -462,7 +468,19 @@ class Game {
     if (this.state !== 'play') return;
     this.awaitingRelock = true;
     this.input.softLive = true;
-    this.input.lock();
+    if (this.input.keys.has('Escape')) {
+      // Closed with Esc: re-taking the mouse while Esc is still down makes
+      // the browser release it again on the key-up (and that looked like a
+      // pause), so wait for the key-up.
+      this.escCloseAt = performance.now();
+      const up = (e) => {
+        if (e.code !== 'Escape') return;
+        removeEventListener('keyup', up, true);
+        this.escCloseAt = performance.now();
+        if (this.awaitingRelock && this.state === 'play') this.input.lock();
+      };
+      addEventListener('keyup', up, true);
+    } else this.input.lock();
     this.updatePause();
   }
 

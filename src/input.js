@@ -56,7 +56,7 @@ export class Input {
   // Raw (unaccelerated) movement where supported: no acceleration spikes.
   lock() {
     const c = this.canvas;
-    if (!c.requestPointerLock) return;
+    if (!c.requestPointerLock || this.locked) return;
     const plain = () => { const q = c.requestPointerLock(); if (q?.catch) q.catch(() => this.onLockFail?.()); };
     let p;
     try { p = c.requestPointerLock({ unadjustedMovement: true }); } catch { return plain(); }
