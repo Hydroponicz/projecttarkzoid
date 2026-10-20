@@ -245,12 +245,17 @@ export class Zombies {
 
     let nearest = Infinity;
     for (const zb of this.list) {
-      const dx = px - zb.pos.x, dz = pz - zb.pos.z;
+      // A zombie hunts either the player or an AI survivor ("prey").
+      if (zb.prey && zb.prey.dead) { zb.prey = null; if (zb.state === 'chase') zb.state = 'wander'; }
+      const prey = zb.prey;
+      const pdist = Math.hypot(px - zb.pos.x, pz - zb.pos.z);
+      const tx0 = prey ? prey.pos.x : px, tz0 = prey ? prey.pos.z : pz;
+      const dx = tx0 - zb.pos.x, dz = tz0 - zb.pos.z;
       const dist = Math.hypot(dx, dz);
-      nearest = Math.min(nearest, dist);
+      nearest = Math.min(nearest, pdist);
 
       // Too far away: cheap sleep update.
-      if (dist > 90) continue;
+      if (pdist > 90 && !prey) continue;
 
       // Perception (staggered)
       zb.losTimer -= dt;
@@ -259,21 +264,29 @@ export class Zombies {
         let range = (player.flashlight ? 30 : 18) * (game.isNight ? 0.8 : 1.3) * player.stealthMul * (game.dev?.invisible ? 0 : 1);
         if (player.prone) range *= 0.4;
         else if (player.crouch) range *= 0.6;
-        zb.canSee = dist < range && hasLOS(hash, zb.pos.x, zb.pos.z, px, pz);
-        if (zb.canSee) {
-          // Zombies need roughly to face you unless you're very close.
-          const ang = Math.atan2(dx, dz);
-          let da = Math.abs(((ang - zb.dir + Math.PI) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2) - Math.PI);
-          if (dist < 4 || da < 1.4 || zb.state === 'chase') { zb.state = 'chase'; zb.lastSeen = 4; }
+        const seesPlayer = pdist < range && hasLOS(hash, zb.pos.x, zb.pos.z, px, pz);
+        const facing = (x, z, d) => {
+          // Zombies need roughly to face their target unless it's very close.
+          const ang = Math.atan2(x - zb.pos.x, z - zb.pos.z);
+          const da = Math.abs(((ang - zb.dir + Math.PI) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2) - Math.PI);
+          return d < 4 || da < 1.4 || zb.state === 'chase';
+        };
+        const surv = game.survivors?.nearestVisible(zb.pos, game.isNight ? 14 : 20);
+        if (seesPlayer && (!surv || pdist <= surv.d) && facing(px, pz, pdist)) {
+          zb.prey = null; zb.state = 'chase'; zb.lastSeen = 4;
+        } else if (surv && facing(surv.s.pos.x, surv.s.pos.z, surv.d)) {
+          zb.prey = surv.s; zb.state = 'chase'; zb.lastSeen = 4;
         }
+        zb.canSee = zb.prey ? !!surv && surv.s === zb.prey : seesPlayer;
       }
 
       let mx = 0, mz = 0, speed = 0;
       if (zb.state === 'chase') {
         zb.lastSeen -= dt;
-        if (zb.lastSeen <= 0 && !zb.canSee) { zb.state = 'investigate'; zb.target = { x: px, z: pz }; }
+        if (zb.lastSeen <= 0 && !zb.canSee) { zb.state = 'investigate'; zb.target = { x: tx0, z: tz0 }; zb.prey = null; }
         speed = zb.def.chase * (game.isNight ? 1.15 : 1);
-        const flow = (!zb.canSee || dist > 6) ? this.flowDir(zb.pos.x, zb.pos.z) : null;
+        // The flow field leads to the player; survivors are chased directly.
+        const flow = !prey && (!zb.canSee || dist > 6) ? this.flowDir(zb.pos.x, zb.pos.z) : null;
         if (flow) { mx = flow[0]; mz = flow[1]; }
         else { mx = dx / (dist || 1); mz = dz / (dist || 1); }
       } else if (zb.state === 'investigate') {
@@ -307,7 +320,9 @@ export class Zombies {
         if (zb.attackCd <= 0) {
           zb.attackCd = 1.3;
           const [a, b] = zb.def.dmg;
-          player.takeZombieHit(a + Math.random() * (b - a), zb);
+          const dmg = a + Math.random() * (b - a);
+          if (prey) prey.hurt(dmg, 'zombie', zb);
+          else player.takeZombieHit(dmg, zb);
         }
       }
 

@@ -351,7 +351,15 @@ export class Player {
     let wallD = tw * maxD;
     if (dir.y < 0) wallD = Math.min(wallD, -origin.y / dir.y);
     const z = this.game.zombies.raycast(origin, dir, wallD);
-    if (z) {
+    // AI survivors can be shot too (closest hit wins).
+    const sv = this.game.survivors?.raycast(origin, dir, z ? z.t : wallD);
+    if (sv) {
+      const falloff = sv.t > def.range ? Math.max(0.3, 1 - (sv.t - def.range) / def.range) : 1;
+      this.game.fx.blood(origin.clone().addScaledVector(dir, sv.t));
+      sfx.hitFlesh();
+      this.game.hud.hitmarker(sv.head);
+      sv.s.hurt(def.damage * falloff * (sv.head ? 3 : 1), 'player');
+    } else if (z) {
       const falloff = z.t > def.range ? Math.max(0.3, 1 - (z.t - def.range) / def.range) : 1;
       const dmg = def.damage * falloff * (z.head ? 3 : 1);
       const point = origin.clone().addScaledVector(dir, z.t);
@@ -385,6 +393,10 @@ export class Player {
       hit = true;
       if (!this.melee || this.melee.key !== 'axe') break; // axes cleave
     }
+    if (!hit) {
+      const sv = this.game.survivors?.meleeTarget(this.pos, fx, fz, def.range);
+      if (sv) { sv.hurt(def.damage * (1 + 0.12 * this.skill.strength), 'player'); this.game.fx.blood(new THREE.Vector3(sv.pos.x, 1.3, sv.pos.z)); hit = true; }
+    }
     if (hit) sfx.hitFlesh();
     else this.game.meleeWorld?.(this.melee?.key);
     this.game.zombies.noise(this.pos.x, this.pos.z, 3);
@@ -417,6 +429,26 @@ export class Player {
     // Shove
     const dx = this.pos.x - zb.pos.x, dz = this.pos.z - zb.pos.z, l = Math.hypot(dx, dz) || 1;
     moveCircle(this.game.world.hash, this.pos, this.radius, (dx / l) * 0.25, (dz / l) * 0.25);
+  }
+
+  // Shot by an AI survivor: like a zombie hit, but no bite/infection.
+  takeBulletHit(amount, from) {
+    if (this.dead) return;
+    let r = Math.random(), part = 'thorax';
+    for (const [k, wgt] of HIT_WEIGHTS) { r -= wgt; if (r <= 0) { part = k; break; } }
+    const armor = part === 'head' ? this.equip.helmet : (part === 'thorax' || part === 'stomach') ? this.equip.armor : null;
+    let bleedChance = 0.45;
+    if (armor && armor.dur > 0) {
+      const def = ITEMS[armor.key];
+      amount *= 1 - def.protection * Math.min(1, armor.dur / def.durability + 0.3);
+      armor.dur = Math.max(0, armor.dur - amount * 0.8);
+      bleedChance *= 0.3;
+    }
+    this.damagePart(part, amount);
+    if (Math.random() < bleedChance) this.bleeding.add(part);
+    this.hurtFlash = 1;
+    sfx.hurt();
+    this.game.hud.message(`Hit in the ${PARTS[part].name.toLowerCase()}${from ? ` by ${from}` : ''}!`, 2);
   }
 
   damagePart(part, amount) {

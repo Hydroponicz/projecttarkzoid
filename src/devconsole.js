@@ -274,6 +274,14 @@ export class DevConsole {
     this.zstats.className = 'dev-stats';
     s2.appendChild(this.zstats);
 
+    const sv = this.section('Survivors');
+    const rs = this.row(sv);
+    this.button(rs, 'Spawn friendly', () => this.run('survivor friendly'));
+    this.button(rs, 'Spawn wary', () => this.run('survivor neutral'));
+    this.button(rs, 'Spawn hostile', () => this.run('survivor hostile'), 'danger');
+    this.button(rs, 'List', () => this.run('survivors'));
+    this.button(rs, 'Kill all survivors', () => { const n = g.survivors.list.length; for (const s of [...g.survivors.list]) s.die('dev'); this.log(`Killed ${n} survivors`); }, 'danger');
+
     const s3 = this.section('Doors, base & loot');
     const r4 = this.row(s3);
     this.button(r4, 'Open all doors', () => this.setAllDoors(true));
@@ -796,6 +804,29 @@ export class DevConsole {
         this.log('All containers restocked');
       } },
       save: { d: 'Save now', f: () => { need(); g.saveGame(); this.log('Saved'); } },
+      survivor: { u: '<friendly|neutral|hostile> [count]', d: 'Spawn AI survivors at your crosshair', f: (a) => {
+        need();
+        const disp = { friendly: 'friendly', neutral: 'neutral', wary: 'neutral', hostile: 'hostile' }[a[0]];
+        if (!disp) throw new Error('Usage: survivor friendly|neutral|hostile [count]');
+        for (let i = 0; i < (+a[1] || 1); i++) {
+          const pt = this.crosshairPoint(12);
+          const sv = g.survivors.spawn({ disp, x: pt.x + (Math.random() - 0.5) * 2, z: pt.z + (Math.random() - 0.5) * 2 });
+          moveCircle(g.world.hash, sv.pos, 0.3, 0, 0);
+          this.log(`Spawned ${sv.name} (${disp}, ${sv.weapon ? ITEMS[sv.weapon.key].name : ITEMS[sv.melee].name})`);
+        }
+      } },
+      survivors: { d: 'List AI survivors', f: () => {
+        need();
+        if (!g.survivors.list.length) return this.log('No survivors alive');
+        for (const s of g.survivors.list) this.log(`${esc(s.name)} — ${s.disp}, trust ${Math.round(s.trust)}, ${s.state}${s.order ? ' (' + s.order + ')' : ''}, ${Math.round(s.hp)} hp, ${s.weapon ? ITEMS[s.weapon.key].short + ' ' + s.roundsLoaded() + '+' + s.reserve : ITEMS[s.melee].short}, ${s.pos.distanceTo(g.player.pos).toFixed(0)} m`);
+      } },
+      trust: { u: '<amount>', d: 'Change trust of the nearest survivor', f: (a) => {
+        need();
+        const s = [...g.survivors.list].sort((x, y) => x.pos.distanceTo(g.player.pos) - y.pos.distanceTo(g.player.pos))[0];
+        if (!s) throw new Error('No survivors');
+        s.changeTrust(+a[0] || 0); s.met = true;
+        this.log(`${esc(s.name)}: trust ${Math.round(s.trust)}, ${s.disp}`);
+      } },
       seed: { d: 'Print the world seed', f: () => this.log(`Seed: ${g.save?.seed ?? '—'}`) },
       clear: { d: 'Clear the log', f: () => { this.logEl.innerHTML = ''; } },
       js: { u: '<code>', d: 'Evaluate JavaScript (game, player, world, zombies in scope)', f: (a, raw) => {

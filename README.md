@@ -22,6 +22,13 @@ npm run build    # static build in dist/
 ## Systems
 
 - **Zombies.** Walkers, runners and brutes. They hear noise (gunshots, sprinting, hammering) and need line of sight to spot you; Stealth and crouching make you harder to see. They follow a flow field to route through open doorways. Closed doors and anything you build block them, so they bash their way through instead (brutes do triple damage).
+- **Survivors.** Other people are trying to make it too. Each survivor has a name, a personality, a weapon with real ammo, a backpack of loot, and a disposition: **friendly** (about 45%), **wary** (30%) or **hostile** bandits (25%).
+  - **What they do:** survivors scavenge between buildings (opening doors as they go) and fight zombies. Zombies hunt them as well as you, and a survivor bitten to death may get back up.
+  - **Bandits** shout, keep their distance and shoot you. They flee when badly hurt.
+  - **Wary survivors** warn you off. Point a gun at them and they'll turn on you.
+  - **Talking:** press **F** on a friendly or wary survivor to talk. You can ask who they are, ask for rumors about where loot is, or trade. Friendly survivors who trust you will follow you as a companion who fights alongside you; you can also tell them to wait or go their own way.
+  - **Trust:** it goes up with fair trades, gifts and reassurance. Stealing during a trade, shooting them or aiming at them lowers it, and other survivors who see you shoot someone lose trust in you too. Enough trust turns a wary survivor friendly; too little turns anyone hostile.
+  - **On the map:** survivors you've met are marked green (friendly), yellow (wary) or red (hostile). When they die, their body keeps everything they carried.
 - **Doors.** Every building has real doors. Open and close them with **F**. Zombies can break them down for good, and you can barricade over a doorway.
 - **Health.** Seven body parts. Bleeding, broken limbs and spreading damage work like Tarkov's. Painkillers mask limb damage. Bites can infect you, and you have about 6 minutes to find an antiviral before you turn.
 - **Needs.** Hunger, thirst, stamina and fatigue. When you're exhausted you move slower and shoot worse.
@@ -65,7 +72,7 @@ Guns work much like Tarkov's. Each firearm is a detailed procedural model, and i
 | T / Z | Check magazine / switch fire mode |
 | Q / E | Lean left / right |
 | 1, 2 | Switch between firearm and melee |
-| F | Interact: open/close doors, search containers, sleep in beds |
+| F | Interact: open/close doors, search containers, sleep in beds, talk to survivors (1–9 picks a dialogue option) |
 | Tab or I | Inventory. Close it with Esc, Tab, F, the Close button, a click outside, or by walking off. |
 | H | Quick-heal (bandage if bleeding, otherwise a medkit) |
 | L | Flashlight |
@@ -81,7 +88,7 @@ Press **`** (backquote) or **F1** to open the dev console, in game or on the men
 | Tab | What's in it |
 | --- | --- |
 | Player | God mode, noclip, infinite stamina and ammo, frozen needs, invisible to zombies. Sliders for every body part, need and skill. Bleed, infect, break legs, heal, cure. Ready-made loadouts. |
-| World | Freeze zombies, free build, fullbright, no fog. Hour and day sliders, time speed (0–60×). Click the map to teleport. Spawn zombies at your crosshair, around you, or at random. Kill, enrage or calm all zombies. Open, close or repair every door. Restock loot, claim or clear a safehouse. |
+| World | Spawn friendly, wary or hostile survivors, list them, or kill them all. Freeze zombies, free build, fullbright, no fog. Hour and day sliders, time speed (0–60×). Click the map to teleport. Spawn zombies at your crosshair, around you, or at random. Kill, enrage or calm all zombies. Open, close or repair every door. Restock loot, claim or clear a safehouse. |
 | Items | Search, filter and spawn any item into your inventory, the container you're looking at, or at your feet. Gear goes into an empty equipment slot automatically. |
 | Debug | Collision-box overlay and zombie AI labels (type, state, HP, distance, whether it can see you, bashing). A live view of the zombie pathfinding grid. FPS, draw calls, and game state. |
 | Save | Save now, export or import save files as JSON, reroll the world seed, wipe the save. |
@@ -91,6 +98,7 @@ The command line has Tab completion and ↑/↓ history. Type `help` for the ful
 ```
 give ak74            give mag_ak30 3      kit Rifleman        kit Marksman
 give scope_pso       give supp_rifle      kit Builder         spawn brute 3
+survivor hostile 2   survivors            trust 40            spawn walker 5
 tp 0 0               tp safehouse         time 22:00          time +8
 speed 20             skill carpentry 8    set fatigue 90      killall 25
 god / noclip / invis / freeze / freebuild                    js player.skill
@@ -106,6 +114,7 @@ god / noclip / invis / freeze / freebuild                    js player.skill
 | `src/world.js` | Seeded procedural town: roads, buildings with doors and roofs, beds, cars, trees, containers |
 | `src/player.js` | First-person controller, leaning, melee, body-part health, status effects |
 | `src/weapons.js` | Firearms: weapon/optic models, PIP scopes, sway/recoil physics, animations, magazines, attachments |
+| `src/survivors.js` | AI survivors: dispositions and trust, A* pathfinding, combat, following, dialogue, trading |
 | `src/zombies.js` | Zombie spawning, perception, flow-field pathing, attacks, corpses |
 | `src/collision.js` | 2D spatial hash, circle-vs-box movement, raycasts |
 | `src/items.js` | Item definitions, loot tables, container types |

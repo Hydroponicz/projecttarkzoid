@@ -6,7 +6,7 @@ import { Input } from './input.js';
 import { HUD } from './hud.js';
 import { FX } from './fx.js';
 import { InventoryUI } from './invui.js';
-import { ITEMS, makeItem, migrateItem } from './items.js';
+import { ITEMS, makeItem, migrateItem, itemValue } from './items.js';
 import { combineItems, weaponActions, loadStep } from './weapons.js';
 import { makeGrid, addItem, removeItem } from './inventory.js';
 import { loadSave, writeSave, deleteSave } from './save.js';
@@ -14,6 +14,7 @@ import { initAudio, sfx } from './audio.js';
 import { Builder, BUILDABLES, buildCostText } from './build.js';
 import { setupCreation } from './character.js';
 import { DevConsole } from './devconsole.js';
+import { Survivors } from './survivors.js';
 
 const $ = (id) => document.getElementById(id);
 const SCREENS = ['menu', 'create', 'death'];
@@ -211,6 +212,9 @@ class Game {
     else this.placeNewCharacter(!!w);
     if (w) this.zombies.restore(w.zombies);
     else this.zombies.populate(85, this.player.pos);
+    this.survivors = new Survivors(this);
+    if (w?.survivors) this.survivors.restore(w.survivors);
+    else this.survivors.populate(8);
 
     this.updateLighting();
     this.autosave = AUTOSAVE;
@@ -287,16 +291,20 @@ class Game {
       felled: [...W.felled],
       structures: this.builder.serialize(),
       zombies: this.zombies.serialize(),
+      survivors: this.survivors.serialize(),
     };
     writeSave(this.save);
   }
 
   teardown() {
+    this.survivors?.closeDialog();
     this.closeInventory();
     this.hud.toggleMap(false);
     this.builder.toggle(false);
     this.input.unlock();
     this.zombies?.dispose();
+    this.survivors?.dispose();
+    this.survivors = null;
     this.world?.dispose();
     this.fx.clear();
     for (const c of [...this.camera.children]) this.camera.remove(c);
@@ -323,6 +331,8 @@ class Game {
     const days = Math.floor((this.time - ch.spawnTime) / 1440);
     this.save.graveyard = this.save.graveyard || [];
     this.save.graveyard.push({ name: ch.name, profession: ch.professionName, days, kills: p.kills, reason });
+    // Companions don't follow the next character around.
+    for (const s of this.survivors.list) if (s.order) s.order = null;
     // Save the world without a living character.
     this.profile.player = p.serialize();
     this.saveGame();
@@ -336,7 +346,7 @@ class Game {
   }
 
   updatePause() {
-    const show = this.state === 'play' && !this.input.locked && !this.invOpen && !this.hud.mapOpen && !this.dev.open;
+    const show = this.state === 'play' && !this.input.locked && !this.invOpen && !this.hud.mapOpen && !this.dev.open && !this.dialogOpen;
     $('pause').style.display = show ? 'flex' : 'none';
   }
 
@@ -410,12 +420,21 @@ class Game {
   closeInventory() {
     if (!this.invOpen) return;
     this.invOpen = false;
+    const trader = this.openContainer?.survivor;
+    if (trader && this.survivors) this.survivors.endTrade(trader, this.tradeBefore);
     this.openContainer = null;
     this.loader = null;
     this.inv.cancelDrag();
     this.inv.closeMenu();
     $('invwrap').style.display = 'none';
     if (this.state === 'play') { this.input.lock(); this.updatePause(); }
+  }
+
+  // Trade with a survivor: their backpack opens next to yours. What you take
+  // versus what you give decides how they feel about it afterwards.
+  openTrade(s) {
+    this.tradeBefore = s.inv.items.reduce((n, it) => n + itemValue(it), 0);
+    this.openInventory({ name: `Trade with ${s.name} — take what you need, give something back`, grid: s.inv, survivor: s, get x() { return s.pos.x; }, get z() { return s.pos.z; } });
   }
 
   dropItem(it) {
@@ -446,6 +465,7 @@ class Game {
     const out = [...this.world.containers, ...this.world.beds];
     for (const d of this.world.doors) if (!d.broken) out.push(d);
     for (const s of this.builder.structures) if (s.grid || s.door || s.type === 'bed') out.push(s);
+    for (const s of this.survivors.list) if (!s.dead && s.disp !== 'hostile') out.push(s);
     return out;
   }
 
@@ -474,6 +494,8 @@ class Game {
     } else if (t.door) {
       this.builder.toggleDoor(t);
       sfx.door();
+    } else if (t.kind === 'survivor') {
+      this.survivors.openDialog(t);
     } else if (t.kind === 'bed' || t.type === 'bed') {
       this.sleep();
     } else if (t.grid) {
@@ -591,7 +613,13 @@ class Game {
   update(dt, now) {
     const inp = this.input.state();
     const pressed = (c) => this.input.pressed.has(c);
-    if (this.invOpen) {
+    if (this.dialogOpen) {
+      // Talking: number keys pick an option; Esc, walking or distance ends it.
+      const s = this.survivors.dialogFor;
+      for (const c of this.input.pressed) if (c.startsWith('Digit') || c === 'Escape') this.survivors.dialogKey(c);
+      if (['KeyW', 'KeyA', 'KeyS', 'KeyD'].some(pressed) || !s || s.dead || s.pos.distanceTo(this.player.pos) > 4) this.survivors.closeDialog();
+      inp.interact = inp.inventory = inp.slot1 = inp.slot2 = inp.reload = inp.jump = false;
+    } else if (this.invOpen) {
       // Many ways out: Esc, Tab/I, the interact key, or simply starting to walk.
       const walk = ['KeyW', 'KeyA', 'KeyS', 'KeyD'].some(pressed);
       const c = this.openContainer;
@@ -609,7 +637,7 @@ class Game {
     }
     if (inp.map) { this.hud.toggleMap(); if (this.hud.mapOpen) this.input.unlock(); else this.input.lock(); this.updatePause(); }
     if (this.hud.mapOpen && pressed('Escape')) { this.hud.toggleMap(false); this.input.lock(); }
-    const paused = !this.input.locked && !this.invOpen && !this.hud.mapOpen && !this.dev.open;
+    const paused = !this.input.locked && !this.invOpen && !this.hud.mapOpen && !this.dev.open && !this.dialogOpen;
     if (paused || this.sleeping) return;
     if (this.dev.open && this.dev.pauseWhileOpen) {
       // Simulation paused, but keep the view in sync with console edits.
@@ -639,6 +667,8 @@ class Game {
     if (this.state !== 'play') return;
     this.dev.applyCheats();
     if (!this.dev.freeze) this.zombies.update(dt, this.player, this);
+    if (this.state !== 'play') return;
+    if (!this.dev.freeze) this.survivors.update(dt);
     if (this.state !== 'play') return;
     this.fx.update(dt);
     this.builder.flicker(now);

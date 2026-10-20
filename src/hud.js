@@ -122,7 +122,8 @@ export class HUD {
     } else if (game.lookTarget) {
       const t = game.lookTarget;
       const hp = t.hp != null && t.hp < t.maxHp ? ` (${Math.ceil(t.hp)}/${t.maxHp})` : '';
-      if (t.door || t.kind === 'door') text = `[F] ${t.open ? 'Close' : 'Open'} ${t.name}${hp}`;
+      if (t.kind === 'survivor') text = `[F] Talk to ${t.met ? t.name : 'the stranger'}`;
+      else if (t.door || t.kind === 'door') text = `[F] ${t.open ? 'Close' : 'Open'} ${t.name}${hp}`;
       else if (t.kind === 'bed' || t.type === 'bed') text = '[F] Sleep';
       else text = `[F] Search ${t.name}`;
     }
@@ -177,6 +178,12 @@ export class HUD {
     }
     ctx.fillStyle = '#a8834a';
     for (const st of game.builder.structures) ctx.fillRect(tx(st.box.minX), tx(st.box.minZ), Math.max(2, (st.box.maxX - st.box.minX) * S), Math.max(2, (st.box.maxZ - st.box.minZ) * S));
+    // Survivors you've met (green friendly, yellow wary, red hostile)
+    for (const s of game.survivors?.list || []) {
+      if (!s.met) continue;
+      ctx.fillStyle = { friendly: '#6d6', neutral: '#e5c84a', hostile: '#e55' }[s.disp];
+      ctx.beginPath(); ctx.arc(tx(s.pos.x), tx(s.pos.z), s.order === 'follow' ? 5 : 3.5, 0, 7); ctx.fill();
+    }
     const sh = game.safehouse;
     if (sh) { ctx.strokeStyle = '#e5c84a'; ctx.lineWidth = 2; ctx.strokeRect(tx(sh.x0), tx(sh.z0), (sh.x1 - sh.x0) * S, (sh.z1 - sh.z0) * S); }
     const p = game.player;

@@ -181,3 +181,19 @@ button.small:not(.danger) { background: #1c1d15; color: #ccc; border: 1px solid 
 .dev-label { position: absolute; transform: translate(-50%, -100%); font-size: 10px; padding: 1px 4px; background: #000a; color: #9c9; white-space: nowrap; }
 .dev-label.chase { color: #f66; }
 .dev-label.investigate { color: #fb5; }
+
+/* ---------- survivors ---------- */
+#npc-tags { position: fixed; inset: 0; pointer-events: none; z-index: 1; }
+.npc-tag { position: absolute; transform: translate(-50%, -100%); text-align: center; font-size: 11px; color: #ddd; text-shadow: 0 1px 2px #000, 0 0 4px #000; white-space: nowrap; }
+.npc-tag .say { background: #000b; color: #fff; padding: 3px 8px; border-radius: 3px; margin-bottom: 3px; font-size: 12px; white-space: normal; max-width: 260px; }
+.friendly { color: #7d7; }
+.neutral { color: #e5c84a; }
+.hostile { color: #f66; }
+.unknown { color: #aaa; }
+#dialog { display: none; position: fixed; inset: 0; z-index: 5; align-items: flex-end; justify-content: center; padding-bottom: 12vh; pointer-events: none; }
+.dlg-panel { pointer-events: auto; background: #12140ef2; border: 1px solid #3a4a2a; padding: 16px 20px; width: min(560px, 92vw); }
+.dlg-name { color: #cfc8a8; margin-bottom: 8px; }
+.dlg-text { font-size: 15px; color: #fff; margin-bottom: 14px; line-height: 1.5; }
+.dlg-opts { display: flex; flex-direction: column; gap: 4px; margin-bottom: 8px; }
+.dlg-opts button { text-align: left; background: #1c2014; color: #ddd; border: 1px solid #34402a; padding: 7px 10px; font-size: 13px; }
+.dlg-opts button:hover { background: #2a321e; }

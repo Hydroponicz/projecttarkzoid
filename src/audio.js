@@ -43,16 +43,23 @@ function tone(freq, dur, vol, type = 'sine', slide = 0) {
 }
 
 export const sfx = {
-  shot(kind, suppressed) {
+  // vol < 1 for distant shots (other survivors); distance also muffles them.
+  shot(kind, suppressed, vol = 1) {
+    if (vol < 0.02) return;
     const big = kind === 'mp133' || kind === 'sks';
     if (suppressed) {
       // A suppressed shot is a sharp, muffled crack rather than a boom.
-      noise(0.15, 900, 0.8, 0.45, 'lowpass', 0.12);
-      noise(0.05, 3500, 2, 0.2, 'bandpass', 0.05);
+      noise(0.15, 900, 0.8, 0.45 * vol, 'lowpass', 0.12);
+      noise(0.05, 3500, 2, 0.2 * vol, 'bandpass', 0.05);
       return;
     }
-    noise(0.5, big ? 1400 : 2200, 0.7, 1.0, 'lowpass', big ? 0.45 : 0.3);
-    tone(big ? 90 : 140, 0.18, 0.6, 'sine', -60);
+    noise(0.5, (big ? 1400 : 2200) * (0.4 + 0.6 * vol), 0.7, 1.0 * vol, 'lowpass', big ? 0.45 : 0.3);
+    tone(big ? 90 : 140, 0.18, 0.6 * vol, 'sine', -60);
+  },
+  voice(vol = 0.3) {
+    // A short murmur so speech has a presence (text appears on screen).
+    if (!ctx) return;
+    for (let i = 0; i < 3; i++) setTimeout(() => tone(140 + Math.random() * 80, 0.09, 0.05 * vol, 'triangle', 30), i * 110);
   },
   click(f = 2400, v = 0.12) { noise(0.03, f, 4, v, 'bandpass', 0.03); },
   magOut() { this.click(1500, 0.2); setTimeout(() => noise(0.08, 700, 2, 0.15, 'bandpass', 0.08), 60); },
