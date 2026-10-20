@@ -10,7 +10,7 @@ import { createFurnisher, FOOT, footRect } from './furniture.js';
 
 export const HALF = 120;      // map half-size
 // Bump when generation changes so old saves don't map loot onto new layouts.
-export const WORLD_VERSION = 3;
+export const WORLD_VERSION = 4;
 const BLOCK = 40;             // road grid spacing
 const ROAD = 8;
 const WALL_H = 3.0;
@@ -43,6 +43,8 @@ export function buildWorld(scene, seed) {
   const doors = [];
   const beds = [];
   const windows = [];
+  const vehicleSpawns = []; // cars and trucks (built and driven by vehicles.js)
+  const pumps = [];          // gas station pumps (fuel)
   const group = new THREE.Group();
   scene.add(group);
   const fur = createFurnisher(group);
@@ -165,7 +167,7 @@ export function buildWorld(scene, seed) {
     house: { floor: 0x6b5a45, wall: [0xb8a68a, 0x9c8b77, 0xa7a29a, 0x8c7a6a], interior: [0xd8d0c0, 0xc8d0c8, 0xd8c8b8, 0xe0dcd0, 0xc0c8d0] },
     shop: { floor: 0x55585a, wall: [0x7a8a9a, 0x8a7a6a], sign: { text: 'GENERAL STORE', bg: '#6a5a3a' }, windows: STORE_WIN, checkout: true, wallLoot: ['cabinet', 'foodshelf', 'fridge', 'crate', 'toolbox'] },
     clinic: { floor: 0xc8c8c0, wall: [0xd8d8d0], sign: { text: 'CLINIC', bg: '#2a6a9a', cross: true }, wallLoot: ['medbox', 'medbox', 'medcab', 'pc', 'pillshelf'], zombies: { type: 'patient', n: 3 } },
-    warehouse: { floor: 0x4a4a48, wall: [0x6a6a5a, 0x5a6050], windows: { w: 1.6, gap: 4.5, sill: 1.9, top: 2.6, skip: 0.3 }, open: true, wallLoot: ['crate', 'toolbox', 'cabinet', 'lumber', 'lumber', 'toolshelf'] },
+    warehouse: { floor: 0x4a4a48, wall: [0x6a6a5a, 0x5a6050], windows: { w: 1.6, gap: 4.5, sill: 1.9, top: 2.6, skip: 0.3 }, open: true, wallLoot: ['crate', 'toolbox', 'cabinet', 'lumber', 'lumber', 'toolshelf', 'parts_shelf', 'toolbench'] },
     pharmacy: { floor: 0xd8dcd8, wall: [0xe0e4e0, 0xcfd8d0], sign: { text: 'PHARMACY', bg: '#1f7a3a', cross: true }, windows: STORE_WIN, checkout: true, wallLoot: ['pillshelf', 'pillshelf', 'medcab', 'fridge'], aisles: { type: 'pillshelf', rows: 2 }, zombies: { n: 3 } },
     hospital: { floor: 0xd0d4d0, wall: [0xe4e4dc], sign: { text: 'HOSPITAL', bg: '#a02020', cross: true }, corridor: true, windows: CORRIDOR_WIN, roomRoles: ['exam', 'exam', 'supply', 'generic'], roomLoot: ['medcab', 'surgical', 'medbox', 'pillshelf', 'medcab'], wardBeds: true, storeys: 3, zombies: { type: 'patient', n: 16 } },
     office: { floor: 0x5a5e62, wall: [0x8a9098, 0x9a8a7a], sign: { company: true, bg: '#2a3a5a' }, windows: { w: 1.6, gap: 2.6, sill: 0.8, top: 2.3 }, desks: true, wallLoot: ['filing', 'filing', 'filing', 'pc', 'server', 'fridge'], storeys: 2, zombies: { n: 5 } },
@@ -174,6 +176,7 @@ export function buildWorld(scene, seed) {
     grocery: { floor: 0xb0aca0, wall: [0xa89878, 0x9a8a6a], sign: { text: 'GROCERY', bg: '#8a5a1a' }, windows: STORE_WIN, checkout: true, aisles: { type: 'foodshelf', rows: 3 }, wallLoot: ['fridge', 'fridge', 'fridge', 'foodshelf'], zombies: { n: 5 } },
     hardware: { floor: 0x7a7468, wall: [0x9a6a3a, 0x8a7a5a], sign: { text: 'HARDWARE', bg: '#8a3a1a' }, windows: STORE_WIN, checkout: true, aisles: { type: 'toolshelf', rows: 2 }, wallLoot: ['lumber', 'lumber', 'toolbox', 'toolshelf'], zombies: { n: 3 } },
     gas: { floor: 0x8a8a84, wall: [0xd8d0c0], sign: { text: 'FUEL & SNACKS', bg: '#b03a1a' }, windows: STORE_WIN, checkout: true, wallLoot: ['foodshelf', 'fridge', 'cabinet', 'foodshelf'] },
+    mechanic: { floor: 0x5a5a58, wall: [0x8a8478, 0x6a7a8a], sign: { text: 'AUTO REPAIR', bg: '#2a4a7a' }, garage: true, open: true, windows: { w: 1.4, gap: 3.4, sill: 1.1, top: 2.2, skip: 0.3 }, wallLoot: ['parts_shelf', 'toolbench', 'tire_rack', 'toolbox'] },
     military: { floor: 0x5a5a4a, wall: [0x5a6a4a], sign: { text: 'COMMAND POST', bg: '#3a4a2a' }, windows: { w: 1.0, gap: 3.0, sill: 1.1, top: 1.9 }, wallLoot: ['milcrate', 'duffel', 'ammobox', 'milcrate', 'surgical'] },
   };
   const COMPANIES = ['VERTEX CAPITAL', 'NORDLINE LOGISTICS', 'HALVERSEN & KLINE', 'OKAFOR DYNAMICS', 'MERIDIAN INSURANCE', 'GREYSTONE PARTNERS', 'ARKWELL ENERGY', 'LUMEN BIOTECH'];
@@ -261,6 +264,10 @@ export function buildWorld(scene, seed) {
       if (o.type === 'door') {
         seg(g0, g1, o.top ?? 2.2, WALL_H); // lintel
         out.doors.push({ ...pos, ax, w: o.w });
+      } else if (o.type === 'garage') {
+        seg(g0, g1, 2.7, WALL_H); // a wide opening with the shutter rolled up
+        prop(ax === 'x' ? o.w : 0.35, 0.3, ax === 'x' ? 0.35 : o.w, 0x8a8a84, pos.x, 2.55, pos.z);
+        out.garages = [...(out.garages || []), { ...pos, ax, w: o.w }];
       } else {
         // Sill and lintel stop bullets but not sight; the opening itself is
         // the window (glass, open, or broken: you climb through).
@@ -634,6 +641,21 @@ export function buildWorld(scene, seed) {
       fill(P, ['filing', 'filing', 'plant', 'water_cooler', 'whiteboard'], 7); P.wall('vending'); P.wall('pc'); P.wall('server');
       return;
     }
+    if (kindName === 'mechanic') {
+      // Workshop: a lift with a project car on it, benches, parts and tires
+      fill(P, ['parts_shelf', 'parts_shelf', 'toolbench', 'tire_rack', 'toolbox', 'tool_rack'], 7);
+      P.wall('compressor'); P.wall('drum'); P.wall('drum');
+      const c = P.centre(), [rw, rd] = P.size();
+      const rot = rw >= rd ? Math.PI / 2 : 0;
+      const ok = P.fits('car_lift', c.x, c.z, rot);
+      if (ok) {
+        P.put('car_lift', c.x, c.z, rot);
+        const ax = Math.abs(Math.sin(rot)) > 0.5;
+        for (const sx of [-1, 1]) addBox(c.x + (ax ? 0 : sx * 1.45) - 0.12, c.z + (ax ? sx * 1.45 : 0) - 0.12, c.x + (ax ? 0 : sx * 1.45) + 0.12, c.z + (ax ? sx * 1.45 : 0) + 0.12, { blocksSight: false, h: 2.4 });
+        car(c.x, c.z, rot + (rand() < 0.5 ? Math.PI : 0), null, { project: true });
+      }
+      return;
+    }
     if (kindName === 'warehouse') {
       // Racking in rows with aisles between, loot shelving round the walls
       fill(P, ['crate', 'toolshelf', 'lumber', 'toolbox', 'cabinet'], 7);
@@ -682,6 +704,8 @@ export function buildWorld(scene, seed) {
       ext[side].push({ c: kind.corridor && (side === 'e' || side === 'w') ? zc : rnd(a0 + 2, a1 - 2), w: DOOR, type: 'door' });
     }
     const frontSide = doorSides[0];
+    // Garages: the front door is a wide roll-up opening cars can drive through
+    if (kind.garage) { const o = ext[frontSide][0]; o.type = 'garage'; o.w = 3.8; const [a0, a1] = frontSide === 'n' || frontSide === 's' ? [x0, x1] : [z0, z1]; o.c = Math.max(a0 + 2.6, Math.min(a1 - 2.6, o.c)); }
 
     // Interior layout
     if (kind.corridor) {
@@ -737,6 +761,7 @@ export function buildWorld(scene, seed) {
     const outerDoors = [];
     for (const [side, ax, a0, a1, fixed] of [['n', 'x', x0, x1, z0], ['s', 'x', x0, x1, z1], ['w', 'z', z0, z1, x0], ['e', 'z', z0, z1, x1]]) {
       const made = wallWithOpenings(ax, a0, a1, fixed, ext[side], color);
+      if (made.garages) b.garages = made.garages;
       outerDoors.push(...made.doors);
       bDoors.push(...made.doors);
       b.windows.push(...made.windows);
@@ -880,7 +905,7 @@ export function buildWorld(scene, seed) {
         const side = dr.ax === 'x' ? (Math.abs(dr.z - z0) < 0.01 ? 'n' : 's') : (Math.abs(dr.x - x0) < 0.01 ? 'w' : 'e');
         sign(name, kind.sign.bg, kind.sign.cross, dr.x, dr.z, side);
       }
-      const labels = { shop: 'General Store', police: 'Police Station', grocery: 'Grocery Store', hardware: 'Hardware Store', gas: 'Gas Station', military: 'Command Post' };
+      const labels = { shop: 'General Store', police: 'Police Station', grocery: 'Grocery Store', hardware: 'Hardware Store', gas: 'Gas Station', military: 'Command Post', mechanic: 'Auto Repair' };
       landmarks.push({ x: cx, z: cz, name: kind.sign.company ? name : labels[kindName] || name[0] + name.slice(1).toLowerCase(), kind: kindName });
     }
     if (kind.zombies) zombieSpawns.push({ x: cx, z: cz, r: Math.min(w, d) / 2 - 1, n: kind.zombies.n, type: kind.zombies.type || null });
@@ -1035,7 +1060,7 @@ export function buildWorld(scene, seed) {
     else { outer.push(`${ix},${iz}`); if ((ix === 0 || ix === 4) && (iz === 0 || iz === 4)) corners.push(`${ix},${iz}`); }
   }
   lotKinds.set(pick(corners), 'militaryBase');
-  const outerKinds = shuffle(['pharmacy', 'hardware', 'gas', 'warehouse', 'warehouse', 'clinic', 'park', 'parking', 'shop']);
+  const outerKinds = shuffle(['pharmacy', 'hardware', 'gas', 'warehouse', 'mechanic', 'mechanic', 'clinic', 'park', 'parking', 'shop']);
   for (const k of shuffle(outer)) if (!lotKinds.has(k)) lotKinds.set(k, outerKinds.pop() || 'houses');
 
   for (let ix = 0; ix < 5; ix++) {
@@ -1070,8 +1095,16 @@ export function buildWorld(scene, seed) {
         // Fuel canopy with pumps
         for (const [dx, dz] of [[-5, -3], [3, -3], [-5, -9], [3, -9]]) { prop(0.3, 4.5, 0.3, 0xd8d8d8, mx + dx - 4, 2.25, mz + dz); addBox(mx + dx - 4.15, mz + dz - 0.15, mx + dx - 3.85, mz + dz + 0.15, { blocksSight: false, h: 4.5 }); }
         prop(10, 0.4, 8, 0xb03a1a, mx - 5, 4.6, mz - 6);
-        for (const dx of [-7, -3]) { prop(0.6, 1.4, 0.9, 0x8a2a1a, mx + dx, 0.7, mz - 6, 0, true); }
+        for (const dx of [-7, -3]) { prop(0.6, 1.4, 0.9, 0x8a2a1a, mx + dx, 0.7, mz - 6, 0, true); pumps.push({ kind: 'pump', name: 'Fuel Pump', x: mx + dx, z: mz - 6 + 0.75, fuel: Math.round(rnd(120, 300)) }); }
         car(mx - 5, mz - 1.5, Math.PI / 2);
+        continue;
+      }
+      if (kind === 'mechanic') {
+        // A garage with a forecourt of cars waiting for work
+        const b = building(mx + rnd(-1, 1), mz - 3, rnd(15, 18), rnd(11, 13), 'mechanic');
+        const yz = b.z1 + 3.4;
+        for (let i = 0; i < 3; i++) if (rand() < 0.8) car(lx0 + 3 + i * 5.5 + rnd(-0.5, 0.5), Math.min(lz1 - 2.5, yz), Math.PI / 2 + rnd(-0.1, 0.1), null, { project: true });
+        for (let i = 0; i < 2; i++) prop(0.7, 0.9, 0.7, pick([0x2a4a8a, 0xa82a1a]), lx1 - 1.5 - i * 0.9, 0.45, lz1 - 1.2, 0, true); // oil drums
         continue;
       }
       const big = kind === 'warehouse' || kind === 'grocery' || kind === 'hardware';
@@ -1104,60 +1137,29 @@ export function buildWorld(scene, seed) {
   }
 
   // style: undefined (civilian), 'police' or 'military' (canvas-backed truck)
-  function car(x, z, rot, style) {
-    const g = new THREE.Group();
+  // A vehicle where it was abandoned. vehicles.js builds and drives it; the
+  // trunk / cargo container rides along with it.
+  function car(x, z, rot, style, opts = {}) {
     const mil = style === 'military';
-    const col = mil ? 0x4a5a3a : style === 'police' ? 0xe8e8e8 : pick([0x6a2222, 0x22446a, 0x555555, 0x887744, 0x2a4a2a, 0xcccccc]);
-    const L = mil ? 6.2 : 4.2, W = mil ? 2.3 : 1.9;
-    const body = new THREE.Mesh(new THREE.BoxGeometry(W, mil ? 1.1 : 0.8, L), new THREE.MeshStandardMaterial({ color: col, roughness: mil ? 0.9 : 0.5, metalness: mil ? 0.1 : 0.3 }));
-    body.position.y = mil ? 0.95 : 0.6;
-    const cab = new THREE.Mesh(new THREE.BoxGeometry(W - 0.2, mil ? 1.0 : 0.6, mil ? 1.8 : 2.2), new THREE.MeshStandardMaterial({ color: mil ? 0x3e4c30 : 0x223, roughness: 0.4, metalness: 0.4 }));
-    cab.position.set(0, mil ? 2.0 : 1.3, mil ? L / 2 - 1.1 : -0.2);
-    g.add(body, cab);
-    if (mil) {
-      const cover = new THREE.Mesh(new THREE.BoxGeometry(W, 1.4, L - 2.2), new THREE.MeshStandardMaterial({ color: 0x5a6440, roughness: 1 }));
-      cover.position.set(0, 2.2, -1.0);
-      g.add(cover);
-    }
-    if (style === 'police') {
-      const stripe = new THREE.Mesh(new THREE.BoxGeometry(W + 0.02, 0.18, L - 0.4), new THREE.MeshStandardMaterial({ color: 0x1a3a8a }));
-      stripe.position.y = 0.7; g.add(stripe);
-      const bar = new THREE.Mesh(new THREE.BoxGeometry(1.0, 0.12, 0.25), new THREE.MeshStandardMaterial({ color: 0x3355ff, emissive: 0x2233aa, emissiveIntensity: 0.6 }));
-      bar.position.set(0, 1.66, -0.2); g.add(bar);
-    }
-    for (const [wx, wz] of (mil ? [[-1.1, 2.1], [1.1, 2.1], [-1.1, -1.4], [1.1, -1.4], [-1.1, -2.4], [1.1, -2.4]] : [[-0.9, 1.3], [0.9, 1.3], [-0.9, -1.3], [0.9, -1.3]])) {
-      const wh = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.35, 0.25, 10), new THREE.MeshStandardMaterial({ color: 0x111 }));
-      wh.rotation.z = Math.PI / 2;
-      wh.position.set(wx, 0.35, wz);
-      g.add(wh);
-    }
-    g.position.set(x, 0, z);
-    g.rotation.y = rot;
-    g.traverse((o) => { o.castShadow = true; o.receiveShadow = true; });
-    group.add(g);
-    // Collision: the car's length is split into slices, each an AABB of its
-    // rotated footprint (tight even for cars parked at an angle), with the
-    // height of what's there (hood, cabin, cargo cover).
-    const SL = mil ? 5 : 4, fx = Math.sin(rot), fz = Math.cos(rot), c = Math.abs(Math.cos(rot)), sn = Math.abs(Math.sin(rot));
-    for (let i = 0; i < SL; i++) {
-      const a = -L / 2 + (i + 0.5) * (L / SL); // slice centre along the car
-      const sx = x + fx * a, sz = z + fz * a;
-      const hw = (W * 0.95 * c + (L / SL) * sn) / 2, hd = (W * 0.95 * sn + (L / SL) * c) / 2;
-      const inCab = mil ? a > L / 2 - 2.0 : a > -1.3 && a < 0.9;
-      const h = mil ? (inCab ? 2.5 : a < L / 2 - 2.2 ? 2.9 : 1.5) : inCab ? 1.6 : 1.0;
-      addBox(sx - hw, sz - hd, sx + hw, sz + hd, { blocksSight: mil, h });
-    }
+    const color = opts.color ?? (mil ? 0x4a5a3a : style === 'police' ? 0xe8e8e8 : pick([0x6a2222, 0x22446a, 0x555555, 0x887744, 0x2a4a2a, 0xcccccc, 0x7a6a50, 0x303438]));
+    const type = mil ? 'military' : style === 'police' ? 'police' : rand() < 0.25 ? 'pickup' : 'sedan';
+    const L = mil ? 6.2 : type === 'pickup' ? 4.8 : 4.3;
+    const spec = { x, z, rot, type, color, rng: rand(), project: !!opts.project };
     if (mil) {
       // Cargo bed: military supplies at the back of the truck
-      const tc = addContainer(rand() < 0.6 ? 'milcrate' : 'duffel', x - Math.sin(rot) * (L / 2 + 0.6), z - Math.cos(rot) * (L / 2 + 0.6));
-      tc.name = 'Truck Cargo';
+      spec.trunk = addContainer(rand() < 0.6 ? 'milcrate' : 'duffel', x - Math.sin(rot) * (L / 2 + 0.6), z - Math.cos(rot) * (L / 2 + 0.6));
+      spec.trunk.name = 'Truck Cargo';
     } else if (style === 'police') {
-      addContainer('policelocker', x - Math.sin(rot) * 2.5, z - Math.cos(rot) * 2.5).name = 'Patrol Car Trunk';
-    } else if (rand() < 0.6) {
-      const tc = addContainer('trunk', x - Math.sin(rot) * 2.3, z - Math.cos(rot) * 2.3);
-      tc.y = 0.9;
+      spec.trunk = addContainer('policelocker', x - Math.sin(rot) * (L / 2 + 0.4), z - Math.cos(rot) * (L / 2 + 0.4));
+      spec.trunk.name = 'Patrol Car Trunk';
+    } else if (rand() < 0.7) {
+      spec.trunk = addContainer('trunk', x - Math.sin(rot) * (L / 2 + 0.4), z - Math.cos(rot) * (L / 2 + 0.4));
     }
+    if (spec.trunk) { spec.trunk.y = 0.9; spec.trunk.vehicleTrunk = true; }
+    vehicleSpawns.push(spec);
+    return spec;
   }
+
 
   // Walls → one instanced mesh
   const wallGeo = new THREE.BoxGeometry(1, 1, 1);
@@ -1219,7 +1221,7 @@ export function buildWorld(scene, seed) {
   const houses = buildings.filter((b) => b.kind === 'house');
 
   return {
-    group, hash, containers, generatedContainers, buildings, houses, roads, trees, doors, beds, windows, zombieSpawns, landmarks,
+    group, hash, containers, generatedContainers, buildings, houses, roads, trees, doors, beds, windows, zombieSpawns, landmarks, vehicleSpawns, pumps,
     addBox, addContainer: (type, x, z) => addContainer(type, x, z, 0, {}), felled,
     // Cut down a tree: hide its instances and remove its collider.
     fellTree(i) {

@@ -17,6 +17,8 @@ export const FOOT = {
   store_shelf: [1.6, 0.5, 1.5], pharma_shelf: [1.6, 0.45, 1.6], tool_rack: [1.6, 0.5, 1.8], rack: [2.4, 1.0, 2.4],
   bench: [1.6, 0.45, 0.45], lockers: [1.8, 0.5, 1.9], water_cooler: [0.35, 0.35, 1.3], freezer: [1.6, 0.8, 0.9],
   hospital_bed: [1.0, 2.1, 0.7], curtain: [0.05, 2.0, 1.9], whiteboard: [1.6, 0.05, 1.9],
+  // Garage
+  car_lift: [3.2, 4.6, 0], drum: [0.6, 0.6, 0.9], compressor: [0.8, 0.5, 0.8],
 };
 
 export function createFurnisher(group) {
@@ -359,6 +361,29 @@ export function createFurnisher(group) {
     },
     curtain: (g) => { B(g, 0.03, 0.03, 1.9, 0x888888, 0, 2.2, 0); B(g, 0.02, 1.7, 1.9, 0x8ab0c0, 0, 0.35, 0); },
     whiteboard: (g) => { B(g, 1.6, 1.0, 0.03, 0xf4f4f0, 0, 1.0, 0); B(g, 1.64, 0.04, 0.06, 0xaaaaaa, 0, 0.98, 0.02); },
+    parts_shelf: (g, rnd) => shelving(g, 1.6, 1.9, 0.55, 0x3a4a6a, rnd, [0x2a2a2a, 0x334455, 0xd8d8c0, 0x6a6a70, 0xc8c8c8, 0xa83a2a]),
+    toolbench: (g, rnd) => {
+      B(g, 1.8, 0.06, 0.7, 0x6a5a3a, 0, 0.88, 0); legs(g, 1.8, 0.7, 0.88, 0.07, 0x3a3a3a);
+      B(g, 1.7, 0.03, 0.6, 0x5a4a2a, 0, 0.25, 0);
+      B(g, 1.8, 0.9, 0.04, 0x9a8a6a, 0, 0.94, -0.33); // pegboard
+      for (let i = 0; i < 6; i++) B(g, 0.04, 0.2 + rnd() * 0.15, 0.03, [0x8a8a90, 0xc83a2a, 0x3a5a8a][i % 3], -0.7 + i * 0.28, 1.25, -0.3);
+      B(g, 0.25, 0.15, 0.2, 0x3a5a8a, 0.55, 0.94, 0.05); B(g, 0.12, 0.1, 0.35, 0x555555, -0.6, 0.94, 0);
+    },
+    tire_rack: (g) => {
+      for (const sx of [-1, 1]) B(g, 0.05, 1.2, 0.6, 0x555555, sx * 0.68, 0, 0);
+      for (let i = 0; i < 4; i++) { const t = cyl(g, 0.3, 0.2, 0x1e1e1e, -0.45 + i * 0.3, 0.3, 0, 14); t.rotation.z = Math.PI / 2; t.position.y = 0.32; }
+      for (let i = 0; i < 4; i++) { const t = cyl(g, 0.3, 0.2, 0x1e1e1e, -0.45 + i * 0.3, 0.3, 0, 14); t.rotation.z = Math.PI / 2; t.position.y = 0.9; }
+      B(g, 1.4, 0.04, 0.6, 0x555555, 0, 0.6, 0);
+    },
+    car_lift: (g) => {
+      for (const sx of [-1, 1]) {
+        B(g, 0.24, 2.4, 0.24, 0x2a5aa0, sx * 1.45, 0, 0);
+        B(g, 0.1, 0.08, 1.8, 0xd8a020, sx * 1.1, 0.12, 0);
+      }
+      B(g, 3.1, 0.1, 0.2, 0x2a5aa0, 0, 2.4, 0);
+    },
+    drum: (g) => { cyl(g, 0.3, 0.88, [0x2a4a8a, 0xa82a1a, 0x3a5a2a][Math.floor(Math.random() * 3)], 0, 0, 0, 12); },
+    compressor: (g) => { cyl(g, 0.2, 0.7, 0xc83a2a, 0, 0.1, 0, 12).rotation.z = Math.PI / 2; B(g, 0.8, 0.12, 0.45, 0x333333, 0, 0, 0); B(g, 0.3, 0.25, 0.25, 0x222222, 0.1, 0.5, 0); },
     forklift: (g) => {
       B(g, 1.1, 0.8, 1.6, 0xd8a020, 0, 0.25, -0.2); B(g, 1.1, 0.06, 1.3, 0x222222, 0, 2.1, -0.35);
       for (const x of [-0.5, 0.5]) for (const z of [-0.95, 0.25]) B(g, 0.06, 1.85, 0.06, 0x222222, x, 0.25, z);

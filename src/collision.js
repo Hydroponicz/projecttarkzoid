@@ -10,6 +10,7 @@ export class SpatialHash {
   key(cx, cz) { return cx * 73856093 ^ cz * 19349663; }
   insert(box) {
     box._s = 0;
+    box._keys = [];
     const c = this.cell;
     for (let cx = Math.floor(box.minX / c); cx <= Math.floor(box.maxX / c); cx++) {
       for (let cz = Math.floor(box.minZ / c); cz <= Math.floor(box.maxZ / c); cz++) {
@@ -17,14 +18,18 @@ export class SpatialHash {
         let arr = this.map.get(k);
         if (!arr) this.map.set(k, (arr = []));
         arr.push(box);
+        box._keys.push(k);
       }
     }
   }
   remove(box) {
-    for (const arr of this.map.values()) {
-      const i = arr.indexOf(box);
+    // Only the cells it was put in (cheap enough to move boxes around)
+    for (const k of box._keys || [...this.map.keys()]) {
+      const arr = this.map.get(k);
+      const i = arr ? arr.indexOf(box) : -1;
       if (i >= 0) arr.splice(i, 1);
     }
+    box._keys = null;
   }
   query(minX, minZ, maxX, maxZ, out = []) {
     const c = this.cell;

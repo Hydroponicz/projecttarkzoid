@@ -132,6 +132,16 @@ export class Player {
     if (this.dead) return;
     const g = this.game;
     const hash = g.world.hash;
+    if (this.vehicle) {
+      // Driving: the vehicle moves you and the camera; no weapons in hand.
+      g.vehicles.drive(dt, input);
+      this.gun.setVisible(false);
+      this.vm.visible = false;
+      this.speed = 0;
+      this.light.intensity = this.flashlight ? 40 : 0;
+      this.updateBody(dt);
+      return;
+    }
 
     // Look (slower while aiming, slower still through a magnified scope)
     const gunActive = this.active === 'gun' && this.weapon;
@@ -544,6 +554,7 @@ export class Player {
   // ---------- health ----------
   takeZombieHit(amount, zb) {
     if (this.dead) return;
+    if (this.vehicle) amount *= 0.4; // reaching in through the window
     let r = Math.random(), part = 'thorax';
     for (const [k, wgt] of HIT_WEIGHTS) { r -= wgt; if (r <= 0) { part = k; break; } }
     // Armor
@@ -706,7 +717,7 @@ export class Player {
       x: this.pos.x, z: this.pos.z, yaw: this.yaw, hp: this.hp, bleeding: [...this.bleeding],
       food: this.food, water: this.water, fatigue: this.fatigue, stamina: this.stamina,
       infected: this.infected, infection: this.infection, painkiller: this.painkiller, kills: this.kills,
-      flashlight: this.flashlight, active: this.active, stance: this.stance, pace: this.pace,
+      flashlight: this.flashlight, active: this.active, stance: this.stance, pace: this.pace, vehicle: this.vehicle ? this.vehicle.index : undefined,
     };
   }
 

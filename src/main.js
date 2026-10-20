@@ -8,6 +8,7 @@ import { FX } from './fx.js';
 import { RagdollSystem, lookMats } from './ragdoll.js';
 import { Traders } from './traders.js';
 import { Progress } from './progress.js';
+import { Vehicles } from './vehicles.js';
 import { InventoryUI } from './invui.js';
 import { ITEMS, makeItem, migrateItem, itemValue } from './items.js';
 import { combineItems, weaponActions, loadStep } from './weapons.js';
@@ -240,6 +241,8 @@ class Game {
     this.traders = new Traders(this, w?.traders || null);
     this.traders.spawnNPCs();
     this.progress = new Progress(this, this.profile, !ch.player);
+    this.vehicles = new Vehicles(this, w?.vehicles || null);
+    if (ch.player?.vehicle != null && this.vehicles.list[ch.player.vehicle]) this.vehicles.enter(this.vehicles.list[ch.player.vehicle]);
 
     this.updateLighting();
     this.autosave = AUTOSAVE;
@@ -337,6 +340,7 @@ class Game {
       zombies: this.zombies.serialize(),
       survivors: this.survivors.serialize(),
       traders: this.traders?.serialize(),
+      vehicles: this.vehicles?.serialize(),
     };
     writeSave(this.save);
   }
@@ -352,6 +356,8 @@ class Game {
     this.zombies?.dispose();
     this.survivors?.dispose();
     this.survivors = null;
+    this.vehicles?.dispose();
+    this.vehicles = null;
     this.traders?.dispose();
     this.traders = null;
     this.progress?.togglePanel(false);
@@ -411,7 +417,7 @@ class Game {
   }
 
   updatePause() {
-    const ui = this.invOpen || this.hud.mapOpen || this.dev.open || this.dialogOpen || this.traderOpen;
+    const ui = this.invOpen || this.hud.mapOpen || this.dev.open || this.dialogOpen || this.traderOpen || this.vehicleOpen;
     const show = this.state === 'play' && !this.input.locked && !ui && !this.awaitingRelock;
     $('pause').style.display = show ? 'flex' : 'none';
     $('relock').style.display = this.state === 'play' && this.awaitingRelock && !this.input.locked && !ui ? 'block' : 'none';
@@ -533,6 +539,7 @@ class Game {
   interactables() {
     const out = [...this.world.containers, ...this.world.beds];
     for (const w of this.world.windows) if (w.sill < 1.2) out.push(w);
+    if (this.vehicles) out.push(...this.vehicles.interactables(), ...this.world.pumps);
     for (const d of this.world.doors) if (!d.broken) out.push(d);
     for (const s of this.builder.structures) if (s.grid || s.door || s.type === 'bed') out.push(s);
     for (const s of this.survivors.list) if (!s.dead && s.disp !== 'hostile') out.push(s);
@@ -561,6 +568,10 @@ class Game {
       this.zombies.updateNavRegion(t.box.minX, t.box.minZ, t.box.maxX, t.box.maxZ);
       sfx.door();
       this.zombies.noise(t.x, t.z, 3);
+    } else if (t.kind === 'vehicle') {
+      this.vehicles.openPanel(t.v);
+    } else if (t.kind === 'pump') {
+      this.vehicles.usePump(t);
     } else if (t.kind === 'window') {
       if (t.state === 'broken') return this.hud.message('The glass is smashed. Space to climb through.', 2);
       setWindow(t, t.state === 'open' ? 'closed' : 'open');
@@ -767,6 +778,10 @@ class Game {
       for (const c of this.input.pressed) if (c.startsWith('Digit') || c === 'Escape') this.survivors.dialogKey(c);
       if (['KeyW', 'KeyA', 'KeyS', 'KeyD'].some(pressed) || !s || s.dead || s.pos.distanceTo(this.player.pos) > 4) this.survivors.closeDialog();
       inp.interact = inp.inventory = inp.slot1 = inp.slot2 = inp.reload = inp.jump = false;
+    } else if (this.vehicleOpen) {
+      // Looking over a vehicle: Esc, Tab or walking off closes it
+      if (pressed('Escape') || inp.inventory || ['KeyW', 'KeyA', 'KeyS', 'KeyD'].some(pressed)) this.vehicles.closePanel();
+      inp.interact = inp.inventory = inp.slot1 = inp.slot2 = inp.reload = inp.jump = inp.fire = inp.firePressed = false;
     } else if (this.traderOpen) {
       // At a trader's counter: Esc, Tab, walking off or the trader dying closes it.
       const npc = this.traders.open?.npc;
@@ -795,7 +810,7 @@ class Game {
     }
     if (inp.map) { this.hud.toggleMap(); if (this.hud.mapOpen) this.input.unlock(); else this.resume(); this.updatePause(); }
     if (this.hud.mapOpen && pressed('Escape')) { this.hud.toggleMap(false); this.resume(); }
-    const paused = !this.input.locked && !this.invOpen && !this.hud.mapOpen && !this.dev.open && !this.dialogOpen && !this.traderOpen && !this.awaitingRelock;
+    const paused = !this.input.locked && !this.invOpen && !this.hud.mapOpen && !this.dev.open && !this.dialogOpen && !this.traderOpen && !this.vehicleOpen && !this.awaitingRelock;
     if (paused || this.sleeping) return;
     if (this.dev.open && this.dev.pauseWhileOpen) {
       // Simulation paused, but keep the view in sync with console edits.
@@ -810,13 +825,14 @@ class Game {
     if (pressed('KeyJ') && !this.invOpen) this.progress.togglePanel();
     if (this.progress.panelOpen && (pressed('Escape') || this.invOpen)) this.progress.togglePanel(false);
     if (this.progress.panelOpen && pressed('KeyK') && this.progress.tutorialActive) { this.progress.skipTutorial(); this.progress.drawPanel(); }
-    if (pressed('KeyB') && !this.invOpen) {
+    const driving = !!this.player.vehicle;
+    if (pressed('KeyB') && !this.invOpen && !driving) {
       this.builder.toggle();
       this.hud.message(this.builder.active ? 'Build mode: 1–6 select, R rotate, LMB build, X dismantle, B exit' : 'Build mode off');
     }
-    if (pressed('KeyV') && !this.invOpen) this.claimSafehouse();
+    if (pressed('KeyV') && !this.invOpen && !driving) this.claimSafehouse();
     if (inp.interact && !this.invOpen && this.lookTarget) this.interact(this.lookTarget);
-    if (inp.heal) this.quickHeal();
+    if (inp.heal && !driving) this.quickHeal(); // (H is the horn in a car)
 
     if (this.builder.active && !this.invOpen) {
       this.builder.update(inp);
@@ -835,6 +851,7 @@ class Game {
     if (this.state !== 'play') return;
     this.ragdolls.update(dt);
     this.traders.update(dt);
+    this.vehicles.update(dt);
     for (const d of this.shaking) {
       d.shake -= dt;
       const base = d.baseRot + (d.open ? Math.PI / 2 : 0);
@@ -847,7 +864,7 @@ class Game {
     const pp = this.player.pos;
     this.sun.position.set(pp.x + 30, 60, pp.z + 20);
     this.sun.target.position.set(pp.x, 0, pp.z);
-    this.lookTarget = this.invOpen || this.builder.active ? null : this.findLookTarget();
+    this.lookTarget = this.invOpen || this.builder.active || this.player.vehicle ? null : this.findLookTarget();
 
     this.beat = (this.beat || 0) - dt;
     if (this.beat <= 0 && (this.player.hp.thorax < 30 || this.player.hp.head < 12)) { this.beat = 1; sfx.heartbeat(); }

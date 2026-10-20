@@ -42,6 +42,27 @@ function tone(freq, dur, vol, type = 'sine', slide = 0) {
   o.start(t); o.stop(t + dur);
 }
 
+// A running engine: two detuned oscillators through a filter whose pitch and
+// brightness follow the revs. set(on, rpm 0..1+)
+export function engineSound() {
+  if (!ctx) return { set() {} };
+  const o1 = ctx.createOscillator(), o2 = ctx.createOscillator();
+  o1.type = 'sawtooth'; o2.type = 'square';
+  const f = ctx.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 400;
+  const g = ctx.createGain(); g.gain.value = 0;
+  o1.connect(f); o2.connect(f); f.connect(g); g.connect(master);
+  o1.start(); o2.start();
+  return {
+    set(on, rpm) {
+      const t = ctx.currentTime, r = Math.min(1.3, rpm);
+      o1.frequency.setTargetAtTime(30 + r * 95, t, 0.12);
+      o2.frequency.setTargetAtTime(15 + r * 47, t, 0.12);
+      f.frequency.setTargetAtTime(260 + r * 1000, t, 0.12);
+      g.gain.setTargetAtTime(on ? 0.05 + r * 0.06 : 0, t, 0.2);
+    },
+  };
+}
+
 export const sfx = {
   // vol < 1 for distant shots (other survivors); distance also muffles them.
   shot(kind, suppressed, vol = 1) {
@@ -98,6 +119,9 @@ export const sfx = {
   // Holding breath: a short inhale; letting go, an exhale (a gasp if you ran out)
   inhale() { noise(0.35, 700, 0.8, 0.07, 'bandpass', 0.3); },
   exhale(gasp) { noise(gasp ? 0.6 : 0.45, gasp ? 900 : 600, 0.7, gasp ? 0.14 : 0.06, 'bandpass', gasp ? 0.5 : 0.4); },
+  horn() { tone(392, 0.45, 0.18, 'square'); tone(494, 0.45, 0.14, 'square'); },
+  crank(dur = 1) { const n = Math.max(2, Math.round(dur / 0.14)); for (let i = 0; i < n; i++) setTimeout(() => { noise(0.09, 260, 1.5, 0.3, 'lowpass', 0.08); tone(55, 0.06, 0.12, 'square'); }, i * 140); },
+  crash(vol = 1) { noise(0.35, 500, 0.8, 0.9 * vol, 'lowpass', 0.3); noise(0.2, 2800, 1, 0.35 * vol, 'bandpass', 0.18); tone(60, 0.25, 0.5 * vol, 'sine', -25); },
   windowSlide() { noise(0.3, 1200, 2, 0.12, 'bandpass', 0.3); },
   // Meaty melee impact (blunt or blade)
   meleeHit(heavy) { noise(0.14, heavy ? 300 : 600, 1, 0.65, 'lowpass', 0.13); tone(heavy ? 60 : 90, 0.14, 0.45, 'sine', -30); if (heavy) noise(0.04, 2200, 2, 0.25, 'bandpass', 0.04); },

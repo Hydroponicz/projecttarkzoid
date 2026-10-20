@@ -78,7 +78,7 @@ export const ITEMS = {
   bolts: { name: 'Bolts', short: 'Bolts', type: 'loot', w: 1, h: 1, color: '#666', value: 4000 },
   tape: { name: 'Duct Tape', short: 'Tape', type: 'loot', w: 1, h: 1, color: '#888', value: 6000 },
   wires: { name: 'Wires', short: 'Wires', type: 'loot', w: 1, h: 1, color: '#a63', value: 7000 },
-  battery: { name: 'Car Battery', short: 'Battery', type: 'loot', w: 2, h: 2, color: '#334', value: 22000 },
+  battery: { name: 'Car Battery', short: 'Battery', type: 'part', part: 'battery', w: 2, h: 2, color: '#334', value: 22000 },
   chain: { name: 'Gold Chain', short: 'Chain', type: 'loot', w: 1, h: 1, color: '#d4af37', value: 25000 },
   roler: { name: 'Roler Watch', short: 'Roler', type: 'loot', w: 1, h: 1, color: '#e5c84a', value: 38000 },
   gpu: { name: 'Graphics Card', short: 'GPU', type: 'loot', w: 2, h: 1, color: '#2a6a3a', value: 110000 },
@@ -92,6 +92,17 @@ export const ITEMS = {
   mil_cable: { name: 'Military Cable', short: 'Mil cable', type: 'loot', w: 1, h: 1, color: '#3a4a2a', value: 28000 },
   dogtag: { name: 'Dog Tag', short: 'Dogtag', type: 'loot', w: 1, h: 1, color: '#9aa0a8', value: 6000 },
   ledx: { name: 'LEDX Transilluminator', short: 'LEDX', type: 'loot', w: 1, h: 1, color: '#6ad', value: 280000 },
+
+  // --- vehicle parts, tools and fuel ---
+  tire: { name: 'Car Tire', short: 'Tire', type: 'part', part: 'tire', w: 3, h: 3, color: '#2a2a2a', value: 9000 },
+  brakes: { name: 'Brake Pads', short: 'Brakes', type: 'part', part: 'brakes', w: 2, h: 1, color: '#6a6a70', value: 7000 },
+  headlight: { name: 'Headlight', short: 'Headlight', type: 'part', part: 'headlights', w: 2, h: 1, color: '#d8d8c0', value: 5000 },
+  spark_plugs: { name: 'Spark Plugs', short: 'Plugs', type: 'loot', w: 1, h: 1, color: '#c8c8c8', value: 3500, stack: 4 },
+  engine_parts: { name: 'Engine Parts', short: 'Eng parts', type: 'loot', w: 2, h: 2, color: '#5a4a3a', value: 18000 },
+  scrap: { name: 'Scrap Metal', short: 'Scrap', type: 'loot', w: 1, h: 1, color: '#7a7a7a', value: 800, stack: 10 },
+  wrench: { name: 'Wrench', short: 'Wrench', type: 'tool', tool: 'wrench', w: 1, h: 2, color: '#8a8a90', value: 3000 },
+  jack: { name: 'Car Jack', short: 'Jack', type: 'tool', tool: 'jack', w: 3, h: 1, color: '#c83a2a', value: 4500 },
+  gas_can: { name: 'Gas Can', short: 'Gas can', type: 'fuel', w: 2, h: 3, color: '#b02a1a', value: 2500, cap: 20 },
 
   // --- quest items (placed in the world when a trader's quest is accepted) ---
   q_case: { name: 'Sealed Medical Case', short: 'Med case', type: 'quest', w: 2, h: 1, color: '#d8d8d0', value: 0 },
@@ -117,6 +128,7 @@ const KG = {
   paper: 0.5, office: 0.3, folder: 0.3, flashdrive: 0.02, hdd: 0.4, laptop: 2.2, mil_battery: 5, mil_cable: 0.4, dogtag: 0.02,
   sight_reddot: 0.2, sight_holo: 0.35, scope_pso: 0.6, scope_6x: 0.7,
   supp_pm: 0.2, supp_rifle: 0.5, brake_ak: 0.15, grip_vert: 0.15,
+  tire: 9, brakes: 2, headlight: 1, spark_plugs: 0.2, engine_parts: 4, scrap: 1, wrench: 0.6, jack: 4, gas_can: 1.5,
 };
 for (const k in ITEMS) ITEMS[k].kg = KG[k] ?? 0.3;
 
@@ -128,6 +140,7 @@ export function itemWeight(it) {
   if (it.mag) w += itemWeight(it.mag);
   if (it.mods) for (const m of Object.values(it.mods)) if (m) w += itemWeight(m);
   if (it.grid) for (const c of it.grid.items) w += itemWeight(c);
+  if (def.type === 'fuel') w += (it.fuel || 0) * 0.75;
   return w;
 }
 
@@ -139,6 +152,9 @@ export function makeItem(key, opts = {}) {
   if (!def) throw new Error('unknown item ' + key);
   const it = { uid: uid(), key, x: 0, y: 0 };
   const rng = opts.rng || Math.random;
+  // Vehicle parts have a condition; gas cans hold fuel.
+  if (def.part) it.cond = opts.cond ?? Math.round(25 + rng() * 75);
+  if (def.type === 'fuel') it.fuel = opts.fuel ?? Math.round(rng() * 12);
   if (def.stack) it.count = opts.count ?? Math.ceil(def.stack * (0.3 + rng() * 0.5));
   if (def.type === 'weapon') {
     // opts.loaded = rounds to put in the magazine / tube (a round is also chambered).
@@ -162,6 +178,7 @@ export function itemValue(it) {
   if (def.stack) v *= it.count;
   if (def.uses) v *= it.uses / def.uses;
   if (def.durability) v *= 0.3 + 0.7 * it.dur / def.durability;
+  if (def.part) v *= 0.2 + 0.8 * (it.cond ?? 100) / 100;
   if (it.grid) v += it.grid.items.reduce((s, c) => s + itemValue(c), 0);
   if (it.mag) v += itemValue(it.mag);
   if (it.mods) for (const m of Object.values(it.mods)) if (m) v += itemValue(m);
@@ -173,6 +190,7 @@ export function itemValue(it) {
 export function migrateItem(it) {
   const def = ITEMS[it.key];
   if (!def) return;
+  if (def.part && it.cond == null) it.cond = 70;
   if (def.type === 'weapon' && !it.mods) {
     const loaded = it.loaded ?? 0;
     delete it.loaded;
@@ -189,7 +207,10 @@ export function migrateItem(it) {
 export const LOOT_TABLES = {
   fridge: [['beans', 5], ['water', 6], ['soda', 6], ['crackers', 4]],
   cabinet: [['mag_pm', 1.5], ['sight_reddot', 0.3], ['bandage', 5], ['ai2', 3], ['painkillers', 3], ['bolts', 4], ['tape', 4], ['wires', 3], ['knife', 2], ['ammo_9x18', 3], ['chain', 1], ['roler', 0.4], ['nails', 2], ['hammer', 0.8], ['bp_scav', 0.8], ['beans', 2]],
-  toolbox: [['hammer', 4], ['saw', 3], ['nails', 6], ['tape', 3], ['bolts', 3], ['crowbar', 1], ['wires', 2]],
+  toolbox: [['hammer', 4], ['saw', 3], ['nails', 6], ['tape', 3], ['bolts', 3], ['crowbar', 1], ['wires', 2], ['wrench', 1.5], ['spark_plugs', 0.6]],
+  parts_shelf: [['tire', 1.5], ['battery', 1.2], ['brakes', 2], ['headlight', 2], ['spark_plugs', 3], ['engine_parts', 1.2], ['wrench', 0.6], ['gas_can', 0.8], ['scrap', 1.2]],
+  toolbench: [['wrench', 3], ['jack', 2], ['tape', 2], ['scrap', 3], ['spark_plugs', 1.5], ['gas_can', 1], ['bolts', 2], ['wires', 1], ['engine_parts', 0.4]],
+  tire_rack: [['tire', 6]],
   lumber: [['planks', 8], ['log', 2], ['nails', 3]],
   // Civilian storage crates: hunting and work gear, no military hardware.
   crate: [['mag_sks', 1], ['ammo_12g', 4], ['ammo_762', 2], ['ammo_9x18', 2], ['mp133', 1], ['sks', 0.4], ['scope_6x', 0.2], ['sight_reddot', 0.3],
@@ -224,7 +245,7 @@ export const LOOT_TABLES = {
   drinkfridge: [['soda', 6], ['water', 6], ['coffee', 2]],
   medbox: [['bandage', 5], ['ai2', 5], ['salewa', 2], ['painkillers', 3], ['antiviral', 0.8], ['ledx', 0.25]],
   pc: [['gpu', 0.8], ['wires', 4], ['battery', 0.5], ['chain', 0.8]],
-  trunk: [['battery', 2], ['bolts', 3], ['tape', 3], ['water', 2], ['ammo_12g', 2], ['bp_tri', 0.3], ['armor_6b13', 0.15], ['crowbar', 1]],
+  trunk: [['jack', 1.5], ['tire', 1], ['gas_can', 1.5], ['bolts', 2], ['tape', 3], ['water', 2], ['ammo_12g', 2], ['bp_tri', 0.3], ['armor_6b13', 0.15], ['crowbar', 1], ['wrench', 0.8]],
   body: [['mag_pm', 1], ['mag_ak30', 0.6], ['ammo_9x18', 3], ['ammo_545', 2], ['bandage', 3], ['beans', 2], ['pm', 1], ['chain', 1], ['roler', 0.5], ['antiviral', 0.3]],
 };
 
@@ -272,5 +293,8 @@ export const CONTAINER_TYPES = {
   bathroom: { name: 'Bathroom Cabinet', w: 3, h: 3, rolls: [1, 3], color: 0xe8e8e4, size: [0.6, 0.6, 0.16], wall: true },
   // Shops
   register: { name: 'Cash Register', w: 3, h: 2, rolls: [0, 2], color: 0x2a2a2a, size: [0.4, 0.3, 0.35], wall: true },
+  parts_shelf: { name: 'Parts Shelf', w: 5, h: 5, rolls: [2, 4], color: 0x3a4a6a, size: [1.6, 1.9, 0.55] },
+  toolbench: { name: 'Workbench', w: 5, h: 4, rolls: [2, 4], color: 0x6a5a3a, size: [1.8, 0.95, 0.7] },
+  tire_rack: { name: 'Tire Rack', w: 6, h: 6, rolls: [1, 3], color: 0x2a2a2a, size: [1.4, 1.2, 0.6] },
   drinkfridge: { name: 'Drinks Fridge', w: 4, h: 4, rolls: [2, 5], color: 0xb02a2a, size: [0.85, 1.95, 0.7] },
 };

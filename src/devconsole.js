@@ -36,6 +36,7 @@ const KITS = {
   'Shotgunner': ['bp_scav', 'mp133', ['ammo_12g', { count: 20 }], ['ammo_12g', { count: 20 }], 'sight_holo', 'grip_vert'],
   'Pistolero': ['bp_scav', 'pm', 'mag_pm', 'mag_pm', 'mag_pm', ['ammo_9x18', { count: 50 }], 'supp_pm'],
   'Builder': ['bp_tri', 'hammer', 'saw', ['planks', { count: 10 }], ['planks', { count: 10 }], ['planks', { count: 10 }], ['nails', { count: 100 }], ['nails', { count: 100 }]],
+  'Mechanic': ['bp_tri', 'wrench', 'jack', 'tire', 'battery', ['spark_plugs', { count: 4 }], 'engine_parts', 'gas_can', 'brakes', ['scrap', { count: 3 }], 'tape'],
   'Medic': ['salewa', 'salewa', 'ai2', 'ai2', 'bandage', 'bandage', 'painkillers', 'antiviral'],
   'Lumberjack': ['axe', 'saw', 'bp_scav'],
   'Survivor': ['water', 'water', 'beans', 'beans', 'crackers', 'soda'],
@@ -472,7 +473,7 @@ export class DevConsole {
       for (let left = count; left > 0; left -= def.stack) items.push(makeItem(key, { count: Math.min(def.stack, left) }));
     } else {
       for (let i = 0; i < count; i++) {
-        const it = makeItem(key, def.type === 'mag' ? { rounds: def.cap } : def.type === 'weapon' ? { loaded: 0 } : {});
+        const it = makeItem(key, def.type === 'mag' ? { rounds: def.cap } : def.type === 'weapon' ? { loaded: 0 } : def.part ? { cond: 100 } : def.type === 'fuel' ? { fuel: def.cap } : {});
         if (def.type === 'weapon') fillWeapon(it);
         items.push(it);
       }
@@ -757,6 +758,23 @@ export class DevConsole {
         if (lm.length) { const l = lm[Math.floor(Math.random() * lm.length)]; this.log(`→ ${esc(l.name)}`); return this.teleport(l.x + 3, l.z + 3); }
         if (a.length < 2) throw new Error('Usage: tp <x> <z>');
         this.teleport(+a[0], +a[1]);
+      } },
+      car: { u: '[sedan|police|pickup|military]', d: 'Spawn a working vehicle in front of you', f: (a) => {
+        need();
+        const p = g.player, type = ['sedan', 'police', 'pickup', 'military'].includes(a[0]) ? a[0] : 'sedan';
+        const x = p.pos.x - Math.sin(p.yaw) * 5, z = p.pos.z - Math.cos(p.yaw) * 5;
+        const v = g.vehicles.spawnExtra({ x, z, rot: p.yaw + Math.PI / 2, type, color: [0x6a2222, 0x22446a, 0x2a4a2a][Math.floor(Math.random() * 3)], rng: Math.random() }, null);
+        for (const k in v.parts) v.parts[k] = 100;
+        v.fuel = v.def.tank;
+        this.log(`Spawned a ${v.name}`);
+      } },
+      fixcar: { d: 'Fully repair and refuel the nearest vehicle', f: () => {
+        need();
+        const v = g.vehicles.nearest(g.player.pos, 12);
+        if (!v) throw new Error('No vehicle within 12 m');
+        for (const k in v.parts) v.parts[k] = 100;
+        v.fuel = v.def.tank; v.buildMesh(v === g.vehicles.active);
+        this.log(`${v.name} repaired and refuelled`);
       } },
       traders: { d: 'List trading posts (reveals them on the map)', f: () => {
         need();

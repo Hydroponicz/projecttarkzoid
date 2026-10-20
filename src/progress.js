@@ -48,6 +48,7 @@ const CHAPTERS = [
     { id: 'alltraders', text: 'Find every trader', check: (c, g) => { const ts = g.traders?.list.filter((t) => t.building) || []; return [ts.filter((t) => t.discovered).length, ts.length || 1]; } },
     { id: 'jobs5', text: 'Finish 5 trader jobs', check: (c, g) => [g.progress.jobsDone(), 5] },
     { id: 'll2', text: 'Reach loyalty 2 with a trader', check: (c, g) => [g.traders?.list.some((t) => g.traders.ll(t) >= 2) ? 1 : 0, 1] },
+    { id: 'drive', text: 'Get a car running and drive 1 km', check: (c) => [Math.min(1000, Math.floor(c.drove || 0)), 1000] },
   ] },
   { title: 'Armed and Dangerous', blurb: 'Knives won\'t cut it forever.', reward: [['mag_ak30', 1], ['ammo_545', 60]], goals: [
     { id: 'rifle', text: 'Own a rifle (SKS or AK-74)', check: (c, g) => [g.progress.hasItem((it) => it.key === 'sks' || it.key === 'ak74') ? 1 : 0, 1] },

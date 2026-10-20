@@ -137,6 +137,8 @@ export class InventoryUI {
     else if (def.type === 'mag') badge = `${it.rounds}/${def.cap}`;
     else if (def.uses > 1) badge = `${it.uses}/${def.uses}`;
     else if (def.durability) badge = `${Math.round(it.dur)}/${def.durability}`;
+    else if (def.part) badge = `${Math.round(it.cond ?? 100)}%`;
+    else if (def.type === 'fuel') badge = `${(it.fuel || 0).toFixed(1)} L`;
     else if (it.grid) badge = `${it.grid.items.length}`;
     if (loading) { badge = '⟳ ' + badge; el.classList.add('loading'); }
     const mods = it.mods ? Object.values(it.mods).filter(Boolean).map((m) => ITEMS[m.key].short) : [];

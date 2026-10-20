@@ -121,6 +121,38 @@ Guns work much like Tarkov's. Each firearm is a detailed procedural model, and i
   - Also a muzzle brake and a vertical foregrip.
 - **Lean** with **Q** / **E**.
 
+## Vehicles
+
+Every car and truck in town (about 50 sedans, pickups, police cruisers and military trucks) can be driven once it's in working order. Each was abandoned in a different state; a handful run as found.
+
+- **Parts.** Each vehicle has an engine, battery, fuel tank, brakes, headlights and four tires, each with a condition. Press **F** at a vehicle to see them.
+  - **Swapping:** pull parts off one vehicle and fit them to another, or install ones you've found. You need a wrench, and a jack for tires.
+  - **Engine:** repaired with spark plugs or engine parts (and a wrench).
+  - **Fuel tank:** patched with scrap metal and duct tape. A badly damaged tank leaks.
+  - **Tires:** can be taped up to 60%.
+- **What it needs to run:** a battery with charge, an engine that isn't wrecked, an intact tank and fuel. Weak engines and batteries sometimes don't catch. A flat tire limits you to a crawl and pulls the car sideways.
+- **Fuel.** Gas cans carry 20 L. Fill them at the gas station pumps or siphon them from other cars, then pour them into the tank. A car parked beside a pump is filled straight from it. Pumps run dry.
+- **Driving.** The car has momentum: steering softens at speed, the engine's condition limits power and top speed, and the brakes' condition limits stopping. The battery charges while the engine runs and drains with the lights on and the engine off. Tires wear as you drive, faster with the handbrake. The engine is noisy and draws zombies.
+- **Damage.**
+  - **Crashing:** hitting things damages the engine and headlights (front) or the fuel tank (rear). Hard enough and you hit the wheel.
+  - **Zombies:** running zombies down at speed sends them flying as ragdolls, and dents the car. Slowly, you shove them aside.
+  - **Inside the car:** zombies can reach you through the driver's window for less damage. Military trucks keep them out.
+- **Where to find parts.**
+  - **Auto repair shops** (two per town): a roll-up garage door, a car on a two-post lift, workbenches (wrenches, jacks, scrap, plugs), parts shelves (tires, batteries, brake pads, headlights, engine parts) and tire racks, with project cars in the yard.
+  - **Warehouses** carry parts shelves and workbenches.
+  - **Car trunks** often hold a jack, a spare tire or a gas can.
+- **Saved:** where every vehicle is, its parts, its fuel, and whether you're in it.
+
+| In a vehicle | |
+| --- | --- |
+| W | Start the engine (first press), accelerate |
+| S | Brake, then reverse |
+| A / D | Steer |
+| Space | Handbrake |
+| L / H | Headlights / horn |
+| F | Get out |
+| Mouse | Look around |
+
 ## Traders
 
 Four or five survivors have moved into small houses, shops or gas stations around town and turned them into trading posts. The place is chosen when the world is created; it's never your safehouse or the house you woke up in.
@@ -205,6 +237,7 @@ give scope_pso       give supp_rifle      kit Builder         spawn brute 3
 survivor hostile 2   survivors            trust 40            spawn walker 5
 tp hospital          tp military          tp checkpoint       tp pharmacy
 tp 0 0               tp safehouse         time 22:00          time +8
+car                  car military         fixcar              kit Mechanic
 traders              tp trader            tp trader medic     rep 25
 speed 20             skill carpentry 8    set fatigue 90      killall 25
 god / noclip / invis / freeze / freebuild                    js player.skill
@@ -223,6 +256,7 @@ god / noclip / invis / freeze / freebuild                    js player.skill
 | `src/weapons.js` | Firearms: weapon/optic models, PIP scopes, sway/recoil physics, animations, magazines, attachments |
 | `src/survivors.js` | AI survivors: dispositions and trust, A* pathfinding, combat, following, dialogue, trading |
 | `src/progress.js` | First-day tutorial, progression chapters and goals, the guide tracker and goals panel |
+| `src/vehicles.js` | Vehicles: models, parts and condition, driving physics, collisions and run-overs, the parts screen, fuel, saving |
 | `src/traders.js` | Trading posts: placement, renovation props, barter offers, loyalty, quests, trader screen and quest tracker |
 | `src/zombies.js` | Zombie spawning, perception, flow-field pathing, attacks, hit reactions, knockdowns, corpses |
 | `src/ragdoll.js` | Verlet ragdolls (death, knockdown, get-up), dropped weapons, corpse freezing |
