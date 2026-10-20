@@ -21,8 +21,22 @@ export class Input {
     });
     window.addEventListener('keyup', (e) => this.keys.delete(e.code));
     window.addEventListener('blur', () => { this.keys.clear(); this.mouse = [false, false]; });
+    // Mouse look. Browsers sometimes report a bogus jump: in the first events
+    // after the pointer is (re)locked, and now and then with OS mouse
+    // acceleration. Those are dropped so the view doesn't flick.
+    this.settleUntil = 0;
+    this.recent = 8; // running average of real movement (px per event)
+    document.addEventListener('pointerlockchange', () => { if (document.pointerLockElement === canvas) this.settleUntil = performance.now() + 120; });
     document.addEventListener('mousemove', (e) => {
-      if (document.pointerLockElement === canvas) { this.mdx += e.movementX; this.mdy += e.movementY; }
+      if (document.pointerLockElement !== canvas) return;
+      if (performance.now() < this.settleUntil) return;
+      const m = Math.hypot(e.movementX, e.movementY);
+      // A spike is one isolated huge event; a real fast flick is a run of them
+      const spike = m > 200 && m > this.recent * 12 && !this.lastBig;
+      this.lastBig = m > 200;
+      if (spike) return;
+      this.recent += (Math.max(m, 4) - this.recent) * 0.1;
+      this.mdx += e.movementX; this.mdy += e.movementY;
     });
     canvas.addEventListener('mousedown', (e) => {
       if (document.pointerLockElement !== canvas) return;
@@ -39,9 +53,15 @@ export class Input {
 
   // Browsers refuse pointer lock from an Escape key press (it isn't a user
   // activation), so a failed lock is reported instead of silently ignored.
+  // Raw (unaccelerated) movement where supported: no acceleration spikes.
   lock() {
-    const p = this.canvas.requestPointerLock?.();
-    if (p?.catch) p.catch(() => this.onLockFail?.());
+    const c = this.canvas;
+    if (!c.requestPointerLock) return;
+    const plain = () => { const q = c.requestPointerLock(); if (q?.catch) q.catch(() => this.onLockFail?.()); };
+    let p;
+    try { p = c.requestPointerLock({ unadjustedMovement: true }); } catch { return plain(); }
+    // Raw input not supported here: lock normally instead
+    if (p?.catch) p.catch((e) => (e?.name === 'NotSupportedError' ? plain() : this.onLockFail?.()));
   }
   unlock() { if (document.pointerLockElement) document.exitPointerLock(); }
   get locked() { return document.pointerLockElement === this.canvas; }
