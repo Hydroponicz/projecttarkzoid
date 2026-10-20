@@ -73,6 +73,28 @@ Guns work much like Tarkov's. Each firearm is a detailed procedural model, and i
   - Also a muzzle brake and a vertical foregrip.
 - **Lean** with **Q** / **E**.
 
+## Traders
+
+Four or five survivors have moved into small houses, shops or gas stations around town and turned them into trading posts. The place is chosen when the world is created; it's never your safehouse or the house you woke up in.
+
+- **The post.** Inside: a counter with stock on it, shelves of goods, crates, a lantern and a rug. Outside: sandbags, a generator, a hand-painted sign, and a front door kept open for business. Zombies don't spawn near a post, and the trader shoots any that wander in. The building's cupboards are the trader's own and can't be looted while they're alive.
+- **The traders.**
+  - **Gunsmith:** magazines, ammo, attachments, rifles.
+  - **Medic:** bandages up to antiviral injectors and surgical kits.
+  - **Quartermaster:** food, water, building materials, tools, backpacks, helmets.
+  - **Fixer:** electronics, intel, high-end armor and helmets.
+- **Barter.** Press **F** at the counter. Every deal is items for items, taken from your pockets and backpack. Each deal shows what you have against what's needed. Deals restock daily.
+- **Loyalty.** Trades and finished quests earn reputation with that trader. 10 reputation unlocks loyalty level 2 and 25 unlocks level 3, each with better deals.
+- **Quests.** Each trader has a chain of five jobs, unlocked one after another:
+  - Kill zombies of a certain kind (any zombie, runners, or soldiers) or hostile bandits.
+  - Hand over supplies.
+  - Recover a quest item planted in a cupboard of a far-off building (marked on the map).
+  - Scout a building.
+
+  Active quests show their progress on the HUD, and their targets are marked on the map. Rewards are items and reputation.
+- **Finding them.** A post appears on the map once you get close, or when another survivor tells you about it.
+- **Death.** Traders can be hurt and killed, by zombies or by you. A dead trader's post is abandoned: no more trades or quests, but their cupboards are free to loot.
+
 ## Hits, ragdolls and gore
 
 Zombies and survivors react physically to what hits them.
@@ -133,6 +155,7 @@ give scope_pso       give supp_rifle      kit Builder         spawn brute 3
 survivor hostile 2   survivors            trust 40            spawn walker 5
 tp hospital          tp military          tp checkpoint       tp pharmacy
 tp 0 0               tp safehouse         time 22:00          time +8
+traders              tp trader            tp trader medic     rep 25
 speed 20             skill carpentry 8    set fatigue 90      killall 25
 god / noclip / invis / freeze / freebuild                    js player.skill
 ```
@@ -148,6 +171,7 @@ god / noclip / invis / freeze / freebuild                    js player.skill
 | `src/player.js` | First-person controller, leaning, melee, body-part health, status effects |
 | `src/weapons.js` | Firearms: weapon/optic models, PIP scopes, sway/recoil physics, animations, magazines, attachments |
 | `src/survivors.js` | AI survivors: dispositions and trust, A* pathfinding, combat, following, dialogue, trading |
+| `src/traders.js` | Trading posts: placement, renovation props, barter offers, loyalty, quests, trader screen and quest tracker |
 | `src/zombies.js` | Zombie spawning, perception, flow-field pathing, attacks, hit reactions, knockdowns, corpses |
 | `src/ragdoll.js` | Verlet ragdolls (death, knockdown, get-up), dropped weapons, corpse freezing |
 | `src/fx.js` | Instanced particles (blood, dust, sparks), brass, decals (bullet holes, splatter, blood pools) |

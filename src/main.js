@@ -6,6 +6,7 @@ import { Input } from './input.js';
 import { HUD } from './hud.js';
 import { FX } from './fx.js';
 import { RagdollSystem, lookMats } from './ragdoll.js';
+import { Traders } from './traders.js';
 import { InventoryUI } from './invui.js';
 import { ITEMS, makeItem, migrateItem, itemValue } from './items.js';
 import { combineItems, weaponActions, loadStep } from './weapons.js';
@@ -224,13 +225,17 @@ class Game {
     this.player = new Player(this.camera, this.scene, this);
     const ch = this.profile;
     if (ch.player) this.player.restore(ch.player);
-    if (this.worldRegenerated) this.placeNewCharacter(false); // old position may be inside a new building
-    else this.placeNewCharacter(!!w);
+    // New characters (and anyone whose town was rebuilt, since their old spot
+    // may be inside a new building) wake up in a random house.
+    if (this.worldRegenerated) this.placeNewCharacter(false);
+    else if (!ch.player) this.placeNewCharacter(!!w);
     if (w) this.zombies.restore(w.zombies);
     else this.zombies.populate(85, this.player.pos);
     this.survivors = new Survivors(this);
     if (w?.survivors) this.survivors.restore(w.survivors);
     else this.survivors.populate(8);
+    this.traders = new Traders(this, w?.traders || null);
+    this.traders.spawnNPCs();
 
     this.updateLighting();
     this.autosave = AUTOSAVE;
@@ -326,6 +331,7 @@ class Game {
       structures: this.builder.serialize(),
       zombies: this.zombies.serialize(),
       survivors: this.survivors.serialize(),
+      traders: this.traders?.serialize(),
     };
     writeSave(this.save);
   }
@@ -341,6 +347,8 @@ class Game {
     this.zombies?.dispose();
     this.survivors?.dispose();
     this.survivors = null;
+    this.traders?.dispose();
+    this.traders = null;
     this.ragdolls?.dispose();
     this.ragdolls = null;
     this.world?.dispose();
@@ -395,7 +403,7 @@ class Game {
   }
 
   updatePause() {
-    const ui = this.invOpen || this.hud.mapOpen || this.dev.open || this.dialogOpen;
+    const ui = this.invOpen || this.hud.mapOpen || this.dev.open || this.dialogOpen || this.traderOpen;
     const show = this.state === 'play' && !this.input.locked && !ui && !this.awaitingRelock;
     $('pause').style.display = show ? 'flex' : 'none';
     $('relock').style.display = this.state === 'play' && this.awaitingRelock && !this.input.locked && !ui ? 'block' : 'none';
@@ -545,10 +553,15 @@ class Game {
     } else if (t.door) {
       this.builder.toggleDoor(t);
       sfx.door();
+    } else if (t.kind === 'survivor' && t.trader) {
+      t.met = true;
+      this.traders.openFor(t);
     } else if (t.kind === 'survivor') {
       this.survivors.openDialog(t);
     } else if (t.kind === 'bed' || t.type === 'bed') {
       this.sleep();
+    } else if (t.grid && this.traders?.isPrivate(t)) {
+      this.hud.message(`That's ${t.owner.name}'s. Trade for it instead.`, 3);
     } else if (t.grid) {
       this.openInventory(t);
       sfx.pickup();
@@ -670,6 +683,11 @@ class Game {
       for (const c of this.input.pressed) if (c.startsWith('Digit') || c === 'Escape') this.survivors.dialogKey(c);
       if (['KeyW', 'KeyA', 'KeyS', 'KeyD'].some(pressed) || !s || s.dead || s.pos.distanceTo(this.player.pos) > 4) this.survivors.closeDialog();
       inp.interact = inp.inventory = inp.slot1 = inp.slot2 = inp.reload = inp.jump = false;
+    } else if (this.traderOpen) {
+      // At a trader's counter: Esc, Tab, walking off or the trader dying closes it.
+      const npc = this.traders.open?.npc;
+      if (pressed('Escape') || inp.inventory || ['KeyW', 'KeyA', 'KeyS', 'KeyD'].some(pressed) || !npc || npc.dead || npc.disp === 'hostile' || npc.pos.distanceTo(this.player.pos) > 4.5) this.traders.close();
+      inp.interact = inp.inventory = inp.slot1 = inp.slot2 = inp.reload = inp.jump = inp.fire = inp.firePressed = false;
     } else if (this.invOpen) {
       // Many ways out: Esc, Tab/I, the interact key, or simply starting to walk.
       const walk = ['KeyW', 'KeyA', 'KeyS', 'KeyD'].some(pressed);
@@ -693,7 +711,7 @@ class Game {
     }
     if (inp.map) { this.hud.toggleMap(); if (this.hud.mapOpen) this.input.unlock(); else this.resume(); this.updatePause(); }
     if (this.hud.mapOpen && pressed('Escape')) { this.hud.toggleMap(false); this.resume(); }
-    const paused = !this.input.locked && !this.invOpen && !this.hud.mapOpen && !this.dev.open && !this.dialogOpen && !this.awaitingRelock;
+    const paused = !this.input.locked && !this.invOpen && !this.hud.mapOpen && !this.dev.open && !this.dialogOpen && !this.traderOpen && !this.awaitingRelock;
     if (paused || this.sleeping) return;
     if (this.dev.open && this.dev.pauseWhileOpen) {
       // Simulation paused, but keep the view in sync with console edits.
@@ -727,6 +745,7 @@ class Game {
     if (!this.dev.freeze) this.survivors.update(dt);
     if (this.state !== 'play') return;
     this.ragdolls.update(dt);
+    this.traders.update(dt);
     this.fx.update(dt);
     this.builder.flicker(now);
 

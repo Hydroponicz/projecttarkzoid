@@ -123,7 +123,8 @@ export class HUD {
     } else if (game.lookTarget) {
       const t = game.lookTarget;
       const hp = t.hp != null && t.hp < t.maxHp ? ` (${Math.ceil(t.hp)}/${t.maxHp})` : '';
-      if (t.kind === 'survivor') text = `[F] Talk to ${t.met ? t.name : 'the stranger'}`;
+      if (t.kind === 'survivor' && t.trader) text = `[F] Trade with ${t.name} (${t.trader.def.title})`;
+      else if (t.kind === 'survivor') text = `[F] Talk to ${t.met ? t.name : 'the stranger'}`;
       else if (t.door || t.kind === 'door') text = `[F] ${t.open ? 'Close' : 'Open'} ${t.name}${hp}`;
       else if (t.kind === 'bed' || t.type === 'bed') text = '[F] Sleep';
       else text = `[F] Search ${t.name}`;
@@ -197,10 +198,28 @@ export class HUD {
     for (const st of game.builder.structures) ctx.fillRect(tx(st.box.minX), tx(st.box.minZ), Math.max(2, (st.box.maxX - st.box.minX) * S), Math.max(2, (st.box.maxZ - st.box.minZ) * S));
     // Survivors you've met (green friendly, yellow wary, red hostile)
     for (const s of game.survivors?.list || []) {
-      if (!s.met) continue;
+      if (!s.met || s.trader) continue;
       ctx.fillStyle = { friendly: '#6d6', neutral: '#e5c84a', hostile: '#e55' }[s.disp];
       ctx.beginPath(); ctx.arc(tx(s.pos.x), tx(s.pos.z), s.order === 'follow' ? 5 : 3.5, 0, 7); ctx.fill();
     }
+    // Trading posts you know about, and where your quests lead
+    ctx.font = 'bold 10px monospace';
+    ctx.textAlign = 'center';
+    for (const m of game.traders?.mapMarkers() || []) {
+      const x = tx(m.x), y = tx(m.z);
+      ctx.lineWidth = 3; ctx.strokeStyle = '#000';
+      if (m.kind === 'trader') {
+        ctx.fillStyle = m.dead ? '#777' : '#f0c040';
+        ctx.beginPath(); ctx.moveTo(x, y - 6); ctx.lineTo(x + 6, y); ctx.lineTo(x, y + 6); ctx.lineTo(x - 6, y); ctx.closePath(); ctx.stroke(); ctx.fill();
+        ctx.strokeText(m.name, x, y - 9); ctx.fillText(m.name, x, y - 9);
+      } else {
+        ctx.fillStyle = '#ff5a3a';
+        ctx.beginPath(); ctx.arc(x, y, 6, 0, 7); ctx.stroke(); ctx.fill();
+        ctx.fillStyle = '#fff'; ctx.fillText('!', x, y + 3.5);
+        ctx.fillStyle = '#ffb0a0'; ctx.strokeText(m.name, x, y + 17); ctx.fillText(m.name, x, y + 17);
+      }
+    }
+    ctx.textAlign = 'left';
     const sh = game.safehouse;
     if (sh) { ctx.strokeStyle = '#e5c84a'; ctx.lineWidth = 2; ctx.strokeRect(tx(sh.x0), tx(sh.z0), (sh.x1 - sh.x0) * S, (sh.z1 - sh.z0) * S); }
     const p = game.player;

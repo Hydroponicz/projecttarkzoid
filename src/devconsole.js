@@ -740,15 +740,39 @@ export class DevConsole {
         for (const z of victims) g.zombies.kill(z);
         this.log(`Killed ${victims.length} zombies`);
       } },
-      tp: { u: '<x> <z> | safehouse | spawn | <place>', d: 'Teleport (places: hospital, pharmacy, police, office, military, checkpoint...)', f: (a) => {
+      tp: { u: '<x> <z> | safehouse | spawn | trader [name] | <place>', d: 'Teleport (places: hospital, pharmacy, police, office, military, checkpoint...)', f: (a) => {
         need();
         if (a[0] === 'safehouse') { const s = g.safehouse; if (!s) throw new Error('No safehouse'); return this.teleport((s.x0 + s.x1) / 2, (s.z0 + s.z1) / 2); }
+        if (a[0] === 'trader') {
+          const ts = (g.traders?.list || []).filter((t) => t.building && (!a[1] || t.name.toLowerCase().startsWith(a[1].toLowerCase()) || t.arch.startsWith(a[1])));
+          if (!ts.length) throw new Error('No such trader');
+          const t = ts[0]; t.discovered = true;
+          this.log(`→ ${esc(t.title)}`);
+          return this.teleport(t.spot.x - t.spot.nx * 2, t.spot.z - t.spot.nz * 2);
+        }
         if (a[0] === 'spawn') { const h = g.world.houses[Math.floor(Math.random() * g.world.houses.length)]; return this.teleport((h.x0 + h.x1) / 2, (h.z0 + h.z1) / 2); }
         // tp hospital / pharmacy / police / military / checkpoint / office...
         const lm = (g.world.landmarks || []).filter((l) => l.kind.startsWith(a[0]) || l.name.toLowerCase().includes(a[0].toLowerCase()));
         if (lm.length) { const l = lm[Math.floor(Math.random() * lm.length)]; this.log(`→ ${esc(l.name)}`); return this.teleport(l.x + 3, l.z + 3); }
         if (a.length < 2) throw new Error('Usage: tp <x> <z>');
         this.teleport(+a[0], +a[1]);
+      } },
+      traders: { d: 'List trading posts (reveals them on the map)', f: () => {
+        need();
+        for (const t of g.traders.list) {
+          t.discovered = true;
+          const active = t.def.quests.filter((q) => t.quests[q.id]?.st === 'active').length, done = t.def.quests.filter((q) => t.quests[q.id]?.st === 'done').length;
+          this.log(`${esc(t.title)} (${t.arch}) at ${t.spot?.x.toFixed(0)}, ${t.spot?.z.toFixed(0)} · LL${g.traders.ll(t)} rep ${t.rep} · quests ${done} done, ${active} active${t.dead ? ' · DEAD' : ''}`);
+        }
+      } },
+      rep: { u: '<amount> [trader]', d: "Set reputation with a trader (default: the nearest)", f: (a) => {
+        need();
+        const p = g.player.pos;
+        const ts = g.traders.list.filter((t) => t.spot && (!a[1] || t.name.toLowerCase().startsWith(a[1].toLowerCase())));
+        const t = ts.sort((x, y) => Math.hypot(x.spot.x - p.x, x.spot.z - p.z) - Math.hypot(y.spot.x - p.x, y.spot.z - p.z))[0];
+        if (!t) throw new Error('No trader');
+        t.rep = +a[0] || 0;
+        this.log(`${esc(t.name)}: rep ${t.rep}, LL${g.traders.ll(t)}`);
       } },
       pos: { d: 'Print your position', f: () => { need(); const p = g.player.pos; this.log(`${p.x.toFixed(2)}, ${p.z.toFixed(2)}`); } },
       time: { u: '<hh:mm> | +<hours>', d: 'Set or advance the clock', f: (a) => {

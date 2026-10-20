@@ -191,6 +191,7 @@ button.small:not(.danger) { background: #1c1d15; color: #ccc; border: 1px solid 
 .npc-tag { position: absolute; transform: translate(-50%, -100%); text-align: center; font-size: 11px; color: #ddd; text-shadow: 0 1px 2px #000, 0 0 4px #000; white-space: nowrap; }
 .npc-tag .say { background: #000b; color: #fff; padding: 3px 8px; border-radius: 3px; margin-bottom: 3px; font-size: 12px; white-space: normal; max-width: 260px; }
 .friendly { color: #7d7; }
+.trader { color: #f0c040; }
 .neutral { color: #e5c84a; }
 .hostile { color: #f66; }
 .unknown { color: #aaa; }
@@ -202,3 +203,54 @@ button.small:not(.danger) { background: #1c1d15; color: #ccc; border: 1px solid 
 .dlg-opts button { text-align: left; background: #1c2014; color: #ddd; border: 1px solid #34402a; padding: 7px 10px; font-size: 13px; }
 .dlg-opts button:hover { background: #2a321e; }
 #relock { display: none; position: fixed; left: 50%; bottom: 120px; transform: translateX(-50%); z-index: 3; pointer-events: none; padding: 5px 12px; background: #000a; border: 1px solid #fff3; color: #ddd; font-size: 12px; }
+
+/* Traders: HUD quest tracker and the barter/quest screen */
+#questlog { position: absolute; right: 16px; top: 44px; width: 270px; display: flex; flex-direction: column; gap: 6px; pointer-events: none; }
+#questlog .ql { background: #0009; border-left: 2px solid #f0c040; padding: 4px 8px; font-size: 11px; color: #ddd; }
+#questlog .ql b { color: #f0d890; }
+#questlog .ql span { float: right; color: #cfc8a8; }
+#questlog .ql.done { border-left-color: #7d7; }
+#questlog .ql.done div { color: #9e9; }
+#trader { display: none; position: fixed; inset: 0; z-index: 5; align-items: center; justify-content: center; background: #0007; }
+.tr-panel { background: #12140ef7; border: 1px solid #4a4a2a; width: min(820px, 96vw); max-height: 88vh; display: flex; flex-direction: column; padding: 14px 18px; gap: 10px; color: #ddd; }
+.tr-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+.tr-title { font-size: 20px; color: #f0d890; font-weight: bold; letter-spacing: .5px; }
+.tr-repbar { height: 4px; background: #2a2a1a; margin-top: 6px; width: 260px; }
+.tr-repbar div { height: 100%; background: #f0c040; }
+.tr-close { background: none; border: 1px solid #555; color: #ccc; width: 30px; height: 30px; cursor: pointer; }
+.tr-say { font-style: italic; color: #cfc8a8; min-height: 18px; }
+.tr-tabs { display: flex; gap: 4px; border-bottom: 1px solid #333; }
+.tr-tabs button { background: #1c2014; color: #aaa; border: 1px solid #34402a; border-bottom: none; padding: 6px 18px; cursor: pointer; }
+.tr-tabs button.on { background: #2a321e; color: #f0d890; }
+.tr-body { overflow-y: auto; display: flex; flex-direction: column; gap: 6px; padding-right: 4px; }
+.tr-row { display: grid; grid-template-columns: 1fr 24px 1fr 110px; align-items: center; gap: 8px; background: #1a1d13; border: 1px solid #2a3020; padding: 6px 8px; }
+.tr-row.locked { opacity: .45; }
+.tr-give, .tr-get { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+.tr-give small { font-size: 10px; margin-right: 6px; }
+.tr-give small.ok, .ok { color: #7d7; }
+.tr-give small.no { color: #e66; }
+.tr-arrow { color: #f0c040; font-size: 18px; text-align: center; }
+.tr-name { font-size: 12px; color: #ddd; }
+.tr-item { position: relative; width: 50px; height: 34px; background: color-mix(in srgb, var(--c) 55%, #111); border: 1px solid #555; display: flex; align-items: center; justify-content: center; text-align: center; font-size: 9px; line-height: 1.1; padding: 1px; overflow: hidden; }
+.tr-item b { font-weight: normal; color: #fff; text-shadow: 0 0 2px #000; }
+.tr-item i { position: absolute; right: 2px; bottom: 0; font-style: normal; font-size: 9px; color: #ff0; text-shadow: 0 0 2px #000; }
+.tr-item.miss { border-color: #a33; }
+.tr-item.have { border-color: #5a5; }
+.tr-act { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; }
+.tr-act button, .tr-qbtn button { background: #3a4a22; color: #f0f0d0; border: 1px solid #6a7a3a; padding: 5px 14px; cursor: pointer; }
+.tr-act button:disabled, .tr-qbtn button:disabled { background: #222; color: #666; border-color: #333; cursor: default; }
+.tr-qbtn button.ghost { background: none; border-color: #444; color: #999; margin-left: 6px; }
+.tr-ll { color: #f0c040; border: 1px solid #6a5a2a; padding: 2px 8px; font-size: 11px; }
+.tr-quest { background: #1a1d13; border: 1px solid #2a3020; padding: 8px 10px; display: flex; flex-direction: column; gap: 4px; }
+.tr-quest.active { border-color: #6a5a2a; }
+.tr-quest.done { opacity: .6; }
+.tr-quest.locked { opacity: .4; }
+.tr-qhead { display: flex; justify-content: space-between; }
+.tr-qhead b { color: #f0d890; }
+.tr-qst { font-size: 10px; color: #aaa; border: 1px solid #444; padding: 0 6px; }
+.tr-qtext { font-style: italic; color: #bbb; font-size: 12px; }
+.tr-quest .obj { font-size: 12px; padding-left: 10px; }
+.tr-quest .obj span { color: #cfc8a8; margin-left: 6px; }
+.tr-quest .obj.ok { color: #7d7; }
+.tr-reward { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; font-size: 12px; }
+@media (max-width: 640px) { .tr-row { grid-template-columns: 1fr; } .tr-arrow { display: none; } }

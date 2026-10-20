@@ -70,7 +70,7 @@ class Survivor {
     this.disp = d.disp;
     this.trust = d.trust;
     this.met = d.met;
-    this.hp = d.hp; this.maxHp = 100;
+    this.hp = d.hp; this.maxHp = d.maxHp || 100;
     this.weapon = d.weapon;   // weapon item (or null)
     this.melee = d.melee;     // melee item key
     this.reserve = d.reserve; // spare rounds for the weapon
@@ -139,7 +139,7 @@ class Survivor {
     const d = this.mgr.distToPlayer(this);
     if (d < 30) {
       sfx.voice(vol * (1 - d / 30));
-      if (d < 20) this.mgr.game.hud.message(`${this.met || this.disp === 'hostile' ? this.name : 'Stranger'}: "${text}"`, 3.5);
+      if (d < 20) this.mgr.game.hud.message(`${this.met || this.trader || this.disp === 'hostile' ? this.name : 'Stranger'}: "${text}"`, 3.5);
     }
   }
 
@@ -169,6 +169,7 @@ class Survivor {
     if (source === 'player') {
       this.aggroPlayer = 20;
       if (this.disp !== 'hostile') {
+        this.betrayed = true; // turned on by the player: not a bandit kill
         this.changeTrust(-60);
         this.setDisp('hostile');
         this.say(pick(BETRAYED_LINES));
@@ -402,6 +403,16 @@ class Survivor {
     } else if (this.order === 'wait') {
       this.state = 'wait';
       if (dP < 6) face = p.pos;
+    } else if (this.home) {
+      // Traders mind their counter: back to it, facing the door or a customer.
+      this.state = 'post';
+      const hd = Math.hypot(this.home.x - this.pos.x, this.home.z - this.pos.z);
+      if (hd > 0.35) moveTo = this.home;
+      else if (dP < 9 && this.mgr.canSeePlayer(this)) {
+        face = p.pos;
+        if (!this.greeted && dP < 6) { this.greeted = true; this.say(this.mgr.game.traders?.greet(this) || this.line('greet')); }
+      } else face = { x: this.pos.x + Math.sin(this.home.dir), z: this.pos.z + Math.cos(this.home.dir) };
+      if (dP > 14) this.greeted = false;
     } else {
       this.state = 'roam';
       // Stop and face a nearby player
@@ -423,8 +434,13 @@ class Survivor {
       }
     }
 
+    // Traders fight from their post instead of chasing zombies across town.
+    if (this.home && t && this.disp !== 'hostile') {
+      const hd = Math.hypot(this.home.x - this.pos.x, this.home.z - this.pos.z);
+      if (t.def || hd > 12) { moveTo = hd > 0.5 ? this.home : null; run = false; if (!moveTo) this.path = []; }
+    }
     // Talking or trading with the player: stand still and face them.
-    if (this.mgr.dialogFor === this || game.openContainer?.survivor === this) { moveTo = null; this.path = []; face = p.pos; }
+    if (this.mgr.dialogFor === this || game.openContainer?.survivor === this || (this.trader && game.traders?.open === this.trader)) { moveTo = null; this.path = []; face = p.pos; }
 
     // --- movement ---
     const speed = run ? 3.6 : 1.45;
@@ -866,9 +882,16 @@ export class Survivors {
 
   populate(n) { for (let i = 0; i < n; i++) this.spawn(); }
 
+  // A survivor with fixed data (e.g. a trader); not saved with the others.
+  addNPC(d) {
+    const s = new Survivor(this, d);
+    this.list.push(s);
+    return s;
+  }
+
   restore(saved) { for (const d of saved) this.list.push(new Survivor(this, d)); }
 
-  serialize() { return this.list.filter((s) => !s.dead).map((s) => s.serialize()); }
+  serialize() { return this.list.filter((s) => !s.dead && !s.trader).map((s) => s.serialize()); }
 
   dispose() {
     for (const s of this.list) this.scene.remove(s.mesh);
@@ -894,7 +917,7 @@ export class Survivors {
     this.spawnTimer -= dt;
     if (this.spawnTimer <= 0) {
       this.spawnTimer = 180 + Math.random() * 180;
-      if (this.list.length < MAX_SURVIVORS) this.spawn();
+      if (this.list.filter((s) => !s.trader).length < MAX_SURVIVORS) this.spawn();
     }
     this.drawTags();
   }
@@ -916,7 +939,8 @@ export class Survivors {
       let el = this.tagEls.get(s);
       if (!el) { el = document.createElement('div'); el.className = 'npc-tag'; this.tagLayer.appendChild(el); this.tagEls.set(s, el); }
       const known = s.met || s.disp === 'hostile' && s.target;
-      const label = known ? `${s.name} <span class="${s.disp}">${DISP_LABEL[s.disp]}${s.order === 'follow' ? ' · following' : s.order === 'wait' ? ' · waiting' : ''}</span>` : '<span class="unknown">Stranger</span>';
+      const label = s.trader && s.disp !== 'hostile' ? `${s.name} <span class="trader">${s.trader.def.title}</span>`
+        : known ? `${s.name} <span class="${s.disp}">${DISP_LABEL[s.disp]}${s.order === 'follow' ? ' · following' : s.order === 'wait' ? ' · waiting' : ''}</span>` : '<span class="unknown">Stranger</span>';
       el.innerHTML = (s.sayT > 0 ? `<div class="say">${s.say_}</div>` : '') + label;
       el.style.left = ((v.x + 1) / 2) * innerWidth + 'px';
       el.style.top = ((1 - v.y) / 2) * innerHeight + 'px';
@@ -1003,6 +1027,7 @@ export class Survivors {
       compound: "a military outpost. Soldiers turned, but their gear's still there", military: 'the army command post',
     }[b.kind] || 'a house that looked untouched';
     if (s.trust < 10 && Math.random() < 0.5) return "Why would I tell you anything?";
+    if (Math.random() < 0.4) { const t = this.game.traders?.rumor(); if (t) return t; }
     return `There's ${what}, about ${dist} metres ${dir} of here.`;
   }
 

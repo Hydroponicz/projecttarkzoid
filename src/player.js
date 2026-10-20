@@ -386,26 +386,26 @@ export class Player {
       // A body on the ground: knocked-down (still alive) or dead.
       rd.ragdoll.impulse(point, dir, force * 1.3);
       const o = rd.ragdoll.alive ? rd.ragdoll.owner : null;
-      if (o?.def) { this.hitFeedback(head, g.zombies.damage(o, def.damage * dmgMul, this.pos.x, this.pos.z, head, hit)); }
-      else if (o?.kind === 'survivor') { o.hurt(def.damage * dmgMul, 'player', null, hit); this.hitFeedback(head, o.dead); }
+      if (o?.def) { this.hitFeedback(head, g.zombies.damage(o, def.damage * dmgMul, this.pos.x, this.pos.z, head, hit), o); }
+      else if (o?.kind === 'survivor') { o.hurt(def.damage * dmgMul, 'player', null, hit); this.hitFeedback(head, o.dead, o); }
       else if (performance.now() - (this.lastHitSfx || 0) > 40) { this.lastHitSfx = performance.now(); sfx.hitBody(0.6); }
     } else if (sv) {
       sv.s.hurt(def.damage * dmgMul, 'player', null, hit);
-      this.hitFeedback(head, sv.s.dead);
+      this.hitFeedback(head, sv.s.dead, sv.s);
     } else {
       const armored = z.zb.def.armor && !head;
       if (armored) sfx.hitArmor();
-      this.hitFeedback(head, g.zombies.damage(z.zb, def.damage * dmgMul, this.pos.x, this.pos.z, head, hit));
+      this.hitFeedback(head, g.zombies.damage(z.zb, def.damage * dmgMul, this.pos.x, this.pos.z, head, hit), z.zb);
     }
   }
 
   // Sound and hit marker for a confirmed hit; kills get a heavier marker.
-  hitFeedback(head, killed) {
+  hitFeedback(head, killed, target) {
     // Buckshot lands several pellets at once: one sound for the volley.
     const now = performance.now();
     if (now - (this.lastHitSfx || 0) > 40 || killed) { this.lastHitSfx = now; if (head) sfx.hitHead(); else sfx.hitBody(); }
     this.game.hud.hitmarker(head, killed);
-    if (killed) { sfx.kill(); this.onKill(); }
+    if (killed) { sfx.kill(); this.onKill(target); }
   }
 
   meleeAttack() {
@@ -435,7 +435,7 @@ export class Player {
       const killed = this.game.zombies.damage(zb, dmg, this.pos.x, this.pos.z, head, { point, dir, force, knock: heavy ? 0.25 : 0.05 });
       sfx.meleeHit(heavy);
       this.game.hud.hitmarker(head, killed);
-      if (killed) { sfx.kill(); this.onKill(); }
+      if (killed) { sfx.kill(); this.onKill(zb); }
       hit = true;
       if (!this.melee || this.melee.key !== 'axe') break; // axes cleave
     }
@@ -451,6 +451,7 @@ export class Player {
         this.game.fx.blood(point, dir, { power: heavy ? 1 : 0.5, exit: false });
         sfx.meleeHit(heavy);
         this.game.hud.hitmarker(false, sv.dead);
+        if (sv.dead) { sfx.kill(); this.onKill(sv); }
         hit = true;
       } else if (rd) {
         const point = eye.clone().addScaledVector(look, rd.t), dir = look.clone().add(new THREE.Vector3(0, -0.5, 0)).normalize();
@@ -462,7 +463,7 @@ export class Player {
         if (o?.def) killed = this.game.zombies.damage(o, dmg, this.pos.x, this.pos.z, rd.head, { point, dir, force });
         else if (o?.kind === 'survivor') { o.hurt(dmg, 'player', null, { point, dir, force }); killed = o.dead; }
         sfx.meleeHit(heavy);
-        if (o) { this.game.hud.hitmarker(rd.head, killed); if (killed) { sfx.kill(); this.onKill(); } }
+        if (o) { this.game.hud.hitmarker(rd.head, killed); if (killed) { sfx.kill(); this.onKill(o); } }
         hit = true;
       }
     }
@@ -470,7 +471,7 @@ export class Player {
     this.game.zombies.noise(this.pos.x, this.pos.z, 3);
   }
 
-  onKill() { this.kills++; this.game.hud.message('Kill confirmed'); }
+  onKill(target) { this.kills++; this.game.hud.message('Kill confirmed'); this.game.traders?.onKill(target); }
 
   // ---------- health ----------
   takeZombieHit(amount, zb) {

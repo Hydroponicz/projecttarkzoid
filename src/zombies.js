@@ -46,6 +46,7 @@ export class Zombies {
     this.fieldTimer = 0;
     this.spawnTimer = 0;
     this.game = null; // set by the game (ragdolls, effects)
+    this.noSpawn = []; // areas zombies never spawn in (trading posts)
   }
 
   buildNav() {
@@ -139,6 +140,7 @@ export class Zombies {
       if (awayFrom && Math.hypot(x - awayFrom.x, z - awayFrom.z) < minDist) continue;
       // Never spawn in or right next to the player's safehouse.
       if (avoid && x > avoid.x0 - 15 && x < avoid.x1 + 15 && z > avoid.z0 - 15 && z < avoid.z1 + 15) continue;
+      if (this.noSpawn.some((a) => x > a.x0 && x < a.x1 && z > a.z0 && z < a.z1)) continue;
       return { x, z };
     }
     return null;

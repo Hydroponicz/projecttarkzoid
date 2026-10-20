@@ -92,6 +92,13 @@ export const ITEMS = {
   mil_cable: { name: 'Military Cable', short: 'Mil cable', type: 'loot', w: 1, h: 1, color: '#3a4a2a', value: 28000 },
   dogtag: { name: 'Dog Tag', short: 'Dogtag', type: 'loot', w: 1, h: 1, color: '#9aa0a8', value: 6000 },
   ledx: { name: 'LEDX Transilluminator', short: 'LEDX', type: 'loot', w: 1, h: 1, color: '#6ad', value: 280000 },
+
+  // --- quest items (placed in the world when a trader's quest is accepted) ---
+  q_case: { name: 'Sealed Medical Case', short: 'Med case', type: 'quest', w: 2, h: 1, color: '#d8d8d0', value: 0 },
+  q_parts: { name: 'Box of Rifle Parts', short: 'Parts', type: 'quest', w: 2, h: 1, color: '#5a5040', value: 0 },
+  q_ledger: { name: "Smuggler's Ledger", short: 'Ledger', type: 'quest', w: 1, h: 1, color: '#7a2a2a', value: 0 },
+  q_radio: { name: 'Field Radio', short: 'Radio', type: 'quest', w: 2, h: 2, color: '#3a4a2a', value: 0 },
+  q_keys: { name: 'Ring of Keys', short: 'Keys', type: 'quest', w: 1, h: 1, color: '#c8a050', value: 0 },
 };
 
 // Weights in kg (per round / per unit for stackables). Carried weight slows
