@@ -25,7 +25,7 @@ import { ITEMS, makeItem, migrateItem, itemValue } from './items.js';
 import { combineItems, weaponActions, loadStep } from './weapons.js';
 import { makeGrid, addItem, removeItem } from './inventory.js';
 import { loadSave, writeSave, deleteSave } from './save.js';
-import { initAudio, sfx, setAudioEnv } from './audio.js';
+import { initAudio, sfx, setAudioEnv, audioStats } from './audio.js';
 import { explode } from './explosives.js';
 import { Builder, BUILDABLES, buildCostText } from './build.js';
 import { setupCreation } from './character.js';
@@ -103,6 +103,7 @@ class Game {
     this.buildCost = buildCostText;
     this.creation = setupCreation((ch) => this.recruit(ch), () => false);
     this.dev = new DevConsole(this);
+    this.audioStats = audioStats; // (for the console: voices playing, output level)
     this.state = 'menu';
     this.invOpen = false;
     this.save = loadSave();

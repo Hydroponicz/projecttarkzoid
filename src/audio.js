@@ -41,26 +41,56 @@ const withVol = (k, fn) => {
 const loops = []; // engine and weather loops (their level follows the sliders)
 
 export function initAudio() {
+  userResumed = true;
   if (ctx) { if (ctx.state === 'suspended') ctx.resume(); return; }
   ctx = new (window.AudioContext || window.webkitAudioContext)();
-  const comp = ctx.createDynamicsCompressor();
-  comp.threshold.value = -16; comp.knee.value = 10; comp.ratio.value = 5; comp.attack.value = 0.002; comp.release.value = 0.18;
   master = ctx.createGain();
   master.gain.value = 0.55 * soundVol('master');
-  master.connect(comp); comp.connect(ctx.destination);
-  // Reverb: an open-air tail with slapback off buildings, and a small room
-  const vOut = ctx.createConvolver(), vIn = ctx.createConvolver();
-  vOut.buffer = impulse(2.4, 'out'); vIn.buffer = impulse(0.8, 'in');
   verbBus = ctx.createGain();
-  sendOut = ctx.createGain(); sendIn = ctx.createGain(); sendIn.gain.value = 0;
-  verbBus.connect(vOut); verbBus.connect(vIn); vOut.connect(sendOut); vIn.connect(sendIn);
+  sendOut = ctx.createGain(); sendIn = ctx.createGain(); sendIn.gain.value = env === 'in' ? 1 : 0; sendOut.gain.value = env === 'in' ? 0 : 1;
   sendOut.connect(master); sendIn.connect(master);
+  impulses = { out: impulse(2.4, 'out'), in: impulse(0.8, 'in') };
+  buildChain();
+  setInterval(watchdog, 1500);
   // Noise colours
   const mk = (fn) => { const b = ctx.createBuffer(1, ctx.sampleRate * 2, ctx.sampleRate), d = b.getChannelData(0); fn(d); return b; };
   white = mk((d) => { for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1; });
   pink = mk((d) => { let b0 = 0, b1 = 0, b2 = 0; for (let i = 0; i < d.length; i++) { const w = Math.random() * 2 - 1; b0 = 0.997 * b0 + w * 0.029; b1 = 0.985 * b1 + w * 0.032; b2 = 0.95 * b2 + w * 0.048; d[i] = (b0 + b1 + b2 + w * 0.05) * 2.2; } });
   brown = mk((d) => { let l = 0; for (let i = 0; i < d.length; i++) { l = (l + 0.02 * (Math.random() * 2 - 1)) / 1.02; d[i] = l * 3.5; } });
   loadSamples();
+}
+
+// The compressor and the two reverbs. They're shared by every sound, so a
+// single bad sample (a NaN) reaching them would silence everything for good;
+// the watchdog listens to the output and rebuilds them if that ever happens.
+let impulses = null, chain = null;
+function buildChain() {
+  if (chain) { try { master.disconnect(chain.comp); verbBus.disconnect(); chain.comp.disconnect(); chain.vOut.disconnect(); chain.vIn.disconnect(); chain.probe.disconnect(); } catch { /* already apart */ } }
+  const comp = ctx.createDynamicsCompressor();
+  comp.threshold.value = -16; comp.knee.value = 10; comp.ratio.value = 5; comp.attack.value = 0.002; comp.release.value = 0.18;
+  master.connect(comp); comp.connect(ctx.destination);
+  // Reverb: an open-air tail with slapback off buildings, and a small room
+  const vOut = ctx.createConvolver(), vIn = ctx.createConvolver();
+  vOut.buffer = impulses.out; vIn.buffer = impulses.in;
+  verbBus.connect(vOut); verbBus.connect(vIn); vOut.connect(sendOut); vIn.connect(sendIn);
+  const probe = ctx.createAnalyser(); probe.fftSize = 256;
+  comp.connect(probe);
+  chain = { comp, vOut, vIn, probe, buf: new Float32Array(256) };
+}
+function watchdog() {
+  if (!ctx || !chain) return;
+  if (ctx.state === 'suspended' && userResumed) ctx.resume().catch(() => {});
+  chain.probe.getFloatTimeDomainData(chain.buf);
+  for (const v of chain.buf) if (!Number.isFinite(v)) { buildChain(); return; }
+}
+let userResumed = false;
+// For the dev console: live voices, the context's state, the output level now
+export function audioStats() {
+  if (!ctx || !chain) return null;
+  chain.probe.getFloatTimeDomainData(chain.buf);
+  let s = 0, bad = false;
+  for (const v of chain.buf) { if (!Number.isFinite(v)) bad = true; else s += v * v; }
+  return { voices: live.length, state: ctx.state, rms: +Math.sqrt(s / chain.buf.length).toFixed(4), nan: bad };
 }
 
 // Indoors or out: which reverb you hear (eased)
@@ -94,14 +124,35 @@ function impulse(dur, kind) {
 // ---------- plumbing ----------
 const now = () => ctx.currentTime;
 // Route a voice to the mix: panned, with some of it into the reverb
-function out(node, pan = 0, wet = 0.15) {
+// life: how long it plays, after which it's unplugged (so the browser can
+// free it: sustained fire would otherwise pile up hundreds of live nodes)
+function out(node, pan = 0, wet = 0.15, life = 6) {
   const p = ctx.createStereoPanner();
-  p.pan.value = Math.max(-1, Math.min(1, pan));
-  if (cur !== 1) { const v = ctx.createGain(); v.gain.value = cur; node.connect(v); v.connect(p); } else node.connect(p);
+  p.pan.value = Number.isFinite(pan) ? Math.max(-1, Math.min(1, pan)) : 0;
+  let v = null, s = null;
+  if (cur !== 1) { v = ctx.createGain(); v.gain.value = Number.isFinite(cur) ? cur : 1; node.connect(v); v.connect(p); } else node.connect(p);
   p.connect(master);
-  if (wet > 0) { const s = ctx.createGain(); s.gain.value = wet; p.connect(s); s.connect(verbBus); }
+  if (wet > 0) { s = ctx.createGain(); s.gain.value = wet; p.connect(s); s.connect(verbBus); }
+  release(now() + life, node, v, p, s);
   return p;
 }
+// Voices still playing, and when each can be unplugged
+const live = [];
+function release(at, ...nodes) {
+  live.push({ at, nodes });
+  if (live.length > 32 || (live.length && live[0].at < now())) sweep();
+}
+function sweep() {
+  const t = now();
+  let k = 0;
+  for (const e of live) {
+    if (e.at < t) { for (const n of e.nodes) if (n) { try { n.disconnect(); } catch { /* gone */ } } }
+    else live[k++] = e;
+  }
+  live.length = k;
+}
+// How busy the mix is: small sounds give way when it's crowded
+const busy = () => live.length;
 function noiseSrc(buf = white, t = now(), dur = 1) {
   const s = ctx.createBufferSource();
   s.buffer = buf; s.loop = true;
@@ -111,6 +162,7 @@ function noiseSrc(buf = white, t = now(), dur = 1) {
 function filter(type, f, q = 0.7) { const b = ctx.createBiquadFilter(); b.type = type; b.frequency.value = f; b.Q.value = q; return b; }
 function gainEnv(t, attack, peak, decay, hold = 0) {
   const g = ctx.createGain();
+  if (!Number.isFinite(peak)) peak = 0.0001;
   g.gain.setValueAtTime(0.0001, t);
   g.gain.linearRampToValueAtTime(peak, t + attack);
   g.gain.setTargetAtTime(0.0001, t + attack + hold, decay);
@@ -124,49 +176,51 @@ function shaper(k) {
   for (let i = 0; i < 1024; i++) { const x = (i / 1023) * 2 - 1; c[i] = Math.tanh(k * x) / Math.tanh(k); }
   return (shapers[key] = c);
 }
-function ws(k) { const w = ctx.createWaveShaper(); w.curve = shaper(k); w.oversample = '2x'; return w; }
+function ws(k, hq = true) { const w = ctx.createWaveShaper(); w.curve = shaper(k); w.oversample = hq ? '2x' : 'none'; return w; }
 
 // Simple building blocks (filtered noise burst, pitched tone) for the small stuff
 function noise(dur, freq, q, vol, type = 'lowpass', decay = dur, opts = {}) {
-  if (!ctx) return;
+  if (!ctx || (vol < 0.12 && busy() > 140)) return;
   const t = now() + (opts.delay || 0);
   const src = noiseSrc(opts.buf || white, t, dur);
   const f = filter(type, freq, q);
   const g = gainEnv(t, 0.002, vol, decay / 3);
-  src.connect(f); f.connect(g); out(g, opts.pan || 0, opts.wet ?? 0.1);
+  src.connect(f); f.connect(g); out(g, opts.pan || 0, opts.wet ?? 0.1, (opts.delay || 0) + dur + decay + 0.5);
 }
 function tone(freq, dur, vol, type = 'sine', slide = 0, opts = {}) {
-  if (!ctx) return;
+  if (!ctx || (vol < 0.08 && busy() > 140)) return;
   const t = now() + (opts.delay || 0);
   const o = ctx.createOscillator();
   o.type = type;
   o.frequency.setValueAtTime(freq, t);
   if (slide) o.frequency.exponentialRampToValueAtTime(Math.max(20, freq + slide), t + dur);
   const g = gainEnv(t, 0.002, vol, dur / 3);
-  o.connect(g); out(g, opts.pan || 0, opts.wet ?? 0.1);
+  o.connect(g); out(g, opts.pan || 0, opts.wet ?? 0.1, (opts.delay || 0) + dur + 0.6);
   o.start(t); o.stop(t + dur + 0.1);
 }
 // A small metallic click (bandpassed noise tick)
 function tick(at, f, vol, q = 5, pan = 0, decay = 0.006) {
   const t = now() + at;
+  if (vol < 0.1 && busy() > 140) return;
   const s = noiseSrc(white, t, 0.03 + decay * 4), b = filter('bandpass', f, q), g = gainEnv(t, 0.0005, vol, decay);
-  s.connect(b); b.connect(g); out(g, pan, 0.08);
+  s.connect(b); b.connect(g); out(g, pan, 0.08, at + 0.4);
 }
 // A struck metal part ringing: a few inharmonic partials
 function ring(at, f, vol, decay = 0.08, pan = 0) {
+  if (busy() > 140) return;
   const t = now() + at;
   for (const [m, a] of [[1, 1], [2.76, 0.5], [5.4, 0.25]]) {
     if (f * m > 18000) break; // past hearing (and past what the context can play)
     const o = ctx.createOscillator(); o.frequency.value = f * m * (0.98 + Math.random() * 0.04);
     const g = gainEnv(t, 0.0005, vol * a, decay / m);
-    o.connect(g); out(g, pan, 0.1); o.start(t); o.stop(t + decay * 4);
+    o.connect(g); out(g, pan, 0.1, at + decay * 4 + 0.3); o.start(t); o.stop(t + decay * 4);
   }
 }
 // A scrape: noise swept through a bandpass
 function scrape(at, f0, f1, dur, vol) {
   const t = now() + at, s = noiseSrc(white, t, dur), b = filter('bandpass', f0, 2.5), g = gainEnv(t, 0.01, vol, dur / 3);
   b.frequency.exponentialRampToValueAtTime(f1, t + dur);
-  s.connect(b); b.connect(g); out(g, 0, 0.08);
+  s.connect(b); b.connect(g); out(g, 0, 0.08, at + dur + 0.6);
 }
 
 // ---------- recorded samples (optional) ----------
@@ -190,7 +244,7 @@ function playSample(name, vol = 1, pan = 0, wet = 0.2) {
   s.buffer = list[Math.floor(Math.random() * list.length)];
   s.playbackRate.value = 0.96 + Math.random() * 0.08;
   const g = ctx.createGain(); g.gain.value = vol;
-  s.connect(g); out(g, pan, wet);
+  s.connect(g); out(g, pan, wet, s.buffer.duration + 1);
   s.start();
   return true;
 }
@@ -212,25 +266,41 @@ const GUN = {
 const CALIBRE = { pm: 'pistol9', glock17: 'pistol9', m1911: 'pistol45', mp5: 'smg9', ak74: 'rifle545', m4a1: 'rifle556', m249: 'lmg', sks: 'rifle762', m14: 'rifle308', mp133: 'shotgun', m870: 'shotgun' };
 
 // vol < 1 for distant shots (other survivors): quieter, duller, more reverb
+const lastShot = {}, shotN = {};
+let lastCasing = -1, lastImpact = -1;
+let crack = null;
+function crackBuf() {
+  if (crack?.sampleRate === ctx.sampleRate) return crack;
+  const n = Math.floor(ctx.sampleRate * 0.0016);
+  crack = ctx.createBuffer(1, n + 64, ctx.sampleRate);
+  const d = crack.getChannelData(0);
+  for (let i = 0; i < n; i++) d[i] = 1 - (2 * i) / n;
+  return crack;
+}
 function gunshot(kind, suppressed, vol, pan = 0) {
+  if (!Number.isFinite(vol) || !Number.isFinite(pan)) return;
   const cls = CALIBRE[kind] || 'rifle545', P = GUN[cls];
   if (playSample(`shot_${kind}${suppressed ? '_supp' : ''}`, vol, pan, 0.3) || playSample(`shot_${cls}${suppressed ? '_supp' : ''}`, vol, pan, 0.3)) return;
   const t = now() + 0.003, far = 1 - vol;
+  // Sustained fire: the echoes and the action's clatter of one shot cover
+  // the next (and a crowded mix sheds them first)
+  const k = (kind || '') + (pan > 0.5 ? 'r' : pan < -0.5 ? 'l' : ''), rapid = t - (lastShot[k] ?? -1) < 0.2;
+  lastShot[k] = t;
+  const nth = (shotN[k] = rapid ? (shotN[k] || 0) + 1 : 0);
+  const crowded = busy() > 110;
   const bus = ctx.createGain(); bus.gain.value = vol * P.gain;
   const air = filter('lowpass', 700 + 17000 * vol * vol, 0.5); // air soaks up the highs with distance
   bus.connect(air);
-  out(air, pan, (env === 'in' ? 0.55 : 0.32) + far * 0.6);
+  out(air, pan, (env === 'in' ? 0.55 : 0.32) + far * 0.6, 2.6);
   // 1. The supersonic crack: a 1.5 ms N-wave (still there through a suppressor)
   if (P.crack > 0) {
-    const n = Math.floor(ctx.sampleRate * 0.0016), b = ctx.createBuffer(1, n + 64, ctx.sampleRate), d = b.getChannelData(0);
-    for (let i = 0; i < n; i++) d[i] = 1 - (2 * i) / n;
-    const s = ctx.createBufferSource(); s.buffer = b;
+    const s = ctx.createBufferSource(); s.buffer = crackBuf();
     const hp = filter('highpass', 1800, 0.7), g = ctx.createGain(); g.gain.value = P.crack * (suppressed ? 0.9 : 1.2);
     s.connect(hp); hp.connect(g); g.connect(bus); s.start(t);
   }
   // 2. Muzzle blast: noise driven hard, its brightness falling away fast
   {
-    const s = noiseSrc(white, t, 0.6), drive = ws(suppressed ? 1.5 : 4);
+    const s = noiseSrc(white, t, 0.6), drive = ws(suppressed ? 1.5 : 4, !rapid);
     const lp = filter('lowpass', suppressed ? 2200 : P.blast[0], 0.8);
     lp.frequency.setTargetAtTime(suppressed ? 500 : P.blast[1], t + 0.004, 0.025);
     const g = gainEnv(t, 0.0006, suppressed ? 0.28 : 1.1, suppressed ? 0.025 : P.blast[2]);
@@ -246,7 +316,7 @@ function gunshot(kind, suppressed, vol, pan = 0) {
     r.connect(lp); lp.connect(rg); rg.connect(bus);
   }
   // 4. The action cycling (only heard up close; louder through a suppressor)
-  if (vol > 0.6 && P.mech) {
+  if (vol > 0.6 && P.mech && !crowded && (!rapid || nth % 2 === 0)) {
     const m = (suppressed ? 1.5 : 0.8) * vol, d = P.mech;
     const at = (x) => x + 0.004;
     if (d === 'slide') { tick(at(0.012), 3800, 0.22 * m); tick(at(0.026), 2600, 0.18 * m); ring(at(0.028), 3100, 0.03 * m, 0.04); }
@@ -256,7 +326,7 @@ function gunshot(kind, suppressed, vol, pan = 0) {
     else { tick(at(0.016), 2600, 0.22 * m); ring(at(0.02), 2200, 0.04 * m, 0.07); tick(at(0.045), 1900, 0.18 * m); }
   }
   // 5. Echoes off the buildings outdoors (a rolling report at a distance)
-  if (env === 'out' && !suppressed) {
+  if (env === 'out' && !suppressed && !crowded && (!rapid || nth % 3 === 0)) {
     for (const [dt, a, f] of [[0.12 + Math.random() * 0.22, 0.22, 1600], [0.42 + Math.random() * 0.4, 0.12, 800], [0.9 + Math.random() * 0.5, 0.06 + far * 0.08, 500]]) {
       const s = noiseSrc(pink, t + dt, 0.6), lp = filter('lowpass', f, 0.6), g = gainEnv(t + dt, 0.004, a * P.gain, 0.08 + far * 0.1);
       s.connect(lp); lp.connect(g); g.connect(bus);
@@ -309,7 +379,7 @@ function vocal(o) {
   // distance, or a radio's narrow band
   const lp = o.radio ? filter('bandpass', 1700, 1.2) : filter('lowpass', 900 + 7000 * Math.min(1, o.gain * 3), 0.5);
   env.connect(lp);
-  out(lp, o.pan || 0, o.wet ?? 0.25);
+  out(lp, o.pan || 0, o.wet ?? 0.25, dur + 1.5);
   for (const n of [src, lfo, jit, sub]) { n.start(t); n.stop(t + dur + 0.6); }
 }
 
@@ -357,7 +427,10 @@ export const sfx = {
   },
   // A bullet smacking into something nearby: a chip of concrete, sometimes a whine
   impact(vol = 1) {
-    if (!ctx || vol < 0.03 || playSample('impact', vol)) return;
+    if (!ctx || vol < 0.03) return;
+    if (now() - lastImpact < 0.06) return; // (a burst into one wall: one chip at a time)
+    lastImpact = now();
+    if (playSample('impact', vol)) return;
     noise(0.05, 3200, 0.9, 0.35 * vol, 'highpass', 0.04, { wet: 0.2 });
     noise(0.08, 700, 1, 0.25 * vol, 'lowpass', 0.07, { buf: pink });
     if (Math.random() < 0.18) tone(2600 + Math.random() * 1600, 0.35, 0.05 * vol, 'sine', -1400, { wet: 0.3 });
@@ -406,7 +479,7 @@ export const sfx = {
     const env = gainEnv(t, 0.06, vol * 0.9, 0.35, dur);
     n.connect(bp); bp.connect(am); saw.connect(sg); sg.connect(am);
     const grit = ws(3); am.connect(grit); grit.connect(lp); lp.connect(env);
-    out(env, pan, 0.55);
+    out(env, pan, 0.55, delay + dur + 3);
     for (const o of [lfo, saw]) { o.start(t); o.stop(t + dur + 1); }
     // the rumble under it
     noise(dur + 1.5, 120, 0.7, vol * 0.5, 'lowpass', dur + 1, { delay, buf: brown, pan, wet: 0.6 });
@@ -453,8 +526,12 @@ export const sfx = {
   // not a tone, so it reads as a bit of metal, not a chime.
   casing(shell = false) {
     if (!ctx) return;
+    // in a stream of brass (automatic fire) each one gets a single tinkle:
+    // the bounces of the last are still ringing, and they'd flood the mix
+    const gap = now() - lastCasing; lastCasing = now();
+    if (gap < 0.15 && (busy() > 90 || Math.random() < 0.5)) return;
     let t = 0, v = 1;
-    const n = 2 + (Math.random() < 0.6 ? 1 : 0) + (Math.random() < 0.3 ? 1 : 0), pan = (Math.random() - 0.5) * 0.6;
+    const n = gap < 0.15 ? 1 : 2 + (Math.random() < 0.6 ? 1 : 0) + (Math.random() < 0.3 ? 1 : 0), pan = (Math.random() - 0.5) * 0.6;
     const f = 4200 + Math.random() * 2600;
     for (let i = 0; i < n; i++) {
       if (shell) { tick(t, 700 + Math.random() * 300, 0.05 * v, 2.5, pan, 0.012); tick(t, 1900 + Math.random() * 500, 0.02 * v, 3, pan, 0.006); }
