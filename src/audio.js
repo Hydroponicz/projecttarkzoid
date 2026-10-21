@@ -18,13 +18,35 @@ let white = null, pink = null, brown = null;
 let env = 'out';
 const samples = {};
 
+// ---------- volumes ----------
+// Every sound has its own volume (0..2, saved in the browser), on top of the
+// master. While a sound is being built, `cur` is its volume: everything it
+// routes to the mix goes through a gain of that much.
+const VOL_KEY = 'tarkzoid-sound';
+const VOL = (() => { try { return JSON.parse(localStorage.getItem(VOL_KEY)) || {}; } catch { return {}; } })();
+export const soundVol = (k) => VOL[k] ?? 1;
+export function setSoundVol(k, v) {
+  VOL[k] = v;
+  try { localStorage.setItem(VOL_KEY, JSON.stringify(VOL)); } catch { /* storage blocked */ }
+  if (k === 'master' && master) master.gain.setTargetAtTime(0.55 * v, ctx.currentTime, 0.05);
+  for (const l of loops) l.refresh();
+}
+let cur = 1, inSound = false;
+// (a sound made of others plays them at its own volume)
+const withVol = (k, fn) => {
+  if (inSound) return fn();
+  inSound = true; cur = soundVol(k);
+  try { return fn(); } finally { inSound = false; cur = 1; }
+};
+const loops = []; // engine and weather loops (their level follows the sliders)
+
 export function initAudio() {
   if (ctx) { if (ctx.state === 'suspended') ctx.resume(); return; }
   ctx = new (window.AudioContext || window.webkitAudioContext)();
   const comp = ctx.createDynamicsCompressor();
   comp.threshold.value = -16; comp.knee.value = 10; comp.ratio.value = 5; comp.attack.value = 0.002; comp.release.value = 0.18;
   master = ctx.createGain();
-  master.gain.value = 0.55;
+  master.gain.value = 0.55 * soundVol('master');
   master.connect(comp); comp.connect(ctx.destination);
   // Reverb: an open-air tail with slapback off buildings, and a small room
   const vOut = ctx.createConvolver(), vIn = ctx.createConvolver();
@@ -75,7 +97,8 @@ const now = () => ctx.currentTime;
 function out(node, pan = 0, wet = 0.15) {
   const p = ctx.createStereoPanner();
   p.pan.value = Math.max(-1, Math.min(1, pan));
-  node.connect(p); p.connect(master);
+  if (cur !== 1) { const v = ctx.createGain(); v.gain.value = cur; node.connect(v); v.connect(p); } else node.connect(p);
+  p.connect(master);
   if (wet > 0) { const s = ctx.createGain(); s.gain.value = wet; p.connect(s); s.connect(verbBus); }
   return p;
 }
@@ -124,9 +147,9 @@ function tone(freq, dur, vol, type = 'sine', slide = 0, opts = {}) {
   o.start(t); o.stop(t + dur + 0.1);
 }
 // A small metallic click (bandpassed noise tick)
-function tick(at, f, vol, q = 5, pan = 0) {
+function tick(at, f, vol, q = 5, pan = 0, decay = 0.006) {
   const t = now() + at;
-  const s = noiseSrc(white, t, 0.03), b = filter('bandpass', f, q), g = gainEnv(t, 0.0005, vol, 0.006);
+  const s = noiseSrc(white, t, 0.03 + decay * 4), b = filter('bandpass', f, q), g = gainEnv(t, 0.0005, vol, decay);
   s.connect(b); b.connect(g); out(g, pan, 0.08);
 }
 // A struck metal part ringing: a few inharmonic partials
@@ -259,7 +282,7 @@ function vocal(o) {
   const jit = ctx.createOscillator(), jg = ctx.createGain(); jit.frequency.value = 0.8 + Math.random() * 1.5; jg.gain.value = f0 * 0.06;
   jit.connect(jg); jg.connect(src.frequency);
   // growl: a subharmonic underneath
-  const sub = ctx.createOscillator(); sub.type = 'square'; sub.frequency.value = f0 * cont[0] / 2;
+  const sub = ctx.createOscillator(); sub.type = 'triangle'; sub.frequency.value = f0 * cont[0] / 2;
   cont.forEach((c, i) => { if (i) sub.frequency.linearRampToValueAtTime(f0 * c / 2, t + (dur * i) / (cont.length - 1)); });
   const sg = ctx.createGain(); sg.gain.value = 0.35 * (o.rasp || 0);
   const mix = ctx.createGain(); mix.gain.value = 0.5;
@@ -295,9 +318,22 @@ const ZKIND = {
   growl: (v) => ({ dur: 0.7 + Math.random() * 0.5, contour: [1.1, 1.3, 1.15, 0.95], vowels: ['ah', 'ae', 'ah'], rasp: 0.85, breath: 0.45, mul: 1.15 }),
   snarl: (v) => ({ dur: 0.38, contour: [1.4, 1.75, 1.2], vowels: ['ae', 'ah'], rasp: 1, breath: 0.6, mul: 1.3, attack: 0.03 }),
   hurt: (v) => ({ dur: 0.32, contour: [1.5, 1.8, 1.1], vowels: ['ah', 'uh'], rasp: 0.7, breath: 0.5, mul: 1.1, attack: 0.02 }),
-  die: (v) => ({ dur: 1.1, contour: [1.1, 0.9, 0.6, 0.45], vowels: ['ah', 'oh', 'uu'], rasp: 0.9, breath: 0.55, mul: 1.1, tremolo: 9 }),
+  die: (v) => ({ dur: 0.75 + Math.random() * 0.3, contour: [1.15, 0.95, 0.7, 0.5], vowels: pick([['ah', 'uh', 'oh'], ['ae', 'ah', 'uh']]), rasp: 0.7, breath: 0.75, mul: 0.95, attack: 0.04 }),
 };
 const pick = (a) => a[Math.floor(Math.random() * a.length)];
+
+// After a dying moan: the throat fills (a few irregular wet bubbles), then
+// the last air goes out of the lungs
+function deathRattle(dur, voice, vol, pan, wet) {
+  const t0 = dur * 0.55, lvl = vol * 0.32;
+  let t = t0;
+  for (let i = 0, n = 4 + Math.floor(Math.random() * 5); i < n; i++) {
+    const f = (260 + Math.random() * 420) / voice.size;
+    noise(0.03 + Math.random() * 0.04, f, 5 + Math.random() * 4, lvl * (0.5 + Math.random() * 0.5) * (1 - i / (n + 2)), 'bandpass', 0.025, { delay: t, buf: pink, pan, wet });
+    t += 0.035 + Math.random() * 0.09;
+  }
+  noise(0.9, 700 / voice.size, 0.6, lvl * 0.35, 'lowpass', 0.6, { delay: t + 0.05, buf: pink, pan, wet: wet + 0.1 });
+}
 
 // A zombie's voice: its own pitch (f0) and throat (size)
 export function zombieVoice(type) {
@@ -316,7 +352,7 @@ export const sfx = {
   },
   shot(kind, suppressed, vol = 1, pan = 0) {
     if (!ctx || vol < 0.02) return;
-    gunshot(kind, suppressed, vol, pan);
+    withVol('shot_' + (CALIBRE[kind] || 'rifle545'), () => gunshot(kind, suppressed, vol, pan));
   },
   // A bullet smacking into something nearby: a chip of concrete, sometimes a whine
   impact(vol = 1) {
@@ -328,14 +364,17 @@ export const sfx = {
   voice(vol = 0.3) {
     // Speech: a few murmured syllables (the words appear on screen)
     if (!ctx) return;
-    const f0 = 120 + Math.random() * 80;
-    for (let i = 0; i < 3; i++) setTimeout(() => ctx && vocal({ f0, dur: 0.12 + Math.random() * 0.08, contour: [1, 1.1, 0.95], vowels: [pick(Object.keys(VOWELS)), pick(Object.keys(VOWELS))], rasp: 0.05, breath: 0.15, gain: 0.06 * vol, attack: 0.02, wet: 0.1 }), i * 150);
+    const f0 = 120 + Math.random() * 80, v = cur;
+    for (let i = 0; i < 3; i++) setTimeout(() => { if (!ctx) return; const prev = cur; cur = v; vocal({ f0, dur: 0.12 + Math.random() * 0.08, contour: [1, 1.1, 0.95], vowels: [pick(Object.keys(VOWELS)), pick(Object.keys(VOWELS))], rasp: 0.05, breath: 0.15, gain: 0.06 * vol, attack: 0.02, wet: 0.1 }); cur = prev; }, i * 150);
   },
   zombie(kind, vol, voice = { f0: 72, size: 1 }, pan = 0) {
     if (!ctx || vol < 0.01) return;
-    if (playSample(`zombie_${kind}`, vol * 0.8, pan, 0.25)) return;
-    const k = ZKIND[kind](voice);
-    vocal({ ...k, f0: voice.f0 * (0.95 + Math.random() * 0.1), size: voice.size, gain: vol * 0.32 * k.mul, pan, wet: 0.2 + (1 - vol) * 0.4 });
+    withVol('zombie_' + kind, () => {
+      if (playSample(`zombie_${kind}`, vol * 0.8, pan, 0.25)) return;
+      const k = ZKIND[kind](voice), wet = 0.2 + (1 - vol) * 0.4;
+      vocal({ ...k, f0: voice.f0 * (0.95 + Math.random() * 0.1), size: voice.size, gain: vol * 0.32 * k.mul, pan, wet });
+      if (kind === 'die') deathRattle(k.dur, voice, vol, pan, wet);
+    });
   },
   // (older callers)
   groan(vol) { this.zombie('groan', vol); },
@@ -354,7 +393,22 @@ export const sfx = {
   },
   shell() { if (!ctx) return; scrape(0, 700, 1100, 0.05, 0.12); tick(0.05, 1600, 0.3); },
   round() { this.click(3200, 0.08); },
-  casing() { if (!ctx) return; const f = 2800 + Math.random() * 1600; ring(0, f, 0.03, 0.12); ring(0.07 + Math.random() * 0.05, f * 1.05, 0.015, 0.08); },
+  // Spent brass hitting the ground: a few small, dull tinks as it bounces and
+  // rolls (a shotgun hull: hollow plastic taps). Noise through a resonance,
+  // not a tone, so it reads as a bit of metal, not a chime.
+  casing(shell = false) {
+    if (!ctx) return;
+    let t = 0, v = 1;
+    const n = 2 + (Math.random() < 0.6 ? 1 : 0) + (Math.random() < 0.3 ? 1 : 0), pan = (Math.random() - 0.5) * 0.6;
+    const f = 4200 + Math.random() * 2600;
+    for (let i = 0; i < n; i++) {
+      if (shell) { tick(t, 700 + Math.random() * 300, 0.05 * v, 2.5, pan, 0.012); tick(t, 1900 + Math.random() * 500, 0.02 * v, 3, pan, 0.006); }
+      else { tick(t, f * (0.97 + Math.random() * 0.06), 0.07 * v, 18, pan, 0.016); tick(t, 1500 + Math.random() * 600, 0.02 * v, 2, pan, 0.004); }
+      t += Math.max(0.03, 0.09 + Math.random() * 0.08 - i * 0.025); v *= 0.45 + Math.random() * 0.15;
+    }
+    // (brass) a last short roll on the ground
+    if (!shell && Math.random() < 0.5) scrape(t, f * 0.6, f * 0.5, 0.12, 0.006);
+  },
   dry() { if (ctx) { tick(0, 3400, 0.3, 6); ring(0.001, 2600, 0.02, 0.03); } },
   reload() { this.magOut(); setTimeout(() => this.magIn(), 400); },
   swing() { if (ctx) scrape(0, 500, 1400, 0.16, 0.2); },
@@ -419,6 +473,14 @@ export const sfx = {
 
 // A running engine: two detuned oscillators through a filter whose pitch and
 // brightness follow the revs. set(on, rpm 0..1+)
+// Each sound plays at its own slider's volume (gunshots and zombie voices
+// pick theirs by calibre and by kind, above; combos use their parts')
+for (const k of Object.keys(sfx)) {
+  if (['shot', 'zombie', 'groan', 'reload'].includes(k)) continue;
+  const f = sfx[k];
+  sfx[k] = function (...a) { return withVol(k, () => f.apply(this, a)); };
+}
+
 export function engineSound() {
   if (!ctx) return { set() {} };
   const o1 = ctx.createOscillator(), o2 = ctx.createOscillator();
@@ -427,15 +489,20 @@ export function engineSound() {
   const g = ctx.createGain(); g.gain.value = 0;
   o1.connect(f); o2.connect(f); f.connect(g); g.connect(master);
   o1.start(); o2.start();
-  return {
+  let level = 0;
+  const loop = {
     set(on, rpm) {
       const t = ctx.currentTime, r = Math.min(1.3, rpm);
       o1.frequency.setTargetAtTime(30 + r * 95, t, 0.12);
       o2.frequency.setTargetAtTime(15 + r * 47, t, 0.12);
       f.frequency.setTargetAtTime(260 + r * 1000, t, 0.12);
-      g.gain.setTargetAtTime(on ? 0.05 + r * 0.06 : 0, t, 0.2);
+      level = on ? 0.05 + r * 0.06 : 0;
+      g.gain.setTargetAtTime(level * soundVol('engine'), t, 0.2);
     },
+    refresh() { g.gain.setTargetAtTime(level * soundVol('engine'), ctx.currentTime, 0.05); },
   };
+  loops.push(loop);
+  return loop;
 }
 
 // Looping weather ambience: filtered noise. set(volume 0..1, filter Hz)
@@ -458,12 +525,18 @@ export function ambientLoop(kind) {
   const g = ctx.createGain(); g.gain.value = 0;
   src.connect(split); split.connect(f, kind === 'rain' ? 0 : 1); f.connect(g); g.connect(master);
   src.start();
-  return {
+  let level = 0;
+  const key = 'ambient_' + kind;
+  const loop = {
     set(vol, freq) {
       const t = ctx.currentTime;
-      g.gain.setTargetAtTime(vol, t, 0.6);
+      level = vol;
+      g.gain.setTargetAtTime(vol * soundVol(key), t, 0.6);
       if (freq) f.frequency.setTargetAtTime(freq, t, 0.6);
     },
-    stop() { try { src.stop(); } catch { /* already stopped */ } },
+    refresh() { g.gain.setTargetAtTime(level * soundVol(key), ctx.currentTime, 0.05); },
+    stop() { try { src.stop(); } catch { /* already stopped */ } loops.splice(loops.indexOf(loop), 1); },
   };
+  loops.push(loop);
+  return loop;
 }

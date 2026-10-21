@@ -391,7 +391,10 @@ Everything is synthesized live with WebAudio. Nothing is a looped recording, so 
 
 - **Gunshots** are built the way a real shot is heard: the supersonic crack of the bullet (rifles), the muzzle blast, the low thump of the gas, the action cycling, and the echo off the town. Every calibre has its own profile: a 9 mm pops, a .45 thumps, 5.56 cracks hard, 7.62×51 booms, and a 12 gauge roars. Indoors the shot slaps off the walls in a short room reverb; outdoors it rolls away in a long tail. Suppressed shots keep the action and a dull thud. Other people's gunfire is panned, duller and further away the further off it is.
 - **Zombies** have voices. A formant synth (throat, vowels and rasp) gives each zombie a pitch and size of its own: walkers moan, runners are higher and raspier, brutes and soldiers are deep. They groan while they wander, growl on the chase, snarl as they swing, cry out when hit and give a death rattle. Every voice is panned to where the zombie is, quieter with distance and muffled from another floor.
-- **Mechanics:** magazines clicking out and seating, bolts and slides, the shotgun pump, brass on the ground, dry fire, footsteps, and bullets chipping walls near you.
+- **Mechanics:** magazines clicking out and seating, bolts and slides, the shotgun pump, dry fire, footsteps, and bullets chipping walls near you. Spent brass lands with a few quiet, dull tinks as it bounces and rolls; shotgun hulls give hollow plastic taps.
+- **Dying zombies** let out a falling moan, the throat fills with a few wet gurgles, and the last air goes out of them.
+
+**Volume for every sound.** Open **Sound** from the pause screen or the title menu. Every sound in the game has its own slider (0–200%), grouped as gunshots (one per calibre), gun handling, zombies (groaning, growling, snarling, hurt, dying), combat, you, the world and vehicles, plus a master volume. Each has a ▶ button to hear it. Settings are saved in your browser; **Reset all** puts them back to 100%.
 
 **Using real recordings.** Put audio files in `public/sounds/` and list them in `public/sounds/manifest.json`. Each name maps to one or more files, and one is picked at random each time:
 
@@ -492,6 +495,7 @@ Buildings and streets are textured with generated maps: brick, wood siding, conc
 | `src/collision.js` | 2D spatial hash, circle-vs-box movement, raycasts |
 | `src/items.js` | Item definitions, loot tables, container types |
 | `src/inventory.js` / `src/invui.js` | Grid inventory logic and drag-and-drop UI |
+| `src/soundui.js` | The Sound panel: a volume slider (and a test button) for every sound |
 | `src/paperdoll.js` | The 3D figure of your character in the inventory |
 | `src/hud.js` | HUD, compass, map |
 | `src/audio.js` | Synthesized gunshots, zombie voices and effects, reverb, and optional recorded samples |

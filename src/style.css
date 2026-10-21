@@ -331,3 +331,18 @@ button.small:not(.danger) { background: #1c1d15; color: #ccc; border: 1px solid 
 .sk-bar b { position: absolute; left: 4px; top: 0; font-size: 9px; font-weight: normal; color: #d8d8c0; line-height: 12px; }
 .sk-desc { color: #8a8670; font-size: 11px; line-height: 1.35; }
 .sk-how { color: #6a6a58; font-size: 10px; font-style: italic; margin-top: 2px; }
+
+/* sound settings */
+#soundpanel { z-index: 30; background: #0b0c0ae8; }
+.snd-panel { width: min(760px, 94vw); max-height: 88vh; display: flex; flex-direction: column; text-align: left; overflow: hidden; }
+.snd-head { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+.snd-head h2 { flex: 1; margin: 0; }
+.snd-body { overflow-y: auto; min-height: 0; flex: 1; padding-right: 6px; }
+.snd-group { break-inside: avoid; margin-bottom: 12px; }
+.snd-group h3 { margin: 0 0 4px; font-size: 12px; color: #a8b86a; text-transform: uppercase; letter-spacing: 1px; }
+.snd-row { display: grid; grid-template-columns: 1fr 110px 40px 24px; align-items: center; gap: 6px; font-size: 12px; color: #cfc8a8; padding: 2px 0; }
+.snd-row input { width: 100%; accent-color: #8aa04a; }
+.snd-val { color: #8a8670; text-align: right; font-size: 11px; }
+.snd-test { padding: 1px 4px; font-size: 10px; min-width: 22px; background: #1c1d15; color: #cfc8a8; border: 1px solid #3a3b30; cursor: pointer; }
+button.snd-test:hover { background: #2a321e; }
+.snd-head button { background: #1c1d15; color: #ccc; border: 1px solid #3a3b30; padding: 4px 10px; cursor: pointer; }

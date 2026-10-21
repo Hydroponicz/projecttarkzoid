@@ -9,6 +9,7 @@ import { FX } from './fx.js';
 import { RagdollSystem, lookMats } from './ragdoll.js';
 import { PaperDoll, playerLook } from './paperdoll.js';
 import { skillSheet } from './skills.js';
+import { setupSoundPanel } from './soundui.js';
 import { Traders } from './traders.js';
 import { Progress } from './progress.js';
 import { Vehicles } from './vehicles.js';
@@ -91,6 +92,8 @@ class Game {
     this.input.onLockFail = () => this.updatePause();
     $('pause').addEventListener('click', (e) => { if (e.target.tagName !== 'BUTTON') this.input.lock(); });
     $('btn-save-quit').onclick = () => this.quitToMenu();
+    this.soundPanel = setupSoundPanel();
+    $('btn-sound').onclick = $('btn-sound-menu').onclick = () => this.soundPanel.open();
     $('btn-fullscreen').onclick = () => { if (document.fullscreenElement) this.exitFullscreen(); else this.enterFullscreen(); };
     $('btn-inv-close').onclick = () => this.closeInventory();
     // Clicking the dim background (not a panel) closes the inventory.

@@ -165,7 +165,7 @@ export class FX {
     m.position.copy(pos);
     m.castShadow = true;
     this.scene.add(m);
-    this.casings.push({ m, v: vel, spin: new THREE.Vector3(Math.random() * 30, Math.random() * 30, Math.random() * 30), life: 5, bounced: false, floor: this.floorUnder(pos.x, pos.z, pos.y) });
+    this.casings.push({ m, v: vel, spin: new THREE.Vector3(Math.random() * 30, Math.random() * 30, Math.random() * 30), life: 5, bounced: false, shell: !!shell, floor: this.floorUnder(pos.x, pos.z, pos.y) });
     if (this.casings.length > 60) this.scene.remove(this.casings.shift().m);
   }
 
@@ -248,7 +248,7 @@ export class FX {
       c.m.rotation.x += c.spin.x * dt; c.m.rotation.y += c.spin.y * dt; c.m.rotation.z += c.spin.z * dt;
       if (c.m.position.y < c.floor + 0.01) {
         c.m.position.y = c.floor + 0.01;
-        if (!c.bounced) { sfx.casing(); c.bounced = true; }
+        if (!c.bounced) { sfx.casing(c.shell); c.bounced = true; }
         c.v.y = -c.v.y * 0.35; c.v.x *= 0.5; c.v.z *= 0.5; c.spin.multiplyScalar(0.5);
         if (Math.abs(c.v.y) < 0.3) { c.rest = true; c.m.rotation.set(0, c.m.rotation.y, 0); }
       }
