@@ -7,6 +7,8 @@ import { Input } from './input.js';
 import { HUD } from './hud.js';
 import { FX } from './fx.js';
 import { RagdollSystem, lookMats } from './ragdoll.js';
+import { PaperDoll, playerLook } from './paperdoll.js';
+import { skillSheet } from './skills.js';
 import { Traders } from './traders.js';
 import { Progress } from './progress.js';
 import { Vehicles } from './vehicles.js';
@@ -34,7 +36,7 @@ class Game {
   constructor() {
     this.canvas = $('game');
     // Stencil is needed for reflex-sight reticles.
-    this.renderer = new THREE.WebGLRenderer({ canvas: this.canvas, antialias: true, stencil: true });
+    this.renderer = new THREE.WebGLRenderer({ canvas: this.canvas, antialias: true, stencil: true, powerPreference: 'high-performance' });
     this.renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
@@ -143,7 +145,7 @@ class Game {
     const far = this.dev.noFog ? 300 : Math.min(300, Math.round(2.0 / this.scene.fog.density));
     if (far !== this.camera.far) { this.camera.far = far; this.camera.updateProjectionMatrix(); }
     // Countryside chunks a little short of that (the fog is near-opaque there)
-    if (this.world && this.camera) this.world.cull(this.camera.position.x, this.camera.position.z, Math.min(far, this.dev.noFog ? 300 : Math.round(1.6 / this.scene.fog.density)));
+    if (this.world && this.camera) this.world.cull(this.camera.position.x, this.camera.position.z, Math.min(far, this.dev.noFog ? 300 : Math.round(1.6 / this.scene.fog.density)), this.player?.floorY || 0);
     const cloud = W && !this.dev.fullbright ? W.sunMul : 1, flash = W ? W.flashLight : 0;
     this.hemi.intensity = (1.1 + 1.3 * d) * (0.75 + 0.25 * cloud) + flash;
     this.sun.intensity = (0.9 + 1.6 * d) * cloud;
@@ -474,7 +476,7 @@ class Game {
     const grid = makeGrid(10, 10);
     for (const k in ch.equip) if (ch.equip[k]) addItem(grid, ch.equip[k]) || (grid.h += 4, addItem(grid, ch.equip[k]));
     for (const it of ch.pockets.items) addItem(grid, it);
-    const corpse = this.addExtraContainer({ type: 'body', name: `${ch.name}'s corpse`, x: p.pos.x, z: p.pos.z, base: p.floorY > 0.01 ? p.floorY : undefined, grid, color: 0x2a3020, look: { kind: 'survivor', skin: 0xc09070, top: 0x2a3020, bottom: 0x2a3a4a, pack: 0x3a3a2a } });
+    const corpse = this.addExtraContainer({ type: 'body', name: `${ch.name}'s corpse`, x: p.pos.x, z: p.pos.z, base: p.floorY > 0.01 ? p.floorY : undefined, grid, color: 0x2a3020, look: this.corpseLook() });
     corpse.grid = grid;
     const days = Math.floor((this.time - ch.spawnTime) / 1440);
     this.save.graveyard = this.save.graveyard || [];
@@ -523,11 +525,21 @@ class Game {
     $('relock').style.display = this.state === 'play' && this.awaitingRelock && !this.input.locked && !ui ? 'block' : 'none';
   }
 
+  // What the character's body looks like when they die (as in the inventory)
+  corpseLook() {
+    const L = playerLook(this.profile), e = this.profile.equip, col = (it) => (it ? new THREE.Color(ITEMS[it.key].color).getHex() : null);
+    const look = { kind: 'survivor', skin: L.skin, top: col(e.clothing) ?? L.shirt, bottom: L.jeans, hair: L.hair };
+    if (e.backpack) look.pack = col(e.backpack);
+    if (e.armor || e.rig) look.vest = col(e.armor || e.rig);
+    if (e.helmet) look.helmet = col(e.helmet);
+    return look;
+  }
+
   // ---------- inventory ----------
   playerSections() {
     const p = this.profile;
     const s = [
-      { kind: 'equip', title: `${p.name} — Equipment`, equip: p.equip },
+      { kind: 'equip', title: `${p.name} — Equipment`, equip: p.equip, doll: true },
       { kind: 'grid', title: 'Pockets', grid: p.pockets },
     ];
     // Pockets of what you're wearing: vest / rig first, then the jacket
@@ -536,6 +548,7 @@ class Game {
       if (it?.grids?.length) s.push({ kind: 'grids', title: `${ITEMS[it.key].name} — pockets`, grids: it.grids, owner: it });
     }
     if (p.equip.backpack) s.push({ kind: 'grid', title: ITEMS[p.equip.backpack.key].name, grid: p.equip.backpack.grid, noNest: true });
+    s.push({ kind: 'html', title: 'Skills', col: 2, cls: 'skills', html: () => skillSheet(this) });
     return s;
   }
 
@@ -550,8 +563,11 @@ class Game {
     const title = () => { $('invtitle').textContent = `${container ? container.name : 'Inventory'} — carrying ${this.player.carryWeight().toFixed(1)} kg`; };
     title();
     $('invwrap').style.display = 'block';
+    this.doll ||= new PaperDoll();
+    this.doll.update(this.profile);
     this.inv.open(() => this.playerSections(), right, {
-      onChange: () => { this.player.buildViewmodel(); this.player.weightTimer = 0; title(); },
+      doll: this.doll,
+      onChange: () => { this.player.buildViewmodel(); this.player.weightTimer = 0; title(); this.doll.update(this.profile); },
       onUse: (it) => this.player.use(it),
       combine: (a, b, ctx) => combineItems(a, b, { ...ctx, game: this }),
       loading: () => this.loader?.target,
@@ -888,6 +904,7 @@ class Game {
     if (this.state === 'play') {
       this.player?.gun.renderScope(this.renderer, this.scene);
       this.renderer.render(this.scene, this.camera);
+      if (this.invOpen) this.doll?.render(dt);
     }
     requestAnimationFrame((tt) => this.loop(tt));
   }

@@ -133,6 +133,7 @@ function tick(at, f, vol, q = 5, pan = 0) {
 function ring(at, f, vol, decay = 0.08, pan = 0) {
   const t = now() + at;
   for (const [m, a] of [[1, 1], [2.76, 0.5], [5.4, 0.25]]) {
+    if (f * m > 18000) break; // past hearing (and past what the context can play)
     const o = ctx.createOscillator(); o.frequency.value = f * m * (0.98 + Math.random() * 0.04);
     const g = gainEnv(t, 0.0005, vol * a, decay / m);
     o.connect(g); out(g, pan, 0.1); o.start(t); o.stop(t + decay * 4);

@@ -70,6 +70,7 @@ export class InventoryUI {
     }
     else if (s.kind === 'equip') box.appendChild(this.renderEquip(s));
     else if (s.kind === 'shop') box.appendChild(this.renderShop(s));
+    else if (s.kind === 'html') { const d = document.createElement('div'); d.className = s.cls || ''; d.innerHTML = s.html(); box.appendChild(d); }
     else if (s.kind === 'sell') {
       const z = document.createElement('div');
       z.className = 'sell-zone';
@@ -116,7 +117,12 @@ export class InventoryUI {
       wrap.appendChild(el);
     }
     this.equipSection = s;
-    return wrap;
+    if (!s.doll || !this.opts.doll) return wrap;
+    // The character wearing it all, beside the slots
+    const row = document.createElement('div');
+    row.className = 'equip-row';
+    row.append(this.opts.doll.canvas, wrap);
+    return row;
   }
 
   renderShop(s) {

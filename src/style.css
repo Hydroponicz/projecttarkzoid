@@ -88,6 +88,9 @@ button { font-family: inherit; cursor: pointer; }
 .equip { display: grid; grid-template-columns: repeat(3, 130px); grid-auto-rows: 84px; gap: 6px; }
 .slot { position: relative; background: #0e0f0a; border: 1px dashed #3a3b30; }
 .slot-weapon { grid-column: span 3; }
+.equip-row { display: flex; gap: 10px; align-items: stretch; }
+.paperdoll { width: 210px; min-height: 360px; flex: none; border: 1px solid #2a2e22; border-radius: 4px; background: radial-gradient(ellipse at 50% 40%, #2a2e26, #121410); cursor: grab; touch-action: none; }
+.paperdoll:active { cursor: grabbing; }
 .slot-label { position: absolute; left: 4px; top: 2px; font-size: 10px; color: #666; }
 .slot .item { margin: 0; }
 .ctx { position: fixed; z-index: 200; background: #1a1b14; border: 1px solid #44463a; display: flex; flex-direction: column; min-width: 180px; }
@@ -204,6 +207,7 @@ button.small:not(.danger) { background: #1c1d15; color: #ccc; border: 1px solid 
 .dlg-opts { display: flex; flex-direction: column; gap: 4px; margin-bottom: 8px; }
 .dlg-opts button { text-align: left; background: #1c2014; color: #ddd; border: 1px solid #34402a; padding: 7px 10px; font-size: 13px; }
 .dlg-opts button:hover { background: #2a321e; }
+.dlg-opts.grid { display: grid; grid-template-columns: 1fr 1fr; }
 #relock { display: none; position: fixed; left: 50%; bottom: 120px; transform: translateX(-50%); z-index: 3; pointer-events: none; padding: 5px 12px; background: #000a; border: 1px solid #fff3; color: #ddd; font-size: 12px; }
 
 /* Traders: HUD quest tracker and the barter/quest screen */
@@ -311,3 +315,19 @@ button.small:not(.danger) { background: #1c1d15; color: #ccc; border: 1px solid 
 .blue { color: #8ac8f0; }
 .pockets { display: flex; flex-wrap: wrap; gap: 6px; align-items: flex-start; max-width: 400px; }
 .pockets .grid { border-color: #4a4b3a; }
+
+/* skills page (inventory) */
+.skills { width: 330px; display: flex; flex-direction: column; gap: 8px; }
+.sk-who { color: #9a9478; font-size: 12px; margin-bottom: 2px; }
+.sk-row { background: #14160f; border: 1px solid #262a1e; padding: 6px 8px; }
+.sk-head { display: flex; align-items: center; gap: 8px; }
+.sk-name { color: #d8d0b0; font-size: 13px; width: 78px; }
+.sk-pips { display: flex; gap: 3px; flex: 1; }
+.sk-pips i { width: 18px; height: 8px; background: #262a20; border: 1px solid #343a2a; }
+.sk-pips i.on { background: #a8b86a; border-color: #c8d88a; }
+.sk-lvl { color: #e8e0c0; font-weight: bold; width: 14px; text-align: right; }
+.sk-bar { position: relative; height: 12px; background: #1e2218; margin: 5px 0 3px; border: 1px solid #2c3224; }
+.sk-bar i { position: absolute; left: 0; top: 0; bottom: 0; background: #5a7a3a; }
+.sk-bar b { position: absolute; left: 4px; top: 0; font-size: 9px; font-weight: normal; color: #d8d8c0; line-height: 12px; }
+.sk-desc { color: #8a8670; font-size: 11px; line-height: 1.35; }
+.sk-how { color: #6a6a58; font-size: 10px; font-style: italic; margin-top: 2px; }

@@ -62,11 +62,73 @@ const pickArr = (a) => a[Math.floor(Math.random() * a.length)];
 
 const _ray = new THREE.Raycaster(), _hits = [];
 
+// The horde is drawn as one instanced mesh per body part (a few draw calls
+// for every zombie in view, instead of ten each). Each zombie keeps its own
+// group of part meshes, never drawn: it carries the pose (animation, hit
+// reactions) and is what bullets are tested against.
+const helmetGeo = new THREE.SphereGeometry(0.17, 10, 6, 0, Math.PI * 2, 0, Math.PI / 2);
+const vestGeo = new THREE.BoxGeometry(0.52, 0.42, 0.32);
+class Crowd {
+  constructor(scene) {
+    this.scene = scene;
+    const body = new THREE.MeshStandardMaterial({ roughness: 0.95 });
+    this.kinds = {
+      torso: [geo.torso, body, 1], head: [geo.head, body, 1], arm: [geo.arm, body, 2], leg: [geo.leg, body, 2],
+      eye: [eyeGeo, eyeMat, 2], helmet: [helmetGeo, new THREE.MeshStandardMaterial({ color: 0x3e4a30, roughness: 0.8 }), 1],
+      vest: [vestGeo, new THREE.MeshStandardMaterial({ color: 0x3a4430, roughness: 0.9 }), 1],
+    };
+    this.meshes = {};
+    this.grow(256);
+  }
+
+  grow(cap) {
+    this.cap = cap;
+    for (const [k, [g, m, per]] of Object.entries(this.kinds)) {
+      if (this.meshes[k]) { this.scene.remove(this.meshes[k]); this.meshes[k].dispose(); }
+      const im = new THREE.InstancedMesh(g, m, cap * per);
+      im.frustumCulled = false; // the horde moves; a box test per part is cheaper done by the GPU
+      im.castShadow = k !== 'eye'; im.receiveShadow = true;
+      if (m.color.getHex() === 0xffffff) im.setColorAt(0, new THREE.Color());
+      im.count = 0;
+      this.scene.add(im);
+      this.meshes[k] = im;
+    }
+  }
+
+  draw(list) {
+    let n = 0;
+    for (const zb of list) if (zb.mesh.visible) n++;
+    if (n > this.cap) this.grow(Math.ceil(n / 256) * 256);
+    const M = this.meshes, c = { torso: 0, head: 0, arm: 0, leg: 0, eye: 0, helmet: 0, vest: 0 };
+    const put = (k, obj, col) => { const im = M[k], i = c[k]++; im.setMatrixAt(i, obj.matrixWorld); if (col) im.setColorAt(i, col); };
+    for (const zb of list) {
+      if (!zb.mesh.visible) continue;
+      const p = zb.parts;
+      put('torso', p.torso, p.torso.material.color);
+      put('head', p.head, p.head.material.color);
+      put('arm', p.armL, p.armL.material.color); put('arm', p.armR, p.armR.material.color);
+      put('leg', p.legL, p.legL.material.color); put('leg', p.legR, p.legR.material.color);
+      put('eye', p.eyes[0]); put('eye', p.eyes[1]);
+      if (p.helmet) { put('helmet', p.helmet); put('vest', p.vest); }
+    }
+    for (const k in M) {
+      const im = M[k];
+      im.count = c[k];
+      im.instanceMatrix.needsUpdate = true;
+      if (im.instanceColor) im.instanceColor.needsUpdate = true;
+    }
+  }
+}
+
 export class Zombies {
   constructor(scene, world) {
     this.scene = scene;
     this.world = world;
     this.list = [];
+    this.crowd = new Crowd(scene);
+    // (posed every time the scene is drawn, after its matrices are updated)
+    this.drawHook = () => this.crowd.draw(this.list);
+    scene.onBeforeRender = this.drawHook;
     this.buildNav();
     this.field = new Uint16Array((FIELD_R * 2 + 1) ** 2);
     this.fieldOrigin = [0, 0];
@@ -416,24 +478,26 @@ export class Zombies {
     const e1 = new THREE.Mesh(eyeGeo, eyeMat); e1.position.set(-0.06, 0.03, 0.135);
     const e2 = e1.clone(); e2.position.x = 0.06;
     head.add(e1, e2);
+    let helmet = null, vest = null;
     const armL = new THREE.Mesh(geo.arm, skin); armL.position.set(-0.32, 1.38, 0);
     const armR = new THREE.Mesh(geo.arm, skin); armR.position.set(0.32, 1.38, 0);
     const legL = new THREE.Mesh(geo.leg, pants); legL.position.set(-0.13, 0.82, 0);
     const legR = new THREE.Mesh(geo.leg, pants); legR.position.set(0.13, 0.82, 0);
     g.add(torso, head, armL, armR, legL, legR);
     if (t.helmet) {
-      const helmet = new THREE.Mesh(new THREE.SphereGeometry(0.17, 10, 6, 0, Math.PI * 2, 0, Math.PI / 2), new THREE.MeshStandardMaterial({ color: 0x3e4a30, roughness: 0.8 }));
+      helmet = new THREE.Mesh(helmetGeo, eyeMat);
       helmet.position.y = 0.08; head.add(helmet);
-      const vest = new THREE.Mesh(new THREE.BoxGeometry(0.52, 0.42, 0.32), new THREE.MeshStandardMaterial({ color: 0x3a4430, roughness: 0.9 }));
+      vest = new THREE.Mesh(vestGeo, eyeMat);
       vest.position.y = 1.2; g.add(vest);
     }
-    g.traverse((o) => { o.castShadow = true; });
+    // (the crowd draws it: these meshes only hold the pose and take the hits)
+    g.traverse((o) => { if (o.isMesh) o.visible = false; });
     g.scale.setScalar(t.scale);
     g.rotation.order = 'YXZ'; // lean (x, z) is applied in the body's own frame
     g.position.set(x, y, z);
     this.scene.add(g);
     const zb = {
-      mesh: g, parts: { head, torso, armL, armR, legL, legR }, type: typeName, def: t,
+      mesh: g, parts: { head, torso, armL, armR, legL, legR, eyes: [e1, e2], helmet, vest }, type: typeName, def: t,
       pos: g.position, hp: t.hp, maxHp: t.hp, state: 'wander', target: null, lastSeen: 0,
       phase: Math.random() * 10, voice: zombieVoice(typeName), attackCd: 0, losTimer: Math.random() * 0.3, canSee: false,
       groanTimer: 3 + Math.random() * 10, wanderTimer: 0, dir: Math.random() * Math.PI * 2,
@@ -951,5 +1015,7 @@ export class Zombies {
   dispose() {
     for (const zb of this.list) this.scene.remove(zb.mesh);
     this.list = [];
+    for (const im of Object.values(this.crowd.meshes)) { this.scene.remove(im); im.dispose(); }
+    if (this.scene.onBeforeRender === this.drawHook) this.scene.onBeforeRender = () => {};
   }
 }

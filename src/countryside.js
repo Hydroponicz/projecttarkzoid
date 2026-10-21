@@ -56,7 +56,7 @@ function chunked(group, geo, mat, items, { shadow = true, receive = false } = {}
     });
     m.castShadow = shadow; m.receiveShadow = receive;
     m.computeBoundingSphere();
-    m.userData.far = true; // culled by distance (World.cull)
+    m.userData.cull = { kind: 'chunk' }; // culled by distance (World.cull)
     group.add(m);
   }
   return where;

@@ -9,7 +9,7 @@ import { makeGrid, addItem } from './inventory.js';
 import { createFurnisher, FOOT, footRect } from './furniture.js';
 import { buildCountryside, plantTrees } from './countryside.js';
 import { worldTextures, wallMaterial, WALL, worldUV, mergeableMaterial } from './worldtex.js';
-import { Levels } from './levels.js';
+import { Levels, LH } from './levels.js';
 import { buildStoreys, STOREYS } from './storeys.js';
 
 export const HALF = 220;      // map half-size (town in the middle, countryside around it)
@@ -1341,7 +1341,7 @@ export function buildWorld(scene, seed) {
   const wallMat = wallMaterial(); // brick / clapboard / concrete / plaster in world space
   const m4 = new THREE.Matrix4();
   const colr = new THREE.Color();
-  function instanceWalls(list0, shade, far) {
+  function instanceWalls(list0, shade) {
     // (every wall draws its shade, retired ones too, so the sequence is as it was)
     const shades = list0.map(() => shade());
     const list = list0.filter((w) => !w.retired), sh = shades.filter((_, i) => !list0[i].retired);
@@ -1359,7 +1359,7 @@ export function buildWorld(scene, seed) {
     wallMesh.castShadow = true;
     wallMesh.receiveShadow = true;
     wallMesh.computeBoundingSphere();
-    wallMesh.userData.far = far;
+    wallMesh.userData.cull = { kind: 'chunk' };
     group.add(wallMesh);
   }
   const wallRegions = new Map();
@@ -1368,7 +1368,7 @@ export function buildWorld(scene, seed) {
     if (!wallRegions.has(k)) wallRegions.set(k, []);
     wallRegions.get(k).push(w);
   }
-  for (const [k, list] of wallRegions) instanceWalls(list, () => rnd(0.92, 1.05), k !== 'town');
+  for (const list of wallRegions.values()) instanceWalls(list, () => rnd(0.92, 1.05));
   const legacyWalls = walls.length;
 
   // Trees: one instanced mesh per species (pine, oak, birch, apple)
@@ -1407,7 +1407,15 @@ export function buildWorld(scene, seed) {
     levels.add(buildStoreys(storeyCtx, b));
   }
   RNG = mulberry32((seed ^ 0x51ab) >>> 0);
-  instanceWalls(walls.slice(legacyWalls), () => rnd(0.92, 1.05), false);
+  // (the walls of the buildings with upper floors, by chunk too; one shade
+  // each, drawn in order)
+  const tallWalls = walls.slice(legacyWalls), tallShade = tallWalls.map(() => rnd(0.92, 1.05)), tallRegions = new Map();
+  tallWalls.forEach((w, i) => {
+    const k = regionOf((w.minX + w.maxX) / 2, (w.minZ + w.maxZ) / 2);
+    if (!tallRegions.has(k)) tallRegions.set(k, []);
+    tallRegions.get(k).push(i);
+  });
+  for (const idx of tallRegions.values()) { let j = 0; instanceWalls(idx.map((i) => tallWalls[i]), () => tallShade[idx[j++]]); }
 
   // Window glass: one instanced mesh (panes move when opened, vanish when smashed)
   const liveWindows = windows.filter((wn) => !wn.retired);
@@ -1418,16 +1426,35 @@ export function buildWorld(scene, seed) {
   group.add(glassMesh);
   liveWindows.forEach((wn, i) => { wn.glass = glassMesh; wn.gi = i; setWindow(wn, 'closed'); });
 
-  mergeStatic(group);
+  // Level of detail: scenery is batched by where it is, so what's off
+  // screen, too far or out of sight inside a building isn't drawn.
+  //  - big pieces (roofs, slabs, fences, sheds) by 40 m chunk: drawn to the fog
+  //  - small outdoor pieces (benches, bins, sandbags, posts): to 100 m
+  //  - furniture and fittings by building and storey: within 50 m, and inside
+  //    a building only the storeys next to yours
+  const solid = buildings.filter((b) => !b.area);
+  const zoneOf = (x, y, z, r) => {
+    const chunk = regionOf(x, z);
+    if (r > 1.5) return { key: chunk, kind: 'chunk' };
+    const B = levels.buildingAt(x, z);
+    if (B) {
+      const L = Math.max(0, Math.floor((y - 0.05) / LH));
+      return L > B.top ? { key: 'od' + chunk, kind: 'detail' } : { key: `in${levels.buildings.indexOf(B)}.${L}`, kind: 'interior', B, L };
+    }
+    const b = solid.find((q) => !q.legacy && x > q.x0 && x < q.x1 && z > q.z0 && z < q.z1);
+    if (b && y < WALL_H + 0.1) return { key: `ib${buildings.indexOf(b)}`, kind: 'interior', b };
+    return { key: 'od' + chunk, kind: 'detail' };
+  };
+  mergeStatic(group, zoneOf);
 
-  // Countryside pieces: hidden past view range (fog hides them anyway), so
-  // the town doesn't draw the farms and woods behind the haze.
-  const far = [];
+  const lod = [];
   for (const o of group.children) {
-    if (!o.userData.far) continue;
+    const cu = o.userData.cull;
+    if (!cu) continue;
     const bs = o.isInstancedMesh ? o.boundingSphere : (o.geometry.computeBoundingSphere(), o.geometry.boundingSphere);
-    if (bs) far.push({ o, c: bs.center.clone().applyMatrix4(o.matrixWorld), r: bs.radius });
+    if (bs) lod.push({ o, ...cu, c: bs.center.clone().applyMatrix4(o.matrixWorld), r: bs.radius });
   }
+  for (const d of doors) if (!d.retired) lod.push({ o: d.mesh, kind: 'door', c: d.mesh.position, r: d.w, base: d.base || 0 });
 
   // Saves keep containers, doors and windows by position in these lists:
   // the first part as the town was first laid out (retired ones left empty),
@@ -1463,8 +1490,21 @@ export function buildWorld(scene, seed) {
       }
       return best;
     },
-    cull(x, z, range) {
-      for (const f of far) f.o.visible = Math.hypot(f.c.x - x, f.c.z - z) - f.r < range;
+    // Show what's in range of the camera at (x, y, z); `floor` is the storey
+    // height the player stands on (for the floors of the building they're in)
+    cull(x, z, range, floor = 0) {
+      const inB = levels.buildingAt(x, z), inL = Math.max(0, Math.round(floor / LH));
+      const inb = inB ? null : solid.find((q) => !q.legacy && x > q.x0 && x < q.x1 && z > q.z0 && z < q.z1);
+      for (const f of lod) {
+        const d = Math.hypot(f.c.x - x, f.c.z - z) - f.r;
+        let vis;
+        if (f.kind === 'chunk') vis = d < range;
+        else if (f.kind === 'detail') vis = d < Math.min(range, 100);
+        else if (f.kind === 'door') vis = d < Math.min(range, 70) && (!inB || Math.abs(f.base / LH - inL) <= 1);
+        else if (f.B) vis = f.B === inB ? Math.abs(f.L - inL) <= 1 : d < Math.min(range, 50);
+        else vis = f.b === inb || d < Math.min(range, 50);
+        f.o.visible = vis;
+      }
     },
     // Height of the ground at (x, z): a sidewalk is 10 cm up
     groundAt(x, z) {
@@ -1528,15 +1568,22 @@ export function corpseMesh(parent, x, z, color, rot = Math.random() * Math.PI * 
   return g;
 }
 
-// Town scenery batches as one region; the countryside in chunks, so farms
-// and woods off-screen (or outside the sun's shadow box) aren't drawn.
-const REGION = 60;
-const regionOf = (x, z) => (Math.abs(x) < 110 && Math.abs(z) < 110 ? 'town' : `${Math.floor(x / REGION)},${Math.floor(z / REGION)}`);
+// Scenery batches by 40 m chunk (town blocks, countryside alike), so what's
+// off screen, out of the sun's shadow box or past the fog isn't drawn.
+const REGION = 40;
+const regionOf = (x, z) => `${Math.floor((x + 20) / REGION)},${Math.floor((z + 20) / REGION)}`;
+// One vertex-coloured material per finish, shared by every batch
+const vcMats = new Map();
+const vcMat = (rough, metal, side) => {
+  const k = `${rough}|${metal}|${side}`;
+  if (!vcMats.has(k)) vcMats.set(k, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: rough, metalness: metal, side }));
+  return vcMats.get(k);
+};
 
 // Batch all static, untextured, opaque scenery (furniture, props, vehicles,
 // sandbags, fences...) into one mesh per material to keep draw calls low.
 const _mp = new THREE.Vector3();
-function mergeStatic(group) {
+function mergeStatic(group, zoneOf) {
   group.updateMatrixWorld(true);
   const buckets = new Map();
   const victims = [];
@@ -1550,8 +1597,10 @@ function mergeStatic(group) {
     // colours), so all the furniture of one finish is a single draw call.
     const plain = !m.emissive || m.emissive.getHex() === 0;
     const rough = Math.round(m.roughness * 10) / 10, metal = Math.round(m.metalness * 10) / 10;
-    o.getWorldPosition(_mp);
-    const key = regionOf(_mp.x, _mp.z) + (o.castShadow ? '|' : '|ns|') + (texMerge ? 'tex|' + m.uuid : plain ? ['vc', rough, metal, m.side].join('|') : [m.type, m.color.getHex(), m.roughness, m.metalness, m.emissive.getHex(), m.side].join('|'));
+    if (!o.geometry.boundingSphere) o.geometry.computeBoundingSphere();
+    _mp.copy(o.geometry.boundingSphere.center).applyMatrix4(o.matrixWorld);
+    const zone = zoneOf(_mp.x, _mp.y, _mp.z, o.geometry.boundingSphere.radius * o.matrixWorld.getMaxScaleOnAxis());
+    const key = zone.key + (o.castShadow ? '|' : '|ns|') + (texMerge ? 'tex|' + m.uuid : plain ? ['vc', rough, metal, m.side].join('|') : [m.type, m.color.getHex(), m.roughness, m.metalness, m.emissive.getHex(), m.side].join('|'));
     let geo = o.geometry.index ? o.geometry.toNonIndexed() : o.geometry.clone();
     for (const name of Object.keys(geo.attributes)) if (!['position', 'normal', 'uv'].includes(name)) geo.deleteAttribute(name);
     if (!geo.attributes.uv || !geo.attributes.normal) return;
@@ -1562,17 +1611,21 @@ function mergeStatic(group) {
       for (let i = 0; i < n; i++) { col[i * 3] = m.color.r; col[i * 3 + 1] = m.color.g; col[i * 3 + 2] = m.color.b; }
       geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
     }
-    if (!buckets.has(key)) buckets.set(key, { mat: plain && !texMerge ? new THREE.MeshStandardMaterial({ vertexColors: true, roughness: rough, metalness: metal, side: m.side }) : m, geos: [], shadow: o.castShadow });
+    if (!buckets.has(key)) buckets.set(key, { mat: plain && !texMerge ? vcMat(rough, metal, m.side) : m, geos: [], shadow: o.castShadow, zone });
     // (ground patches and furrows don't cast shadows: they'd only shade themselves)
     buckets.get(key).geos.push(geo);
     victims.push(o);
   });
   for (const o of victims) o.parent.remove(o);
-  for (const [key, { mat, geos, shadow }] of buckets) {
+  // The furniture groups those came from are empty shells now: drop them
+  // (the scene graph is walked every frame)
+  const prune = (o) => { for (const c of [...o.children]) prune(c); if (o !== group && o.type === 'Group' && !o.children.length && !o.userData.dynamic) o.parent.remove(o); };
+  prune(group);
+  for (const { mat, geos, shadow, zone } of buckets.values()) {
     const merged = mergeGeometries(geos);
     if (!merged) continue;
     const mesh = new THREE.Mesh(merged, mat);
-    mesh.userData.far = !key.startsWith('town');
+    mesh.userData.cull = { kind: zone.kind, B: zone.B, L: zone.L, b: zone.b };
     mesh.castShadow = shadow;
     mesh.receiveShadow = true;
     group.add(mesh);

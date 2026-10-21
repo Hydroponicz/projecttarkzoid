@@ -499,6 +499,8 @@ class Ragdoll {
     });
     this.liveGroup = this.group;
     this.sys.scene.remove(this.group);
+    // (its GPU buffers go; they're uploaded again if the body is disturbed)
+    this.liveGroup.traverse((o) => { if (o.isMesh) o.geometry.dispose(); });
     const g = new THREE.Group();
     for (const [mat, geos] of byMat) { const m = new THREE.Mesh(mergeGeometries(geos), mat); m.castShadow = true; m.receiveShadow = true; g.add(m); }
     this.group = g;

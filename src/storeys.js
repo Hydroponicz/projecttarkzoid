@@ -14,7 +14,7 @@ export const STOREYS = {
   office: { levels: 2, perLevel: 3 },
   police: { levels: 2, perLevel: 3 },
   hospital: { levels: 3, lift: true, perLevel: 5 },
-  skyscraper: { levels: 6, lift: true, perLevel: 3 },
+  skyscraper: { levels: [9, 13], lift: true, perLevel: 2 }, // real floors all the way up
 };
 // Stairwell: open strip at the near end, the flights, the far landing
 const NEAR = 1.4, RUN = 3.0, LAND = 1.4;
@@ -23,7 +23,7 @@ const STEPS = 10;
 export function buildStoreys(c, b) {
   const { rand, rnd, pick, WALL_H, WALL_T: T, DOOR, KINDS } = c;
   const kindName = b.kind, kind = KINDS[kindName], spec = STOREYS[kindName];
-  const nL = spec.levels, top = nL - 1;
+  const nL = Array.isArray(spec.levels) ? spec.levels[0] + Math.floor(rand() * (spec.levels[1] + 1 - spec.levels[0])) : spec.levels, top = nL - 1;
   const { x0, x1, z0, z1 } = b;
   const w = x1 - x0, d = z1 - z0, cx = (x0 + x1) / 2, cz = (z0 + z1) / 2;
   const corridor = !!kind.corridor, cw = 1.6;
@@ -72,15 +72,11 @@ export function buildStoreys(c, b) {
   }
   for (let L = 0; L < top; L++) stairs(L * LH);
   const roofY = nL * LH;
-  if (kind.tower) {
-    const h = roofY + rnd(14, 32);
-    c.facade(cx, cz, w - 2, d - 2, roofY, h, new THREE.Color(0x8a9aaa));
-    c.prop(1.2, 4, 1.2, 0x555555, cx + w / 4, h + 2, cz);
-  } else {
-    c.prop(w + 0.6, 0.4, 0.2, 0x5a5a58, cx, roofY + 0.2, z0 - 0.2); c.prop(w + 0.6, 0.4, 0.2, 0x5a5a58, cx, roofY + 0.2, z1 + 0.2);
-    c.prop(0.2, 0.4, d + 0.2, 0x5a5a58, x0 - 0.2, roofY + 0.2, cz); c.prop(0.2, 0.4, d + 0.2, 0x5a5a58, x1 + 0.2, roofY + 0.2, cz);
-    for (let i = 0; i < 2; i++) c.prop(1.1, 0.8, 0.9, 0x9a9c9e, cx + rnd(-w / 3, w / 3), roofY + 0.4, cz + rnd(-d / 3, d / 3));
-  }
+  // Roof: a parapet and plant (a tower also gets its antenna mast)
+  c.prop(w + 0.6, 0.4, 0.2, 0x5a5a58, cx, roofY + 0.2, z0 - 0.2); c.prop(w + 0.6, 0.4, 0.2, 0x5a5a58, cx, roofY + 0.2, z1 + 0.2);
+  c.prop(0.2, 0.4, d + 0.2, 0x5a5a58, x0 - 0.2, roofY + 0.2, cz); c.prop(0.2, 0.4, d + 0.2, 0x5a5a58, x1 + 0.2, roofY + 0.2, cz);
+  for (let i = 0; i < 2; i++) c.prop(1.1, 0.8, 0.9, 0x9a9c9e, cx + rnd(-w / 3, w / 3), roofY + 0.4, cz + rnd(-d / 3, d / 3));
+  if (kind.tower) c.prop(1.2, 4, 1.2, 0x555555, cx + w / 4, roofY + 2, cz);
   // Sign over the ground-floor entrance
   if (kind.sign && signDoor) c.sign(b.name, kind.sign.bg, kind.sign.cross, signDoor.x, signDoor.z, signDoor.side);
 

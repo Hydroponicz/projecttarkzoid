@@ -1038,17 +1038,18 @@ export class Survivors {
     g.dialogOpen = true;
     g.input.unlock();
     const el = document.getElementById('dialog');
-    el.innerHTML = `<div class="dlg-panel"><div class="dlg-name">${title}</div><div class="dlg-text">${text}</div><div class="dlg-opts"></div><div class="hint">1–${opts.length} to choose · Esc to leave</div></div>`;
+    el.innerHTML = `<div class="dlg-panel"><div class="dlg-name">${title}</div><div class="dlg-text">${text}</div><div class="dlg-opts"></div><div class="hint">${opts.length > 9 ? '1–9, 0 or click' : `1–${opts.length}`} to choose · Esc to leave</div></div>`;
     const box = el.querySelector('.dlg-opts');
     this.dialogOpts = opts.map(([label, fn]) => [label, () => { this.closeDialog(); fn(); }]);
-    this.dialogOpts.forEach(([label, fn], i) => { const b = document.createElement('button'); b.textContent = `${i + 1}. ${label}`; b.onclick = fn; box.appendChild(b); });
+    if (opts.length > 8) box.classList.add('grid'); // a tall building's floor buttons
+    this.dialogOpts.forEach(([label, fn], i) => { const b = document.createElement('button'); b.textContent = i < 10 ? `${(i + 1) % 10}. ${label}` : label; b.onclick = fn; box.appendChild(b); });
     el.style.display = 'flex';
     g.updatePause();
   }
 
   dialogKey(code) {
     if (code === 'Escape') return this.closeDialog();
-    const n = parseInt(code.replace('Digit', ''), 10);
+    const n = code === 'Digit0' ? 10 : parseInt(code.replace('Digit', ''), 10); // 0 is the tenth
     if (n >= 1 && this.dialogOpts?.[n - 1]) this.dialogOpts[n - 1][1]();
   }
 
