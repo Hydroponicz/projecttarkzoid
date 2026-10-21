@@ -4,49 +4,71 @@
 // in buildings with upper floors only what's on your own floor gets in the
 // way. Movers and rays say what height they're at (0: the ground).
 
+import { LH } from './levels.js';
+
 const BODY_H = 1.6;
 // Does a box reach into a body standing at height y?
 export function atHeight(b, y = 0) { return (b.h ?? 3) > y + 0.02 && (b.y0 ?? 0) < y + BODY_H; }
 
+// Boxes are filed by cell and by storey: in a tower block every cell holds
+// the walls and furniture of every floor, and a query at one height (a
+// zombie on the 9th floor, a shot along a corridor) only looks through its
+// own storey's. Queries that don't give a height look through all of them.
 export class SpatialHash {
   constructor(cell = 6) {
     this.cell = cell;
     this.map = new Map();
     this.stamp = 0;
+    this.maxL = 0;
   }
   key(cx, cz) { return cx * 73856093 ^ cz * 19349663; }
   insert(box) {
     box._s = 0;
     box._keys = [];
+    const L0 = box._L0 = Math.max(0, Math.floor((box.y0 ?? 0) / LH));
+    const L1 = box._L1 = Math.max(L0, Math.floor(((box.h ?? 3) - 0.01) / LH));
+    if (L1 > this.maxL) this.maxL = L1;
     const c = this.cell;
     for (let cx = Math.floor(box.minX / c); cx <= Math.floor(box.maxX / c); cx++) {
       for (let cz = Math.floor(box.minZ / c); cz <= Math.floor(box.maxZ / c); cz++) {
         const k = this.key(cx, cz);
-        let arr = this.map.get(k);
-        if (!arr) this.map.set(k, (arr = []));
-        arr.push(box);
+        let cell = this.map.get(k);
+        if (!cell) this.map.set(k, (cell = []));
+        for (let L = L0; L <= L1; L++) (cell[L] ||= []).push(box);
         box._keys.push(k);
       }
     }
   }
   remove(box) {
     // Only the cells it was put in (cheap enough to move boxes around)
+    const L0 = box._L0 ?? 0, L1 = box._L1 ?? this.maxL;
     for (const k of box._keys || [...this.map.keys()]) {
-      const arr = this.map.get(k);
-      const i = arr ? arr.indexOf(box) : -1;
-      if (i >= 0) arr.splice(i, 1);
+      const cell = this.map.get(k);
+      if (!cell) continue;
+      for (let L = L0; L <= L1; L++) {
+        const arr = cell[L], i = arr ? arr.indexOf(box) : -1;
+        if (i >= 0) arr.splice(i, 1);
+      }
     }
     box._keys = null;
   }
-  query(minX, minZ, maxX, maxZ, out = []) {
+  // Boxes in a rectangle; with y0/y1, only from the storeys that height
+  // range passes through (a box spanning several storeys can still come
+  // back, so callers keep their own height test)
+  query(minX, minZ, maxX, maxZ, out = [], y0, y1 = y0) {
     const c = this.cell;
     const s = ++this.stamp;
     out.length = 0;
+    const L0 = y0 === undefined ? 0 : Math.max(0, Math.floor(y0 / LH));
+    const L1 = y0 === undefined ? this.maxL : Math.min(this.maxL, Math.floor(y1 / LH));
     for (let cx = Math.floor(minX / c); cx <= Math.floor(maxX / c); cx++) {
       for (let cz = Math.floor(minZ / c); cz <= Math.floor(maxZ / c); cz++) {
-        const arr = this.map.get(this.key(cx, cz));
-        if (!arr) continue;
-        for (const b of arr) if (b._s !== s) { b._s = s; out.push(b); }
+        const cell = this.map.get(this.key(cx, cz));
+        if (!cell) continue;
+        for (let L = L0; L <= L1; L++) {
+          const arr = cell[L];
+          if (arr) for (const b of arr) if (b._s !== s) { b._s = s; out.push(b); }
+        }
       }
     }
     return out;
@@ -63,7 +85,7 @@ export function moveCircle(hash, pos, r, dx, dz, y) {
   pos.z += dz;
   const levels = y !== undefined, yy = y ?? 0;
   for (let iter = 0; iter < 2; iter++) {
-    const boxes = hash.query(pos.x - r, pos.z - r, pos.x + r, pos.z + r, tmp);
+    const boxes = hash.query(pos.x - r, pos.z - r, pos.x + r, pos.z + r, tmp, yy, yy + BODY_H);
     for (const b of boxes) {
       if (b.noCollide || (b.gate && levels) || !atHeight(b, yy)) continue;
       const cx = Math.max(b.minX, Math.min(pos.x, b.maxX));
@@ -110,7 +132,7 @@ export function segBox(x1, z1, x2, z2, b) {
 // Nearest blocking hit along a segment. `flag` selects which boxes block
 // (e.g. 'blocksShot' or 'blocksSight'); y is the floor height it runs at.
 export function raycast(hash, x1, z1, x2, z2, flag, y = 0) {
-  const boxes = hash.query(Math.min(x1, x2), Math.min(z1, z2), Math.max(x1, x2), Math.max(z1, z2), tmp);
+  const boxes = hash.query(Math.min(x1, x2), Math.min(z1, z2), Math.max(x1, x2), Math.max(z1, z2), tmp, y, y + BODY_H);
   let best = 1;
   let hit = null;
   for (const b of boxes) {

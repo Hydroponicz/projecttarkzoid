@@ -59,6 +59,24 @@ class Game {
     this.camera = new THREE.PerspectiveCamera(75, 1, 0.03, 300);
     this.camera.layers.enable(INTERIOR_LAYER); // (furniture: seen, but kept out of the sun's shadows)
     this.scene.add(this.camera);
+    // three.js draws every shadow map in one go and picks what casts by the
+    // main camera's layers, so the sun's map is drawn on its own with the
+    // interior layer switched off: furniture under a roof casts nothing in
+    // sunlight, and in a tower block that's most of a shadow map's draws.
+    // The flashlight's map still has it.
+    const sm = this.renderer.shadowMap, drawShadows = sm.render.bind(sm);
+    const sunOnly = [], rest = [];
+    sm.render = (lights, scene, camera) => {
+      sunOnly.length = rest.length = 0;
+      for (const l of lights) (l === this.sun ? sunOnly : rest).push(l);
+      if (sunOnly.length) {
+        const had = camera.layers.isEnabled(INTERIOR_LAYER);
+        camera.layers.disable(INTERIOR_LAYER);
+        drawShadows(sunOnly, scene, camera);
+        if (had) camera.layers.enable(INTERIOR_LAYER);
+      }
+      if (rest.length) drawShadows(rest, scene, camera);
+    };
 
     this.hemi = new THREE.HemisphereLight(0x7a8aaa, 0x2a2a1a, 1.1);
     this.scene.add(this.hemi);

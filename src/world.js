@@ -1620,7 +1620,7 @@ export function buildWorld(scene, seed) {
   // Offices, police stations, hospitals and skyscrapers with real floors
   const levels = new Levels();
   const storeyCtx = {
-    rand, rnd, pick, shuffle, WALL_H, WALL_T, DOOR, KINDS, group, fur, walls, allBoxes, containers, doors, windows, beds, zombieSpawns,
+    rand, rnd, pick, shuffle, WALL_H, WALL_T, DOOR, KINDS, group, fur, walls, allBoxes, hash, containers, doors, windows, beds, zombieSpawns,
     addBox, addWall, wallWithOpenings, addDoor, addContainer, addBed, placeAlong, roomPlacer, fill, prop, sign, facade, mergeableMaterial,
     setPattern: (n) => { curPattern = WALL[n]; }, pattern: (n) => WALL[n],
     floorPatch, ceilingPlane, furnishLiving, furnishKitchen, furnishBedroom,

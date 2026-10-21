@@ -397,7 +397,8 @@ export function buildStoreys(c, b) {
   function lift_(m, base) {
     for (const o of c.group.children.slice(m.ch)) o.position.y += base;
     for (const wl of c.walls.slice(m.walls)) { wl.y0 = (wl.y0 ?? 0) + base; wl.y1 = (wl.y1 ?? WALL_H) + base; }
-    for (const x of c.allBoxes.slice(m.boxes)) { x.y0 = (x.y0 ?? 0) + base; x.h = (x.h ?? WALL_H) + base; }
+    // (colliders are filed by storey: taken out and put back at the new height)
+    for (const x of c.allBoxes.slice(m.boxes)) { c.hash.remove(x); x.y0 = (x.y0 ?? 0) + base; x.h = (x.h ?? WALL_H) + base; c.hash.insert(x); }
     for (const k of c.containers.slice(m.cont)) { k.y = (k.y ?? 0) + base; k.base = base; }
     for (const dr of c.doors.slice(m.doors)) dr.base = base;
     for (const wn of c.windows.slice(m.wins)) wn.base = base;

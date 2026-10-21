@@ -514,6 +514,8 @@ How the world stays cheap to draw, the way open-world games do it:
 - **Shadows.** Furniture inside buildings is left out of the sun's shadows (it's under a roof) but still throws them in your flashlight; the flashlight's shadows are only drawn while it's on.
 - **Batching.** Doors are two instanced meshes for the whole town; parked cars that look alike share one model; the horde is one instanced mesh per body part.
 - **Zombies think less the further away they are:** every frame within 35 m, every other frame to 80 m, every fourth beyond, and the ones wandering far off doze. Crowding uses a grid, not every zombie against every other.
+- **Collision is filed by storey.** Walls and furniture are kept in a grid by place and by floor, so a zombie, a bullet or a body on the 9th floor of a tower block only checks that floor's walls, not every floor stacked above and below it.
+- **Bodies settle and sleep.** A ragdoll looks up what's around it once per step rather than per joint, only tests the bodies actually touching it, and goes still for good once it stops moving. At most 10 dead bodies are simulated at once: when more fall, the oldest that have already landed are frozen where they lie.
 - **Loading** builds the town's batches straight into GPU-ready arrays, and lets the shaders compile in parallel.
 
 ## The look of the town
@@ -549,7 +551,7 @@ Buildings and streets are textured with generated maps: brick, wood siding, conc
 | `src/zombies.js` | Zombie spawning, perception, flow-field pathing, attacks, hit reactions, knockdowns, corpses, voices; draws the horde instanced |
 | `src/ragdoll.js` | Verlet ragdolls (death, knockdown, get-up), dropped weapons, corpse freezing |
 | `src/fx.js` | Instanced particles (blood, dust, sparks), brass, decals (bullet holes, splatter, blood pools) |
-| `src/collision.js` | 2D spatial hash, circle-vs-box movement, raycasts |
+| `src/collision.js` | 2D spatial hash (filed by storey), circle-vs-box movement, raycasts |
 | `src/items.js` | Item definitions, loot tables, container types |
 | `src/inventory.js` / `src/invui.js` | Grid inventory logic and drag-and-drop UI |
 | `src/eastern.js` | The post-Soviet street: courtyards and playgrounds, lock-up garage rows, smokestacks, heating mains, kiosks, fences, street lamps, bus shelters, the factory roof, the TV tower |

@@ -90,6 +90,8 @@ export function lookMats(look) {
   return { skin: bodyMat(look.skin), top: bodyMat(look.top), bottom: bodyMat(look.bottom), extra };
 }
 
+const MAX_AWAKE = 10; // fresh bodies simulated at once
+
 class Ragdoll {
   // spec: { matrix (model world matrix, including its scale), kind, scale,
   //         mats: {skin, top, bottom, extra[]}, look (saved colors), vel (initial
@@ -264,7 +266,23 @@ class Ragdoll {
       q[i].copy(p[i]);
       p[i].x += vx; p[i].y += vy - g; p[i].z += vz;
     }
-    for (let it = 0; it < 6; it++) {
+    // What it could touch this step, looked up once (not per joint per
+    // pass): the boxes round the whole body, and the floor under each joint
+    let x0 = Infinity, z0 = Infinity, x1 = -Infinity, z1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+    for (let i = 0; i < N; i++) { const v = p[i]; if (v.x < x0) x0 = v.x; if (v.x > x1) x1 = v.x; if (v.z < z0) z0 = v.z; if (v.z > z1) z1 = v.z; if (v.y < y0) y0 = v.y; if (v.y > y1) y1 = v.y; }
+    this.near = this.sys.hash.query(x0 - 0.4, z0 - 0.4, x1 + 0.4, z1 + 0.4, this.near || [], y0 - 0.6, y1 + 0.6);
+    const bb = this.bb || (this.bb = {});
+    bb.x0 = x0 - 0.3; bb.x1 = x1 + 0.3; bb.z0 = z0 - 0.3; bb.z1 = z1 + 0.3;
+    // only the bodies actually overlapping this one are worth the joint-by-joint test
+    const touch = this.touch || (this.touch = []);
+    touch.length = 0;
+    for (const o of this.neighbors) { const ob = o.bb; if (!ob || (ob.x0 < bb.x1 && ob.x1 > bb.x0 && ob.z0 < bb.z1 && ob.z1 > bb.z0)) touch.push(o); }
+    const fl = this.fl || (this.fl = new Float32Array(N));
+    for (let i = 0; i < N; i++) fl[i] = this.sys.ground(p[i].x, p[i].z, Math.max(p[i].y, q[i].y) + 0.02);
+    // Fewer passes once it's down and slowing (the first moments decide how
+    // it lands); bodies in a pile push each other on every other pass
+    const iters = this.slow || this.age > 1.5 ? 4 : 6;
+    for (let it = 0; it < iters; it++) {
       for (const [a, b, rest, k] of this.cons) {
         _v.subVectors(p[b], p[a]);
         const d = _v.length() || 1e-6;
@@ -307,8 +325,8 @@ class Ragdoll {
       this.hinges();
       this.selfCollide();
       this.torsoCollide(this);
-      for (const o of this.neighbors) { this.torsoCollide(o); o.torsoCollide(this); this.jointCollide(o); }
-      this.collide(it === 5);
+      if (it % 2 === 0 || it === iters - 1) for (const o of touch) { this.torsoCollide(o); o.torsoCollide(this); this.jointCollide(o); }
+      this.collide(it === iters - 1);
     }
   }
 
@@ -434,11 +452,12 @@ class Ragdoll {
   }
 
   collide(friction) {
-    const p = this.p, q = this.q, hash = this.sys.hash;
+    const p = this.p, q = this.q, near = this.near;
     for (let i = 0; i < N; i++) {
       const r = this.r[i], pt = p[i];
       // The ground under it: a storey's floor, a stair flight, a sidewalk
-      const fl = this.sys.ground(pt.x, pt.z, Math.max(pt.y, q[i].y) + 0.02);
+      // (looked up at the start of the step)
+      const fl = this.fl[i];
       if (i === PEL) this.floor = fl; // where its blood pools
       if (pt.y < fl + r) {
         const impact = q[i].y - pt.y;
@@ -448,8 +467,8 @@ class Ragdoll {
         if ((i === PEL || i === CHE) && !this.landed && impact > 0.02) { this.landed = true; this.sys.thud(pt, impact); }
       }
       // World boxes (walls, cars, furniture) below the joint's height
-      for (const b of hash.query(pt.x - r, pt.z - r, pt.x + r, pt.z + r, this.sys.tmp)) {
-        if (b.noCollide) continue;
+      for (const b of near) {
+        if (b.noCollide || pt.x + r < b.minX || pt.x - r > b.maxX || pt.z + r < b.minZ || pt.z - r > b.maxZ) continue;
         // Windows: glass stops a body; an open or smashed one only has its sill.
         const wb = b.window?.base || 0;
         const top = b.window ? wb + (b.window.state === 'closed' ? 3 : b.window.sill) : (b.h ?? 3);
@@ -620,6 +639,13 @@ export class RagdollSystem {
   }
 
   update(dt) {
+    // However big the fight, only so many fresh bodies tumble at once: past
+    // that the oldest ones (already down) come to rest where they lie
+    const awake = this.list.filter((r) => !r.sleeping && !r.alive);
+    if (awake.length > MAX_AWAKE) {
+      awake.sort((a, b) => b.age - a.age);
+      for (const r of awake.slice(0, awake.length - MAX_AWAKE)) if (r.age > 1.2 && (r.landed || r.p[PEL].y - (r.floor ?? 0) < 0.45)) { r.sleeping = true; r.onSettle?.(r); r.freeze(); }
+    }
     this.acc = Math.min(this.acc + dt, this.h * 6);
     let steps = 0;
     while (this.acc >= this.h) { this.acc -= this.h; steps++; }
@@ -637,8 +663,8 @@ export class RagdollSystem {
       let maxV = 0;
       for (let i = 0; i < N; i++) maxV = Math.max(maxV, r.p[i].distanceToSquared(r.q[i]));
       r.slow = r.age > 1 && maxV < 2e-5 && r.tone <= 0;
-      if (maxV < 4e-7 && r.age > 0.6) r.still += dt; else r.still = 0;
-      if (r.still > 0.4 || (r.age > 12 && !r.alive)) {
+      if (maxV < 1.5e-6 && r.age > 0.6) r.still += dt; else r.still = 0;
+      if (r.still > 0.3 || (r.age > 8 && !r.alive)) {
         r.sleeping = true;
         r.onSettle?.(r);
         if (!r.alive) r.freeze();

@@ -158,7 +158,7 @@ export class Zombies {
     for (let i = i0; i <= i1; i++) {
       for (let j = j0; j <= j1; j++) {
         const x = -HALF + (i + 0.5) * NAV_CELL, z = -HALF + (j + 0.5) * NAV_CELL;
-        const boxes = this.world.hash.query(x - r, z - r, x + r, z + r, tmp);
+        const boxes = this.world.hash.query(x - r, z - r, x + r, z + r, tmp, 0, 1.6);
         let b = 0, win = false;
         for (const box of boxes) {
           // Doors count as walkable: zombies head for them and bash them down.
@@ -193,7 +193,7 @@ export class Zombies {
       for (let i = i0; i <= i1; i++) for (let j = j0; j <= j1; j++) blocked[i * nj + j] = 1;
     };
     for (const h of [...B.holes, ...B.cores]) mark(h.x0 - r, h.z0 - r, h.x1 + r, h.z1 + r);
-    for (const box of this.world.hash.query(B.x0 - 1, B.z0 - 1, B.x1 + 1, B.z1 + 1, [])) {
+    for (const box of this.world.hash.query(B.x0 - 1, B.z0 - 1, B.x1 + 1, B.z1 + 1, [], y, y + 1.6)) {
       if (box.noCollide || box.door || !atHeight(box, y)) continue;
       mark(box.minX - r + 1e-6, box.minZ - r + 1e-6, box.maxX + r - 1e-6, box.maxZ + r - 1e-6);
     }
@@ -851,7 +851,10 @@ export class Zombies {
 
       // A closed door or window between it and what it's after: beat on it
       // (or climb through, if the window's already open or smashed).
-      if (zb.state !== 'wander' && !(zb.rise > 0) && (zb.attackCd <= 0 || zb.stuck > 0.2)) {
+      // (looked for a few times a second, not every frame by every zombie)
+      zb.snT = (zb.snT || 0) - dt;
+      if (zb.state !== 'wander' && !(zb.rise > 0) && (zb.attackCd <= 0 || zb.stuck > 0.2) && (zb.snT <= 0 || zb.stuck > 0.2)) {
+        zb.snT = 0.25;
         const s = this.structureNear(zb);
         const gx = zb.state === 'chase' ? tx0 : zb.target.x, gz = zb.state === 'chase' ? tz0 : zb.target.z;
         if (s && (s.kind === 'door' || s.kind === 'window') && this.across(s, zb.pos.x, zb.pos.z, gx, gz)) {
@@ -948,7 +951,7 @@ export class Zombies {
   structureNear(zb) {
     const r = zb.radius + 0.5;
     let best = null, bd = r;
-    for (const b of this.world.hash.query(zb.pos.x - r, zb.pos.z - r, zb.pos.x + r, zb.pos.z + r, [])) {
+    for (const b of this.world.hash.query(zb.pos.x - r, zb.pos.z - r, zb.pos.x + r, zb.pos.z + r, this._sn || (this._sn = []), zb.pos.y, zb.pos.y + 1.6)) {
       if (!b.structure || b.noCollide || !atHeight(b, zb.pos.y)) continue;
       const cx = Math.max(b.minX, Math.min(zb.pos.x, b.maxX)), cz = Math.max(b.minZ, Math.min(zb.pos.z, b.maxZ));
       const d = Math.hypot(zb.pos.x - cx, zb.pos.z - cz);

@@ -7,7 +7,7 @@ import { moveCircle, segBox, raycast } from './collision.js';
 import { ITEMS, itemWeight } from './items.js';
 import { sfx } from './audio.js';
 import { GunController, VM_LAYER } from './weapons.js';
-import { vmFill, INTERIOR_LAYER } from './dynlights.js';
+import { vmFill } from './dynlights.js';
 
 export const PARTS = {
   head: { name: 'Head', max: 35, vital: true },
@@ -82,7 +82,6 @@ export class Player {
     this.light.castShadow = true;
     this.light.shadow.mapSize.set(1024, 1024);
     this.light.shadow.camera.near = 0.3;
-    this.light.shadow.camera.layers.enable(INTERIOR_LAYER); // (furniture casts in the flashlight)
     this.light.castShadow = game.sun.castShadow; // (graphics setting)
     // Placed past the muzzle so the cone doesn't blow out the viewmodel.
     this.light.position.set(0.15, -0.1, -0.9);
@@ -438,7 +437,7 @@ export class Player {
     const end = origin.clone().addScaledVector(dir, maxD);
     // World hit: walls (full height) or low obstacles if the ray is low enough.
     const hash = this.game.world.hash;
-    const boxes = hash.query(Math.min(origin.x, end.x), Math.min(origin.z, end.z), Math.max(origin.x, end.x), Math.max(origin.z, end.z), []);
+    const boxes = hash.query(Math.min(origin.x, end.x), Math.min(origin.z, end.z), Math.max(origin.x, end.x), Math.max(origin.z, end.z), [], Math.min(origin.y, end.y) - 0.1, Math.max(origin.y, end.y) + 0.1);
     let tw = 1, wallBox = null;
     const glass = [];
     for (const b of boxes) {
