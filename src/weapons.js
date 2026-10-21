@@ -662,7 +662,7 @@ export class GunController {
     const axw = (pv.x - this.lastVel.x) * idt, azw = (pv.z - this.lastVel.z) * idt;
     this.lastVel.x = pv.x; this.lastVel.z = pv.z;
     const aR = axw * Math.cos(p.yaw) - azw * Math.sin(p.yaw), aF = -axw * Math.sin(p.yaw) - azw * Math.cos(p.yaw);
-    const momGain = 0.0012 * weight * (1 + sbPrev * 1.5) * (1 - this.ads * 0.7);
+    const momGain = 0.0012 * weight * (1 + sbPrev * 1.5) * (1 - this.ads * 0.7) * (1 - 0.3 * (p.skill.dexterity || 0) / 8); // nimble hands ride it out
     this.momX.v += -aR * momGain * 60 * dt;
     this.momZ.v += -aF * momGain * 60 * dt;
     this.momX.step(dt, 70, 9); this.momZ.step(dt, 70, 9);

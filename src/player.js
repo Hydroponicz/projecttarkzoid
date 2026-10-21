@@ -35,6 +35,10 @@ export class Player {
     const st = game.profile.stats;
     if (st.farming == null) st.farming = 0; // characters from before farming
     if (st.guns == null) st.guns = Math.min(4, st.aiming || 0); // from before the Guns skill
+    if (st.agility == null) st.agility = 0;     // from before the movement skills
+    if (st.dexterity == null) st.dexterity = 0;
+    this.moveXp = { agility: 0, dexterity: 0 }; // practice not yet handed to the skill
+    this.dodgeCd = 0; this.stanceCd = 0;
     this.skill = st;
     this.stealthMul = 1 - 0.07 * st.stealth;
     this.hp = {};
@@ -164,6 +168,8 @@ export class Player {
     // ---------- movement ----------
     const legsBroken = (this.hp.legL <= 0 || this.hp.legR <= 0) && this.painkiller <= 0;
     const fit = this.skill.fitness;
+    // Agility: how fast you are; Dexterity: how quickly you change what you're doing
+    const kA = (this.skill.agility || 0) / 8, kD = (this.skill.dexterity || 0) / 8;
     const grounded = this.y <= 0;
 
     // Carried weight (refreshed a few times a second)
@@ -176,6 +182,8 @@ export class Player {
     // Stance: C toggles crouch, X toggles prone. Getting up from prone takes a moment.
     if (input.crouchToggle) this.stance = this.stance === 'crouch' ? 'stand' : 'crouch';
     if (input.prone) this.stance = this.stance === 'prone' ? 'crouch' : 'prone';
+    this.stanceCd -= dt;
+    if ((input.crouchToggle || input.prone) && this.stanceCd <= 0) { this.stanceCd = 2; this.practice('dexterity', 0.4); }
     // Pace (mouse wheel), like Tarkov's walk speed
     if (input.wheel) {
       this.pace = Math.max(0.2, Math.min(1, Math.round((this.pace - input.wheel * 0.1) * 10) / 10));
@@ -194,12 +202,12 @@ export class Player {
 
     // Target speed (m/s) for an average person
     let maxSpeed;
-    if (this.prone) maxSpeed = 0.4;
-    else if (this.crouch) maxSpeed = 1.0 * Math.max(0.35, this.pace);
-    else if (wantSprint) maxSpeed = 4.6 * (1 + 0.03 * fit);
-    else maxSpeed = 1.6 * this.pace;
-    if (fwd < 0) maxSpeed *= 0.65;                 // walking backwards
-    else if (side && !fwd) maxSpeed *= 0.8;        // strafing
+    if (this.prone) maxSpeed = 0.4 * (1 + 0.15 * kA);
+    else if (this.crouch) maxSpeed = 1.0 * Math.max(0.35, this.pace) * (1 + 0.18 * kA);
+    else if (wantSprint) maxSpeed = 4.6 * (1 + 0.03 * fit) * (1 + 0.14 * kA);
+    else maxSpeed = 1.6 * this.pace * (1 + 0.12 * kA);
+    if (fwd < 0) maxSpeed *= 0.65 + 0.15 * kD;     // walking backwards
+    else if (side && !fwd) maxSpeed *= 0.8 + 0.12 * kD; // strafing
     if (this.ads > 0.3) maxSpeed *= 1 - 0.4 * this.ads;
     if (legsBroken) maxSpeed *= 0.5;
     if (this.fatigue > 80) maxSpeed *= 0.88;
@@ -224,8 +232,8 @@ export class Player {
     // get going and to stop. Barely any control in the air.
     const inertia = 1 + kg / 30;
     const speedingUp = Math.hypot(tvx, tvz) > Math.hypot(this.vel.x, this.vel.z);
-    let accel = (speedingUp ? (wantSprint ? 4.0 : 6.5) : 7.5) / inertia;
-    if (!grounded) accel = 0.8;
+    let accel = (speedingUp ? (wantSprint ? 4.0 : 6.5) : 7.5) / inertia * (1 + 0.6 * kD); // dexterity: snappier starts and stops
+    if (!grounded) accel = 0.8 * (1 + 0.8 * kD);
     const dvx = tvx - this.vel.x, dvz = tvz - this.vel.z;
     const dl = Math.hypot(dvx, dvz);
     const step = Math.min(dl, accel * dt);
@@ -265,8 +273,9 @@ export class Player {
       // vaulting through a window instead of jumping
     } else if (input.jump && grounded && !this.vault && this.stance !== 'prone' && this.stamina > 12 && kg < 60 && !legsBroken) {
       this.stance = 'stand'; this.crouch = false;
-      this.vy = 3.1 * (1 - 0.4 * over);
-      this.stamina -= 12 * (1 + over);
+      this.vy = 3.1 * (1 - 0.4 * over) * (1 + 0.1 * kA);
+      this.stamina -= 12 * (1 + over) * (1 - 0.3 * kA);
+      this.practice('agility', 1.5);
       sfx.step(0.1);
     }
     if (this.vault) {
@@ -297,12 +306,13 @@ export class Player {
     }
 
     // Stamina: sprinting drains it (more when overweight); recovers slowly.
-    if (wantSprint && moving) this.stamina = Math.max(0, this.stamina - 8.5 * (1 + over * 1.5) * (1 - 0.08 * fit) * dt);
+    if (wantSprint && moving) this.stamina = Math.max(0, this.stamina - 8.5 * (1 + over * 1.5) * (1 - 0.08 * fit) * (1 - 0.25 * kA) * dt);
     else {
       let regen = moving ? 3.5 : this.crouch ? 8 : 6.5;
       regen *= (1 + 0.1 * fit) * (1 - 0.5 * over) * (this.fatigue >= 100 ? 0.5 : 1) * (this.exhausted ? 0.6 : 1) * (this.coldMul || 1);
       this.stamina = Math.min(100, this.stamina + regen * dt);
     }
+    this.trainMovement(dt, moved, { wantSprint, fwd, side, bx, bz });
     // Heavy breathing when winded
     this.breathTimer -= dt;
     if ((this.exhausted || this.stamina < 15) && this.breathTimer <= 0) { this.breathTimer = 1.1; sfx.breath(); }
@@ -329,7 +339,7 @@ export class Player {
     // Camera
     const targetEye = this.prone ? 0.32 : this.crouch ? 1.1 : 1.65;
     // Stance changes take time (prone especially)
-    this.eye += (targetEye - this.eye) * Math.min(1, dt * (this.prone || this.eye < 0.6 ? 3 : 8));
+    this.eye += (targetEye - this.eye) * Math.min(1, dt * (this.prone || this.eye < 0.6 ? 3 : 8) * (1 + 0.8 * kD));
     this.landDip *= Math.exp(-dt * 8);
     const sp = Math.min(1, speed / 4.6);
     const bobAmt = grounded && moving ? (0.012 + 0.04 * sp) * (1 - this.ads * 0.85) * (this.prone ? 0.3 : 1) : 0;
@@ -546,6 +556,39 @@ export class Player {
   }
 
   // Space at an open or smashed window you're facing: climb through it.
+  // Movement skills improve with use. Agility: covering ground fast
+  // (sprinting, climbing stairs), jumping and vaulting. Dexterity: footwork
+  // (strafing, backing off, moving crouched, cutting sharply at speed),
+  // stance changes and vaulting.
+  trainMovement(dt, moved, m) {
+    const climb = Math.max(0, this.floorY - (this.prevFloorY ?? this.floorY));
+    this.prevFloorY = this.floorY;
+    if (moved < 1e-4 || this.vehicle || this.game.dev?.noclip) return;
+    if (climb > 0 && climb < 0.5) this.practice('agility', climb * 0.6); // (stairs, not elevators)
+    if (m.wantSprint) this.practice('agility', moved * 0.1);
+    if (!m.wantSprint && (m.side || m.fwd < 0)) this.practice('dexterity', moved * 0.08);
+    if (this.crouch && !this.prone) this.practice('dexterity', moved * 0.06);
+    // A sharp change of direction at speed (sampled, so a slow curve doesn't count)
+    this.dirT = (this.dirT ?? 0) - dt;
+    this.dodgeCd -= dt;
+    if (this.dirT <= 0 && moved / dt > 0.5) {
+      this.dirT = 0.35;
+      const dx = (this.pos.x - m.bx) / moved, dz = (this.pos.z - m.bz) / moved, pd = this.prevDir;
+      if (pd && this.speed > 2.2 && this.dodgeCd <= 0 && dx * pd[0] + dz * pd[1] < 0.5) { this.dodgeCd = 1.2; this.practice('dexterity', 1); }
+      this.prevDir = [dx, dz];
+    }
+  }
+
+  // Bank practice; whole points go to the skill
+  practice(stat, n) {
+    this.moveXp[stat] += n;
+    if (this.moveXp[stat] >= 1) {
+      const k = Math.floor(this.moveXp[stat]);
+      this.moveXp[stat] -= k;
+      gainXp(this.game, stat, k);
+    }
+  }
+
   tryVault(over = 0) {
     const fx = -Math.sin(this.yaw), fz = -Math.cos(this.yaw);
     let best = null, bd = 1.3;
@@ -563,8 +606,9 @@ export class Player {
     if (!best) return false;
     const { w, nx, nz, side, along } = best;
     const ux = w.ax === 'x' ? 1 : 0, uz = w.ax === 'x' ? 0 : 1;
+    this.practice('agility', 1.5); this.practice('dexterity', 1.5);
     this.vault = {
-      t: 0, dur: 0.85 + over * 0.7, w,
+      t: 0, dur: (0.85 + over * 0.7) / (1 + 0.4 * (this.skill.dexterity || 0) / 8), w,
       from: { x: this.pos.x, z: this.pos.z },
       to: { x: w.x + ux * along - nx * side * 0.75, z: w.z + uz * along - nz * side * 0.75 },
     };

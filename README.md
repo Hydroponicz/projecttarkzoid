@@ -12,7 +12,7 @@ npm run build    # static build in dist/
 
 ## How it plays
 
-1. **Create a survivor.** Pick a name and a profession: Unemployed, Police Officer, Fire Officer, Carpenter, Nurse, Burglar, Farmer or Veteran. Each comes with skill bonuses and a starting kit. Then spend points on Strength, Fitness, Aiming, Carpentry, Stealth, First Aid and Farming.
+1. **Create a survivor.** Pick a name and a profession: Unemployed, Police Officer, Fire Officer, Carpenter, Nurse, Burglar, Farmer or Veteran. Each comes with skill bonuses and a starting kit. Then spend points on Strength, Fitness, Agility, Dexterity, Aiming, Guns, Carpentry, Stealth, First Aid and Farming.
 2. **Follow the guide.** A new character starts a ten-step "First day" tutorial, shown top right. It covers moving, scavenging, the inventory, eating, arming yourself, a first kill, claiming a safehouse, finding a trader, making a deal and fortifying. Each step gives a small reward. After that, five chapters of goals lead the way:
    1. **Dig In**: build, sleep, stock your safehouse, survive to day 3, harvest a crop you grew.
    2. **Trade Routes**: find every trader, finish jobs, reach loyalty 2.
@@ -202,6 +202,10 @@ Reloads, ammo and every other "do you have it" check look through your pockets, 
   - **Stance:** **C** toggles crouch and **X** prone. Both make you harder to see and steady your aim.
   - **Jumping:** **Space** jumps about 0.45 m and costs stamina.
   - **Stamina:** sprinting drains it. Run it dry and you're winded: you can't sprint again until it recovers, and you hear heavy breathing.
+  - **Movement skills:** two skills grow as you move.
+    - **Agility** makes you faster on your feet. At 8 you walk about 12% faster and sprint 14% faster, jump higher for less stamina, and sprinting drains less stamina. It rises as you sprint, jump, vault through windows and climb stairs.
+    - **Dexterity** makes you quicker to respond. You get up to speed and stop sooner (less slide after a sprint), strafe and back off faster, steer better in the air, change stance and vault faster, and your gun is thrown around less when you change direction. It rises as you strafe and back off, move crouched, cut sharply at speed, change stance and vault.
+    - Fire Officers start with Agility +1 and Burglars with Dexterity +1.
   - **Weight:** every item weighs something. Over 25 kg slows you and drains stamina faster; over 45 kg you can't sprint; over 60 kg you can only shuffle.
 - **Weapons.** Melee weapons are silent: knife, hammer, crowbar, and an axe that also chops trees.
 
@@ -412,7 +416,7 @@ Buildings and streets are textured with generated maps: brick, wood siding, conc
 | `src/furniture.js` | Box-built furniture and container models (kitchens, beds, sofas, shelving, racks, desks…) |
 | `src/player.js` | First-person controller, leaning, melee, body-part health, status effects |
 | `src/weapons.js` | Firearms: optics, PIP scopes, sway/recoil physics, reload timelines and condition variants, magazines, attachments |
-| `src/skills.js` | XP and levelling for skills that rise with use (Guns) |
+| `src/skills.js` | XP and levelling for skills that rise with use (Guns, Agility, Dexterity) |
 | `src/useanim.js` | Item-use animations: eating, drinking, bandaging, medkits, pills, injections, surgery |
 | `src/worldtex.js` | Generated building, road, ground and grime textures; the world-space wall material |
 | `src/storeys.js` | Multi-storey buildings: floors laid out storey by storey, the stairwell, slabs, the elevator |

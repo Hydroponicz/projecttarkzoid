@@ -4,7 +4,7 @@
 import { MAX_SKILL } from './character.js';
 
 export const XP_TABLE = [0, 30, 80, 150, 250, 380, 540, 730, 950];
-const NAMES = { guns: 'Guns' };
+const NAMES = { guns: 'Guns', agility: 'Agility', dexterity: 'Dexterity' };
 
 export function gainXp(game, stat, n) {
   const ch = game.profile;

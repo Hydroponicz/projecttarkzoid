@@ -5,6 +5,8 @@ import { makeGrid, addItem } from './inventory.js';
 export const STATS = {
   strength: { name: 'Strength', desc: 'Melee damage, less stamina per swing' },
   fitness: { name: 'Fitness', desc: 'Sprint speed, stamina drain and recovery' },
+  agility: { name: 'Agility', desc: 'Faster on your feet: walking and sprinting speed, higher and cheaper jumps. Rises as you sprint, jump, vault and climb' },
+  dexterity: { name: 'Dexterity', desc: 'Quicker to start, stop and turn; strafe and back off faster; nimble stance changes and vaults. Rises as you dodge, strafe and move crouched' },
   aiming: { name: 'Aiming', desc: 'Steadier aim, less recoil, faster reloads' },
   guns: { name: 'Guns', desc: 'Hip-fire accuracy: at 8, hip fire is as accurate as aiming. Rises as you shoot' },
   carpentry: { name: 'Carpentry', desc: 'Unlocks doors and beds (2), sturdier builds' },
@@ -19,10 +21,10 @@ const BASE_POINTS = 6;
 export const PROFESSIONS = {
   unemployed: { name: 'Unemployed', desc: 'No training, but plenty of free points.', points: 8, bonus: {}, kit: ['knife'] },
   police: { name: 'Police Officer', desc: 'Sidearm and steady hands.', points: 0, bonus: { aiming: 2, fitness: 1, guns: 1 }, kit: [['pm', { loaded: 8 }], ['mag_pm', { rounds: 8 }], ['ammo_9x18', { count: 16 }], 'bandage'] },
-  fire: { name: 'Fire Officer', desc: 'Strong, fit, carries an axe.', points: 0, bonus: { strength: 1, fitness: 2 }, kit: ['axe'] },
+  fire: { name: 'Fire Officer', desc: 'Strong, fit, carries an axe.', points: 0, bonus: { strength: 1, fitness: 2, agility: 1 }, kit: ['axe'] },
   carpenter: { name: 'Carpenter', desc: 'Builds from day one. Toolbag included.', points: 1, bonus: { carpentry: 3 }, kit: ['hammer', 'bp_scav', ['planks', { count: 8 }], ['nails', { count: 40 }], 'saw'] },
   nurse: { name: 'Nurse', desc: 'Patches people up. Brought supplies.', points: 1, bonus: { firstaid: 3 }, kit: ['knife', 'ai2', 'bandage', 'bandage', 'painkillers'] },
-  burglar: { name: 'Burglar', desc: 'Quiet on their feet. Crowbar in hand.', points: 0, bonus: { stealth: 3 }, kit: ['crowbar'] },
+  burglar: { name: 'Burglar', desc: 'Quiet on their feet. Crowbar in hand.', points: 0, bonus: { stealth: 3, dexterity: 1 }, kit: ['crowbar'] },
   farmer: { name: 'Farmer', desc: 'Grows food from dirt. Seeds, a shovel and a can.', points: 0, bonus: { farming: 3, strength: 1 }, kit: ['shovel', 'bp_scav', ['watering_can', { water: 10 }], ['seeds_potato', { count: 4 }], ['seeds_carrot', { count: 4 }], 'apple'] },
   veteran: { name: 'Veteran', desc: 'Seen worse. Brought a shotgun.', points: -2, bonus: { aiming: 3, strength: 1, guns: 2 }, kit: [['mp133', { loaded: 6 }], ['ammo_12g', { count: 8 }], 'knife'] },
 };
