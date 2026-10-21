@@ -1,5 +1,6 @@
 import * as THREE from 'three';
-import { buildWorld, setDoor, setWindow, WORLD_VERSION, layoutPrint } from './world.js';
+import { buildWorld, setDoor, setWindow, WORLD_VERSION } from './world.js';
+import { callLift } from './levels.js';
 import { Zombies } from './zombies.js';
 import { Player } from './player.js';
 import { Input } from './input.js';
@@ -253,30 +254,41 @@ class Game {
       s.worldVersion = WORLD_VERSION;
     }
     this.world = buildWorld(this.scene, s.seed);
+    this.fx.floorUnder = (x, z, y) => this.world.levels.floorUnder(x, z, y);
     // The same check by fingerprint, for layout changes that came without a
     // WORLD_VERSION bump (saves from before the fingerprint: their traders
     // must still stand in their buildings, and the counts must match).
-    const layout = layoutPrint(this.world);
-    if (s.world && (s.layout ? s.layout !== layout : !this.savedWorldFits(s.world))) {
+    // The fingerprint has two parts: the town as first laid out, and the
+    // buildings with upper floors (saves from before those have just the first).
+    const lay = this.world.layout;
+    const savedLegacy = typeof s.layout === 'string' ? s.layout : s.layout?.legacy;
+    if (s.world && (savedLegacy ? savedLegacy !== lay.legacy : !this.savedWorldFits(s.world))) {
       this.worldRegenerated = true;
       s.world = null;
       s.safehouse = this.safehouse = null;
+    } else if (s.world && s.layout?.extra !== lay.extra) {
+      // Upper floors laid out differently (or new): their loot, doors and windows start fresh
+      const L = this.world.slots.legacy;
+      s.world.containers.length = Math.min(s.world.containers.length, L.containers);
+      s.world.doors.length = Math.min(s.world.doors.length, L.doors);
+      if (s.world.windows) s.world.windows.length = Math.min(s.world.windows.length, L.windows);
     }
-    s.layout = layout;
+    s.layout = lay;
     this.ragdolls = new RagdollSystem(this);
     const w = s.world;
     this.weather = new Weather(this, w?.weather || null);
     if (w) {
-      w.containers.forEach((grid, i) => { if (this.world.containers[i]) this.world.containers[i].grid = grid; });
+      const slots = this.world.slots;
+      w.containers.forEach((grid, i) => { const c = slots.containers[i]; if (c && grid) c.grid = grid; });
       for (const c of w.extra) this.addExtraContainer(c);
       w.doors.forEach((d, i) => {
-        const door = this.world.doors[i];
-        if (!door) return;
+        const door = slots.doors[i];
+        if (!door || !d) return;
         door.hp = d.hp;
         if (d.broken) this.breakDoor(door, true); else { setDoor(door, d.open); this.doorTint(door); }
       });
       for (const i of w.felled) this.world.fellTree(i);
-      (w.windows || []).forEach((st, i) => { const wn = this.world.windows[i]; if (wn && st) setWindow(wn, st === 1 ? 'open' : 'broken'); });
+      (w.windows || []).forEach((st, i) => { const wn = slots.windows[i]; if (wn && st) setWindow(wn, st === 1 ? 'open' : 'broken'); });
     }
     this.builder.structures = [];
     this.zombies = this.player = null;
@@ -325,7 +337,7 @@ class Game {
     }
     const w = s.world;
     if (!w) return;
-    for (const g of w.containers) g.items.forEach(migrateItem);
+    for (const g of w.containers) g?.items.forEach(migrateItem);
     for (const c of w.extra) c.grid.items.forEach(migrateItem);
     for (const st of w.structures) st.grid?.items.forEach(migrateItem);
   }
@@ -353,16 +365,17 @@ class Game {
     ct.name = c.name;
     ct.grid = c.grid;
     ct.color = c.color;
-    if (c.type === 'drop') { ct.mesh = this.dropMesh(c.x, c.z); return ct; }
+    if (c.base) { ct.base = c.base; ct.y = (ct.y || 0) + c.base; } // on an upper floor
+    if (c.type === 'drop') { ct.mesh = this.dropMesh(c.x, c.z, c.base || 0); return ct; }
     // Bodies are ragdolls: a fresh one handed over by whoever died, or one
     // rebuilt from its saved pose (older saves: dropped and settled in place).
     ct.look = c.look || { kind: 'survivor', skin: 0x8a7a6a, top: c.color ?? 0x4a4a3a, bottom: 0x2a2a2a };
     if (c.ragdoll) ct.ragdoll = c.ragdoll;
     else {
-      const look = ct.look, spec = { kind: look.kind, look, mats: lookMats(look) };
+      const look = ct.look, spec = { kind: look.kind, look, mats: lookMats(look), floor: c.base || 0 };
       if (c.pose) spec.pose = c.pose;
       else {
-        spec.matrix = new THREE.Matrix4().makeRotationY(Math.random() * Math.PI * 2).setPosition(c.x, 0, c.z);
+        spec.matrix = new THREE.Matrix4().makeRotationY(Math.random() * Math.PI * 2).setPosition(c.x, c.base || 0, c.z);
         spec.vel = new THREE.Vector3(Math.random() - 0.5, 0, Math.random() - 0.5);
         spec.tone = 0.6;
         spec.settleNow = true;
@@ -372,16 +385,16 @@ class Game {
     return ct;
   }
 
-  dropMesh(x, z) {
+  dropMesh(x, z, y = 0) {
     const m = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.2, 0.3), new THREE.MeshStandardMaterial({ color: 0x5a5a3a }));
-    m.position.set(x, 0.1, z);
+    m.position.set(x, y + 0.1, z);
     this.world.group.add(m);
     return m;
   }
 
   savedWorldFits(w) {
     const W = this.world;
-    if (w.containers.length !== W.generatedContainers || w.doors.length !== W.doors.length) return false;
+    if (w.containers.length !== W.slots.legacy.containers || w.doors.length !== W.slots.legacy.doors) return false;
     return (w.traders || []).every((t) => {
       const b = W.buildings[t.b];
       return b && t.spot && t.spot.x > b.x0 && t.spot.x < b.x1 && t.spot.z > b.z0 && t.spot.z < b.z1;
@@ -397,14 +410,14 @@ class Game {
     this.save.safehouse = this.safehouse;
     this.save.character = this.profile;
     this.save.world = {
-      containers: W.containers.slice(0, W.generatedContainers).map((c) => c.grid),
+      containers: W.slots.containers.map((c) => (c ? c.grid : null)),
       extra: W.containers.slice(W.generatedContainers).map((c) => ({
-        type: c.type, name: c.name, x: +c.x.toFixed(2), z: +c.z.toFixed(2), grid: c.grid, color: c.color, look: c.look,
+        type: c.type, name: c.name, x: +c.x.toFixed(2), z: +c.z.toFixed(2), base: c.base || undefined, grid: c.grid, color: c.color, look: c.look,
         pose: c.ragdoll && !c.ragdoll.dead && c.ragdoll.sleeping ? c.ragdoll.pose() : undefined,
       })),
-      doors: W.doors.map((d) => ({ open: d.open, hp: d.hp, broken: d.broken || undefined })),
+      doors: W.slots.doors.map((d) => (d ? { open: d.open, hp: d.hp, broken: d.broken || undefined } : null)),
       felled: [...W.felled],
-      windows: W.windows.map((wn) => (wn.state === 'open' ? 1 : wn.state === 'broken' ? 2 : 0)),
+      windows: W.slots.windows.map((wn) => (wn && wn.state === 'open' ? 1 : wn && wn.state === 'broken' ? 2 : 0)),
       structures: this.builder.serialize(),
       zombies: this.zombies.serialize(),
       survivors: this.survivors.serialize(),
@@ -461,7 +474,7 @@ class Game {
     const grid = makeGrid(10, 10);
     for (const k in ch.equip) if (ch.equip[k]) addItem(grid, ch.equip[k]) || (grid.h += 4, addItem(grid, ch.equip[k]));
     for (const it of ch.pockets.items) addItem(grid, it);
-    const corpse = this.addExtraContainer({ type: 'body', name: `${ch.name}'s corpse`, x: p.pos.x, z: p.pos.z, grid, color: 0x2a3020, look: { kind: 'survivor', skin: 0xc09070, top: 0x2a3020, bottom: 0x2a3a4a, pack: 0x3a3a2a } });
+    const corpse = this.addExtraContainer({ type: 'body', name: `${ch.name}'s corpse`, x: p.pos.x, z: p.pos.z, base: p.floorY > 0.01 ? p.floorY : undefined, grid, color: 0x2a3020, look: { kind: 'survivor', skin: 0xc09070, top: 0x2a3020, bottom: 0x2a3a4a, pack: 0x3a3a2a } });
     corpse.grid = grid;
     const days = Math.floor((this.time - ch.spawnTime) / 1440);
     this.save.graveyard = this.save.graveyard || [];
@@ -608,8 +621,9 @@ class Game {
 
   dropItem(it) {
     const pp = this.player.pos;
-    let c = this.world.containers.find((k) => k.type === 'drop' && Math.hypot(k.x - pp.x, k.z - pp.z) < 1.5);
-    if (!c) c = this.addExtraContainer({ type: 'drop', name: 'Dropped items', x: pp.x, z: pp.z, grid: makeGrid(8, 8) });
+    const fy = this.player.floorY;
+    let c = this.world.containers.find((k) => k.type === 'drop' && Math.hypot(k.x - pp.x, k.z - pp.z) < 1.5 && Math.abs((k.base || 0) - fy) < 1);
+    if (!c) c = this.addExtraContainer({ type: 'drop', name: 'Dropped items', x: pp.x, z: pp.z, base: fy > 0.01 ? fy : undefined, grid: makeGrid(8, 8) });
     if (!addItem(c.grid, it)) { c.grid.w += 2; c.grid.h += 2; addItem(c.grid, it); }
   }
 
@@ -638,6 +652,7 @@ class Game {
     for (const d of this.world.doors) if (!d.broken) out.push(d);
     for (const s of this.builder.structures) if (s.grid || s.door || s.type === 'bed' || s.type === 'rain_barrel') out.push(s);
     for (const s of this.survivors.list) if (!s.dead && s.disp !== 'hostile') out.push(s);
+    out.push(...this.world.levels.interactables()); // elevators
     return out;
   }
 
@@ -649,6 +664,7 @@ class Game {
       const dx = c.x - p.pos.x, dz = c.z - p.pos.z;
       const dist = Math.hypot(dx, dz), d = Math.max(0, dist - (c.reach || 0)); // reach: big things (ponds)
       if (d > 2.3) continue;
+      if (Math.abs((c.base || 0) - p.floorY) > 1.2) continue; // things on other floors
       const dot = dist > 0.6 + (c.reach || 0) * 0.5 ? (dx * fx + dz * fz) / dist : 1;
       if (dot < 0.7) continue;
       const score = d * (2 - dot);
@@ -663,6 +679,12 @@ class Game {
       this.zombies.updateNavRegion(t.box.minX, t.box.minZ, t.box.maxX, t.box.maxZ);
       sfx.door();
       this.zombies.noise(t.x, t.z, 3);
+    } else if (t.kind === 'lift') {
+      callLift(t.lift, t.level);
+      this.hud.message(t.lift.level === t.level && t.lift.state !== 'moving' ? 'The doors slide open.' : 'You press the call button. The elevator is on its way.', 2);
+    } else if (t.kind === 'liftcar') {
+      const l = t.lift, name = (L) => (L === 0 ? 'Ground floor' : `Floor ${L + 1}`);
+      this.survivors.openMenu('Elevator', `${name(l.level)}. Which floor?`, Array.from({ length: l.top + 1 }, (_, L) => [name(L) + (L === l.level ? ' (here)' : ''), () => callLift(l, L)]));
     } else if (t.kind === 'vehicle') {
       this.vehicles.openPanel(t.v);
     } else if (t.kind === 'pump') {
@@ -756,9 +778,9 @@ class Game {
     const p = this.player;
     // Smash a window or hack at a door in front of you
     const fx = -Math.sin(p.yaw), fz = -Math.cos(p.yaw);
-    const ahead = (o, r) => { const dx = o.x - p.pos.x, dz = o.z - p.pos.z, d = Math.hypot(dx, dz); return d < r && (dx * fx + dz * fz) / (d || 1) > 0.6; };
+    const ahead = (o, r) => { const dx = o.x - p.pos.x, dz = o.z - p.pos.z, d = Math.hypot(dx, dz); return d < r && (dx * fx + dz * fz) / (d || 1) > 0.6 && Math.abs((o.base || 0) - p.floorY) < 1.2; };
     const win = this.world.windows.find((w) => w.state === 'closed' && ahead(w, 1.7));
-    if (win) { this.breakWindow(win, new THREE.Vector3(win.x, (win.sill + win.top) / 2, win.z), new THREE.Vector3(fx, 0, fz)); return; }
+    if (win) { this.breakWindow(win, new THREE.Vector3(win.x, (win.base || 0) + (win.sill + win.top) / 2, win.z), new THREE.Vector3(fx, 0, fz)); return; }
     const dmg = key ? ITEMS[key].damage : 0;
     const door = (key === 'axe' || key === 'crowbar') && this.world.doors.find((d) => !d.broken && !d.open && ahead(d, 1.8));
     if (door) { this.damageStructure(door, dmg * 0.6, p.pos); return; }
@@ -931,7 +953,8 @@ class Game {
     if (this.progress.panelOpen && (pressed('Escape') || this.invOpen)) this.progress.togglePanel(false);
     if (this.progress.panelOpen && pressed('KeyK') && this.progress.tutorialActive) { this.progress.skipTutorial(); this.progress.drawPanel(); }
     const driving = !!this.player.vehicle;
-    if (pressed('KeyB') && !this.invOpen && !driving) {
+    if (pressed('KeyB') && !this.invOpen && !driving && this.player.floorY > 0.1 && !this.builder.active) this.hud.message('You can only build on the ground floor.', 2);
+    else if (pressed('KeyB') && !this.invOpen && !driving) {
       this.builder.toggle();
       this.hud.message(this.builder.active ? 'Build mode: 1–8 select, R rotate, LMB build, X dismantle, B exit' : 'Build mode off');
     }
@@ -960,6 +983,7 @@ class Game {
     this.ragdolls.update(dt);
     this.traders.update(dt);
     this.vehicles.update(dt);
+    this.world.levels.update(dt, this); // elevators
     this.farming.update(dt);
     for (const d of this.shaking) {
       d.shake -= dt;

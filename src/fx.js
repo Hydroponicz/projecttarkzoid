@@ -105,6 +105,10 @@ const decalMat = (tex) => new THREE.MeshBasicMaterial({ map: tex, transparent: t
 const UP = new THREE.Vector3(0, 1, 0);
 
 export class FX {
+  // Height of the floor under a point (the game points this at the world's
+  // storeys; until then everything lands on the ground)
+  floorUnder() { return 0; }
+
   constructor(scene) {
     this.scene = scene;
     this.casings = [];
@@ -161,13 +165,13 @@ export class FX {
     m.position.copy(pos);
     m.castShadow = true;
     this.scene.add(m);
-    this.casings.push({ m, v: vel, spin: new THREE.Vector3(Math.random() * 30, Math.random() * 30, Math.random() * 30), life: 5, bounced: false });
+    this.casings.push({ m, v: vel, spin: new THREE.Vector3(Math.random() * 30, Math.random() * 30, Math.random() * 30), life: 5, bounced: false, floor: this.floorUnder(pos.x, pos.z, pos.y) });
     if (this.casings.length > 60) this.scene.remove(this.casings.shift().m);
   }
 
   particle(pos, vel, color, size, life, opts = {}) {
     if (this.parts.length >= MAX_PARTS) this.parts.shift();
-    this.parts.push({ p: pos.clone(), v: vel, color, size, life, max: life, drag: opts.drag ?? 0.2, grav: opts.grav ?? 9, splat: opts.splat || 0, grow: opts.grow || 0 });
+    this.parts.push({ p: pos.clone(), v: vel, color, size, life, max: life, drag: opts.drag ?? 0.2, grav: opts.grav ?? 9, splat: opts.splat || 0, grow: opts.grow || 0, floor: opts.splat ? this.floorUnder(pos.x, pos.z, pos.y) : 0 });
   }
 
   // Generic burst (kept for other callers).
@@ -208,12 +212,12 @@ export class FX {
       else this.splats.add(opts.wall.point, opts.wall.normal, size);
     }
     // Drips under the wound
-    if (Math.random() < 0.7) this.splats.add(_p.set(p.x + d.x * 0.4 + (Math.random() - 0.5) * 0.3, GROUND_Y, p.z + d.z * 0.4 + (Math.random() - 0.5) * 0.3), UP, 0.25 + Math.random() * 0.35);
+    if (Math.random() < 0.7) this.splats.add(_p.set(p.x + d.x * 0.4 + (Math.random() - 0.5) * 0.3, this.floorUnder(p.x, p.z, p.y) + GROUND_Y, p.z + d.z * 0.4 + (Math.random() - 0.5) * 0.3), UP, 0.25 + Math.random() * 0.35);
   }
 
   // A pool of blood slowly spreading under a body.
-  pool(x, z, size = 1.2) {
-    this.pools.add(new THREE.Vector3(x, GROUND_Y - 0.003, z), UP, size, 0.12);
+  pool(x, z, size = 1.2, floor = 0) {
+    this.pools.add(new THREE.Vector3(x, floor + GROUND_Y - 0.003, z), UP, size, 0.12);
   }
 
   impact(p, normal, parent, inset) {
@@ -242,8 +246,8 @@ export class FX {
       c.v.y -= 9.8 * dt;
       c.m.position.addScaledVector(c.v, dt);
       c.m.rotation.x += c.spin.x * dt; c.m.rotation.y += c.spin.y * dt; c.m.rotation.z += c.spin.z * dt;
-      if (c.m.position.y < 0.01) {
-        c.m.position.y = 0.01;
+      if (c.m.position.y < c.floor + 0.01) {
+        c.m.position.y = c.floor + 0.01;
         if (!c.bounced) { sfx.casing(); c.bounced = true; }
         c.v.y = -c.v.y * 0.35; c.v.x *= 0.5; c.v.z *= 0.5; c.spin.multiplyScalar(0.5);
         if (Math.abs(c.v.y) < 0.3) { c.rest = true; c.m.rotation.set(0, c.m.rotation.y, 0); }
@@ -256,7 +260,7 @@ export class FX {
       p.v.y -= p.grav * dt;
       p.v.multiplyScalar(Math.max(0, 1 - p.drag * dt));
       p.p.addScaledVector(p.v, dt);
-      if (p.p.y < GROUND_Y && p.splat) { this.splats.add(_p.set(p.p.x, GROUND_Y, p.p.z), UP, p.splat); p.life = 0; }
+      if (p.p.y < p.floor + GROUND_Y && p.splat) { this.splats.add(_p.set(p.p.x, p.floor + GROUND_Y, p.p.z), UP, p.splat); p.life = 0; }
       if (p.life <= 0 || p.p.y < 0) continue;
       this.parts[n++] = p;
       const s = p.size * (1 + p.grow * (1 - p.life / p.max) * 10);

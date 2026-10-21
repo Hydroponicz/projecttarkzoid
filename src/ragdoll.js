@@ -84,6 +84,7 @@ class Ragdoll {
     this.onSettle = spec.onSettle;
     this.look = spec.look;
     this.alive = !!spec.alive;
+    this.floor = spec.floor || 0; // height of the floor it lies on (upper storeys)
     this.sleeping = false;
     this.still = 0;
     this.age = 0;
@@ -393,10 +394,10 @@ class Ragdoll {
     const p = this.p, q = this.q, hash = this.sys.hash;
     for (let i = 0; i < N; i++) {
       const r = this.r[i], pt = p[i];
-      // Ground
-      if (pt.y < r) {
+      // Ground (or the storey's floor)
+      if (pt.y < this.floor + r) {
         const impact = q[i].y - pt.y;
-        pt.y = r;
+        pt.y = this.floor + r;
         q[i].y = pt.y; // inelastic: kill the downward velocity on contact
         if (friction) { q[i].x += (pt.x - q[i].x) * 0.35; q[i].z += (pt.z - q[i].z) * 0.35; }
         if ((i === PEL || i === CHE) && !this.landed && impact > 0.02) { this.landed = true; this.sys.thud(pt, impact); }
@@ -405,14 +406,15 @@ class Ragdoll {
       for (const b of hash.query(pt.x - r, pt.z - r, pt.x + r, pt.z + r, this.sys.tmp)) {
         if (b.noCollide) continue;
         // Windows: glass stops a body; an open or smashed one only has its sill.
-        const top = b.window ? (b.window.state === 'closed' ? 3 : b.window.sill) : (b.h ?? 3);
-        if (pt.y - r > top) continue;
+        const wb = b.window?.base || 0;
+        const top = b.window ? wb + (b.window.state === 'closed' ? 3 : b.window.sill) : (b.h ?? 3);
+        if (pt.y - r > top || pt.y + r < (b.y0 ?? 0)) continue;
         const cx = Math.max(b.minX, Math.min(pt.x, b.maxX)), cz = Math.max(b.minZ, Math.min(pt.z, b.maxZ));
         const dx = pt.x - cx, dz = pt.z - cz, d2 = dx * dx + dz * dz;
         if (d2 >= r * r) continue;
         // Only a limb coming down onto a low object rests on it; one that
         // meets it from the side is pushed aside (no popping up onto sills).
-        if (top < 1.2 && q[i].y - r >= top - 0.04) { pt.y = top + r; if (q[i].y < pt.y) q[i].y = pt.y; continue; }
+        if (top - (b.y0 ?? 0) < 1.2 && q[i].y - r >= top - 0.04) { pt.y = top + r; if (q[i].y < pt.y) q[i].y = pt.y; continue; }
         const ox = pt.x, oz = pt.z;
         if (d2 > 1e-8) { const d = Math.sqrt(d2); pt.x += (dx / d) * (r - d); pt.z += (dz / d) * (r - d); }
         else {

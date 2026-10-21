@@ -437,6 +437,7 @@ export class DevConsole {
     const p = this.game.player;
     x = Math.max(-HALF + 1, Math.min(HALF - 1, x)); z = Math.max(-HALF + 1, Math.min(HALF - 1, z));
     p.pos.set(x, 0, z);
+    p.floorY = 0; // (onto the ground floor)
     moveCircle(this.game.world.hash, p.pos, p.radius, 0, 0);
     this.log(`Teleported to ${x.toFixed(1)}, ${z.toFixed(1)}`);
   }

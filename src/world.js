@@ -9,6 +9,8 @@ import { makeGrid, addItem } from './inventory.js';
 import { createFurnisher, FOOT, footRect } from './furniture.js';
 import { buildCountryside, plantTrees } from './countryside.js';
 import { worldTextures, wallMaterial, WALL, worldUV, mergeableMaterial } from './worldtex.js';
+import { Levels } from './levels.js';
+import { buildStoreys, STOREYS } from './storeys.js';
 
 export const HALF = 220;      // map half-size (town in the middle, countryside around it)
 // Bump when generation changes so old saves don't map loot onto new layouts.
@@ -33,7 +35,9 @@ export function mulberry32(seed) {
 // The world is generated deterministically from a seed so a saved game only
 // needs to store what changed (container contents, doors, structures).
 export function buildWorld(scene, seed) {
-  const rand = mulberry32(seed);
+  // (the sequence can be swapped: buildings rebuilt with upper floors use their own)
+  let RNG = mulberry32(seed);
+  const rand = () => RNG();
   const rnd = (a, b) => a + rand() * (b - a);
   const pick = (arr) => arr[Math.floor(rand() * arr.length)];
   const shuffle = (arr) => { for (let i = arr.length - 1; i > 0; i--) { const j = Math.floor(rand() * (i + 1)); [arr[i], arr[j]] = [arr[j], arr[i]]; } return arr; };
@@ -58,9 +62,11 @@ export function buildWorld(scene, seed) {
   const fur = createFurnisher(group);
 
   const ctAssets = {}; // shared geometry/material per container type
+  const allBoxes = [];  // every collider, in order (so a building's can be found again)
   const addBox = (minX, minZ, maxX, maxZ, props) => {
     const b = { minX, minZ, maxX, maxZ, blocksShot: true, blocksSight: true, h: WALL_H, ...props };
     hash.insert(b);
+    allBoxes.push(b);
     return b;
   };
 
@@ -302,6 +308,8 @@ export function buildWorld(scene, seed) {
       if (o.type === 'door') {
         seg(g0, g1, o.top ?? 2.2, WALL_H); // lintel
         out.doors.push({ ...pos, ax, w: o.w });
+      } else if (o.type === 'gap') {
+        seg(g0, g1, o.top ?? 2.4, WALL_H); // an opening with no door of its own (elevator doors)
       } else if (o.type === 'garage') {
         seg(g0, g1, 2.7, WALL_H); // a wide opening with the shutter rolled up
         if (o.out) {
@@ -789,8 +797,11 @@ export function buildWorld(scene, seed) {
     const interiorColor = kind.interior ? pick(kind.interior) : color;
     const x0 = cx - w / 2, x1 = cx + w / 2, z0 = cz - d / 2, z1 = cz + d / 2;
     const zc = cz + rnd(-1, 1); // corridor centre line
-    const b = { x0, x1, z0, z1, kind: kindName, name: null, doors: [], windows: [], index: buildings.length };
+    const b = { x0, x1, z0, z1, kind: kindName, name: null, doors: [], windows: [], index: buildings.length, color, interiorColor, zc };
     const bDoors = b.doors;
+    // Buildings that get real upper floors are rebuilt later: note everything
+    // this first version makes, so it can be taken away again.
+    const rec = STOREYS[kindName] ? { ch: group.children.length, walls: walls.length, boxes: allBoxes.length, cont: containers.length, doors: doors.length, wins: windows.length, beds: beds.length, zs: zombieSpawns.length } : null;
     const keepOut = [];
     let rooms = [];
     const ext = { n: [], s: [], w: [], e: [] };   // openings in each outside wall
@@ -1037,6 +1048,12 @@ export function buildWorld(scene, seed) {
     }
     if (kind.zombies) zombieSpawns.push({ x: cx, z: cz, r: Math.min(w, d) / 2 - 1, n: kind.zombies.n, type: kind.zombies.type || null });
     b.name = name;
+    if (rec) {
+      b.legacy = {
+        children: group.children.slice(rec.ch), walls: walls.slice(rec.walls), boxes: allBoxes.slice(rec.boxes), containers: containers.slice(rec.cont),
+        doors: doors.slice(rec.doors), windows: windows.slice(rec.wins), beds: beds.slice(rec.beds), spawns: zombieSpawns.slice(rec.zs),
+      };
+    }
     buildings.push(b);
     return b;
   }
@@ -1284,18 +1301,29 @@ export function buildWorld(scene, seed) {
   }
 
 
+  // The single-storey stand-ins for buildings that get real upper floors
+  // come out again (their slots in the saved lists stay, empty)
+  const multi = buildings.filter((b) => b.legacy);
+  for (const b of multi) {
+    const L = b.legacy;
+    for (const o of L.children) group.remove(o);
+    for (const w of L.walls) w.retired = true;
+    for (const x of L.boxes) hash.remove(x);
+    for (const k of [...L.containers, ...L.doors, ...L.windows]) k.retired = true;
+    for (const bd of L.beds) beds.splice(beds.indexOf(bd), 1);
+    for (const sp of L.spawns) zombieSpawns.splice(zombieSpawns.indexOf(sp), 1);
+  }
+
   // Walls → instanced meshes (the town, and one per countryside chunk)
   const wallGeo = new THREE.BoxGeometry(1, 1, 1);
   const wallMat = wallMaterial(); // brick / clapboard / concrete / plaster in world space
   const m4 = new THREE.Matrix4();
   const colr = new THREE.Color();
-  const wallRegions = new Map();
-  for (const w of walls) {
-    const k = regionOf((w.minX + w.maxX) / 2, (w.minZ + w.maxZ) / 2);
-    if (!wallRegions.has(k)) wallRegions.set(k, []);
-    wallRegions.get(k).push(w);
-  }
-  for (const list of wallRegions.values()) {
+  function instanceWalls(list0, shade, far) {
+    // (every wall draws its shade, retired ones too, so the sequence is as it was)
+    const shades = list0.map(() => shade());
+    const list = list0.filter((w) => !w.retired), sh = shades.filter((_, i) => !list0[i].retired);
+    if (!list.length) return;
     const geo = wallGeo.clone();
     geo.setAttribute('pattern', new THREE.InstancedBufferAttribute(new Float32Array(list.map((w) => w.pattern ?? WALL.concrete)), 1));
     const wallMesh = new THREE.InstancedMesh(geo, wallMat, list.length);
@@ -1304,14 +1332,22 @@ export function buildWorld(scene, seed) {
       m4.makeScale(w.maxX - w.minX, y1 - y0, w.maxZ - w.minZ);
       m4.setPosition((w.minX + w.maxX) / 2, (y0 + y1) / 2, (w.minZ + w.maxZ) / 2);
       wallMesh.setMatrixAt(i, m4);
-      wallMesh.setColorAt(i, colr.set(w.color).multiplyScalar(rnd(0.92, 1.05)));
+      wallMesh.setColorAt(i, colr.set(w.color).multiplyScalar(sh[i]));
     });
     wallMesh.castShadow = true;
     wallMesh.receiveShadow = true;
     wallMesh.computeBoundingSphere();
-    wallMesh.userData.far = list !== wallRegions.get('town');
+    wallMesh.userData.far = far;
     group.add(wallMesh);
   }
+  const wallRegions = new Map();
+  for (const w of walls) {
+    const k = regionOf((w.minX + w.maxX) / 2, (w.minZ + w.maxZ) / 2);
+    if (!wallRegions.has(k)) wallRegions.set(k, []);
+    wallRegions.get(k).push(w);
+  }
+  for (const [k, list] of wallRegions) instanceWalls(list, () => rnd(0.92, 1.05), k !== 'town');
+  const legacyWalls = walls.length;
 
   // Trees: one instanced mesh per species (pine, oak, birch, apple)
   const felled = new Set();
@@ -1333,13 +1369,32 @@ export function buildWorld(scene, seed) {
     c.mesh = corpseMesh(group, x, z, 0x4a4a3a, rand() * Math.PI * 2);
   }
 
+  // Fingerprint of the layout saves were made on (before anything below)
+  const legacy = { containers: containers.length, doors: doors.length, windows: windows.length };
+  const legacyPrint = printOf(buildings, doors, containers);
+
+  // Offices, police stations, hospitals and skyscrapers with real floors
+  const levels = new Levels();
+  const storeyCtx = {
+    rand, rnd, pick, shuffle, WALL_H, WALL_T, DOOR, KINDS, group, fur, walls, allBoxes, containers, doors, windows, beds, zombieSpawns,
+    addBox, addWall, wallWithOpenings, addDoor, addContainer, addBed, placeAlong, roomPlacer, fill, prop, sign, facade, mergeableMaterial,
+    setPattern: (n) => { curPattern = WALL[n]; }, pattern: (n) => WALL[n],
+  };
+  for (const b of multi) {
+    RNG = mulberry32((seed ^ Math.imul(b.index + 1, 0x9e3779b1)) >>> 0);
+    levels.add(buildStoreys(storeyCtx, b));
+  }
+  RNG = mulberry32((seed ^ 0x51ab) >>> 0);
+  instanceWalls(walls.slice(legacyWalls), () => rnd(0.92, 1.05), false);
+
   // Window glass: one instanced mesh (panes move when opened, vanish when smashed)
+  const liveWindows = windows.filter((wn) => !wn.retired);
   const glassMesh = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 0.02),
-    new THREE.MeshStandardMaterial({ color: 0x9ab8c8, transparent: true, opacity: 0.28, roughness: 0.05, metalness: 0.3, depthWrite: false }), Math.max(1, windows.length));
+    new THREE.MeshStandardMaterial({ color: 0x9ab8c8, transparent: true, opacity: 0.28, roughness: 0.05, metalness: 0.3, depthWrite: false }), Math.max(1, liveWindows.length));
   glassMesh.frustumCulled = false;
   glassMesh.renderOrder = 2;
   group.add(glassMesh);
-  windows.forEach((wn, i) => { wn.glass = glassMesh; wn.gi = i; setWindow(wn, 'closed'); });
+  liveWindows.forEach((wn, i) => { wn.glass = glassMesh; wn.gi = i; setWindow(wn, 'closed'); });
 
   mergeStatic(group);
 
@@ -1352,11 +1407,20 @@ export function buildWorld(scene, seed) {
     if (bs) far.push({ o, c: bs.center.clone().applyMatrix4(o.matrixWorld), r: bs.radius });
   }
 
+  // Saves keep containers, doors and windows by position in these lists:
+  // the first part as the town was first laid out (retired ones left empty),
+  // then the multi-storey buildings' own.
+  const slots = {
+    containers: containers.map((k) => (k.retired ? null : k)), doors: doors.map((k) => (k.retired ? null : k)), windows: windows.map((k) => (k.retired ? null : k)), legacy,
+  };
+  for (const arr of [containers, doors, windows]) { let j = 0; for (const k of arr) if (!k.retired) arr[j++] = k; arr.length = j; }
+  const layout = { legacy: legacyPrint, extra: printOf([], slots.doors.slice(legacy.doors).filter(Boolean), slots.containers.slice(legacy.containers).filter(Boolean)) };
+
   const generatedContainers = containers.length;
   const houses = buildings.filter((b) => b.kind === 'house');
 
   return {
-    group, hash, containers, generatedContainers, buildings, houses, roads, trees, doors, beds, windows, zombieSpawns, landmarks, vehicleSpawns, pumps,
+    group, hash, containers, generatedContainers, buildings, houses, roads, trees, doors, beds, windows, zombieSpawns, landmarks, vehicleSpawns, pumps, levels, slots, layout,
     dirtRoads: country.dirtRoads, features: country.features, gardens: country.gardens, forage: country.forage, waterSources: country.water,
     setFruit: forest.setFruit, setBerries: country.setBerries, foliage: forest.foliage, size: HALF * 2 + 80,
     addBox, addContainer: (type, x, z) => addContainer(type, x, z, 0, {}), felled,
@@ -1385,16 +1449,16 @@ export function buildWorld(scene, seed) {
   };
 }
 
-// A fingerprint of the layout: where every building, door and generated
+// A fingerprint of a layout: where every building, door and generated
 // container is. Saves store these things by index, so if an update moves
 // them, the saved world state no longer lines up with the town.
-export function layoutPrint(W) {
+function printOf(buildings, doors, containers) {
   let h = 2166136261;
   const add = (v) => { h = Math.imul(h ^ Math.round(v * 10), 16777619) >>> 0; };
-  for (const b of W.buildings) { add(b.x0); add(b.z0); add(b.x1); add(b.z1); }
-  for (const d of W.doors) { add(d.x); add(d.z); }
-  for (const c of W.containers.slice(0, W.generatedContainers)) { add(c.x); add(c.z); }
-  return `${W.buildings.length}.${W.doors.length}.${W.generatedContainers}.${h.toString(36)}`;
+  for (const b of buildings) { add(b.x0); add(b.z0); add(b.x1); add(b.z1); }
+  for (const d of doors) { add(d.x); add(d.z); if (d.base) add(d.base); }
+  for (const c of containers) { add(c.x); add(c.z); if (c.base) add(c.base); }
+  return `${buildings.length}.${doors.length}.${containers.length}.${h.toString(36)}`;
 }
 
 // Window states: closed (glass), open (pane slid up), broken (no glass).
@@ -1407,7 +1471,7 @@ export function setWindow(w, state) {
   _wq.setFromAxisAngle(_wp.set(0, 1, 0), w.ax === 'x' ? 0 : Math.PI / 2);
   if (state === 'broken') _ws.set(0, 0, 0);
   else _ws.set(w.w - 0.1, state === 'open' ? h / 2 : h, 1);
-  _wp.set(w.x, state === 'open' ? w.top - 0.04 - h / 4 : (w.sill + w.top) / 2, w.z);
+  _wp.set(w.x, (w.base || 0) + (state === 'open' ? w.top - 0.04 - h / 4 : (w.sill + w.top) / 2), w.z);
   w.glass.setMatrixAt(w.gi, _wm.compose(_wp, _wq, _ws));
   w.glass.instanceMatrix.needsUpdate = true;
 }

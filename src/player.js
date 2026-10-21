@@ -50,6 +50,7 @@ export class Player {
     // Movement: Tarkov-style momentum, stances and pace control.
     this.vel = new THREE.Vector3();   // horizontal velocity, m/s
     this.vy = 0; this.y = 0;          // vertical (jumping)
+    this.floorY = 0;                  // height of the floor you're on (upper storeys, stairs, elevators)
     this.stance = 'stand';            // stand | crouch | prone
     this.pace = 1;                    // walk pace set with the mouse wheel (0.2..1)
     this.exhausted = false;           // sprint locked until stamina recovers
@@ -239,10 +240,14 @@ export class Player {
       this.pos.x = v.from.x + (v.to.x - v.from.x) * k;
       this.pos.z = v.from.z + (v.to.z - v.from.z) * k;
       this.vel.set(0, 0, 0);
-      if (v.t >= 1) { this.vault = null; this.y = 0; moveCircle(hash, this.pos, this.radius, 0, 0); sfx.step(0.2); }
+      if (v.t >= 1) { this.vault = null; this.y = 0; moveCircle(hash, this.pos, this.radius, 0, 0, this.floorY); sfx.step(0.2); }
     } else if (g.dev?.noclip) { this.pos.x += mx * 8 * dt; this.pos.z += mz * 8 * dt; this.vel.set(0, 0, 0); }
     else {
-      moveCircle(hash, this.pos, this.radius, this.vel.x * dt, this.vel.z * dt);
+      moveCircle(hash, this.pos, this.radius, this.vel.x * dt, this.vel.z * dt, this.floorY);
+      // Stairs and storeys: the floor under the new spot (refused if it's a
+      // drop or a climb no step could make)
+      const fy = g.world.levels.floorAt(this.pos.x, this.pos.z, this.floorY);
+      if (fy === null) { this.pos.x = bx; this.pos.z = bz; } else this.floorY = fy;
       // Running into a wall kills the momentum in that direction.
       if (dt > 0) {
         const ax = (this.pos.x - bx) / dt, az = (this.pos.z - bz) / dt;
@@ -275,7 +280,7 @@ export class Player {
         this.landDip = Math.min(0.12, -this.vy * 0.03);
         this.vy = 0;
         sfx.step(0.18);
-        g.zombies.noise(this.pos.x, this.pos.z, 6);
+        g.zombies.noise(this.pos.x, this.pos.z, 6, false, this.floorY);
       }
     }
 
@@ -307,7 +312,7 @@ export class Player {
     if (moving && grounded && this.noiseTimer <= 0) {
       this.noiseTimer = 0.5;
       let r = speed * 3 * (this.prone ? 0.3 : this.crouch ? 0.5 : 1) * (1 + over * 0.4) * (1 - 0.1 * this.skill.stealth);
-      if (r > 0.8) g.zombies.noise(this.pos.x, this.pos.z, r);
+      if (r > 0.8) g.zombies.noise(this.pos.x, this.pos.z, r, false, this.floorY);
     }
 
     // Lean (Q/E): shift the eye sideways unless a wall is in the way.
@@ -317,7 +322,7 @@ export class Player {
     let leanDist = 0.38 * this.lean;
     if (Math.abs(leanDist) > 0.01) {
       const ex = this.pos.x + rxv * (leanDist + Math.sign(leanDist) * 0.15), ez = this.pos.z + rzv * (leanDist + Math.sign(leanDist) * 0.15);
-      const hit = raycast(hash, this.pos.x, this.pos.z, ex, ez, 'blocksSight');
+      const hit = raycast(hash, this.pos.x, this.pos.z, ex, ez, 'blocksSight', this.floorY);
       if (hit.box) leanDist *= Math.max(0, hit.t - 0.3);
     }
 
@@ -330,7 +335,7 @@ export class Player {
     const bobAmt = grounded && moving ? (0.012 + 0.04 * sp) * (1 - this.ads * 0.85) * (this.prone ? 0.3 : 1) : 0;
     this.camera.position.set(
       this.pos.x + rxv * leanDist,
-      this.eye + this.y + Math.abs(Math.sin(this.bob)) * bobAmt - Math.abs(this.lean) * 0.05 - this.landDip,
+      this.floorY + this.eye + this.y + Math.abs(Math.sin(this.bob)) * bobAmt - Math.abs(this.lean) * 0.05 - this.landDip,
       this.pos.z + rzv * leanDist);
     this.camera.rotation.set(this.pitch - this.landDip * 0.4, this.yaw, Math.sin(this.bob * 0.5) * bobAmt * 0.35 - this.lean * 0.16);
     // A slight, slow widening at a full sprint; everything eases.
@@ -407,10 +412,12 @@ export class Player {
     }
     const breakGlass = (stopD) => { for (const [d, w] of glass) if (d < stopD) this.game.breakWindow(w, origin.clone().addScaledVector(dir, d), dir); };
     let wallD = tw * maxD;
-    if (dir.y < 0 && -origin.y / dir.y < wallD) { wallD = -origin.y / dir.y; wallBox = null; }
+    // The ground, or a floor or ceiling slab in a building with upper storeys
+    const slab = this.game.world.levels.slabHit(origin, dir, wallD);
+    if (slab < wallD) { wallD = slab; wallBox = null; }
     const wallPoint = origin.clone().addScaledVector(dir, wallD - 0.01);
     // Surface normal of what the bullet stops in (for holes and splatter).
-    let normal = new THREE.Vector3(0, 1, 0);
+    let normal = new THREE.Vector3(0, dir.y < 0 ? 1 : -1, 0);
     if (wallBox) {
       const b = wallBox, p = wallPoint;
       const d = [[p.x - b.minX, -1, 0], [b.maxX - p.x, 1, 0], [p.z - b.minZ, 0, -1], [b.maxZ - p.z, 0, 1]].sort((a, c) => Math.abs(a[0]) - Math.abs(c[0]))[0];
@@ -429,7 +436,7 @@ export class Player {
       if (wallD < maxD) {
         g.fx.impact(wallPoint, normal, wallBox?.decalParent, wallBox?.decalInset);
         // Zombies near where it smacked in turn to look where it came from.
-        g.zombies.alertNear(wallPoint.x, wallPoint.z, 5, this.pos.x, this.pos.z);
+        g.zombies.alertNear(wallPoint.x, wallPoint.z, 5, this.pos.x, this.pos.z, this.floorY);
       }
       return;
     }
@@ -489,13 +496,14 @@ export class Player {
     let hit = false;
     for (const zb of [...this.game.zombies.list]) {
       if (zb.down) continue;
+      if (Math.abs(zb.pos.y - this.floorY) > 1) continue;
       const dx = zb.pos.x - this.pos.x, dz = zb.pos.z - this.pos.z;
       const d = Math.hypot(dx, dz);
       if (d > def.range + zb.radius) continue;
       if ((dx * fx + dz * fz) / (d || 1) < 0.6) continue;
       const head = this.pitch > -0.15 && Math.random() < 0.35;
       const dmg = def.damage * (head ? 1.8 : 1) * (1 + 0.12 * this.skill.strength);
-      const point = new THREE.Vector3(zb.pos.x, (head ? 1.6 : 1.2) * zb.def.scale, zb.pos.z);
+      const point = new THREE.Vector3(zb.pos.x, zb.pos.y + (head ? 1.6 : 1.2) * zb.def.scale, zb.pos.z);
       const dir = blowDir(zb.pos.x, zb.pos.z);
       this.game.fx.blood(point, dir, { head, power: heavy ? 1 : 0.5, exit: false });
       const killed = this.game.zombies.damage(zb, dmg, this.pos.x, this.pos.z, head, { point, dir, force, knock: heavy ? 0.25 : 0.05 });
@@ -534,7 +542,7 @@ export class Player {
       }
     }
     if (!hit) this.game.meleeWorld?.(this.melee?.key);
-    this.game.zombies.noise(this.pos.x, this.pos.z, 3);
+    this.game.zombies.noise(this.pos.x, this.pos.z, 3, false, this.floorY);
   }
 
   // Space at an open or smashed window you're facing: climb through it.
@@ -542,7 +550,7 @@ export class Player {
     const fx = -Math.sin(this.yaw), fz = -Math.cos(this.yaw);
     let best = null, bd = 1.3;
     for (const w of this.game.world.windows) {
-      if (w.state === 'closed' || w.sill >= 1.2) continue;
+      if (w.state === 'closed' || w.sill >= 1.2 || w.base || this.floorY > 0.1) continue; // (not out of upstairs windows)
       const d = Math.hypot(w.x - this.pos.x, w.z - this.pos.z);
       if (d > bd) continue;
       const nx = w.ax === 'x' ? 0 : 1, nz = w.ax === 'x' ? 1 : 0;
@@ -767,7 +775,7 @@ export class Player {
       food: this.food, water: this.water, fatigue: this.fatigue, stamina: this.stamina,
       infected: this.infected, infection: this.infection, painkiller: this.painkiller, kills: this.kills,
       flashlight: this.flashlight, active: this.active, stance: this.stance, pace: this.pace, vehicle: this.vehicle ? this.vehicle.index : undefined,
-      wet: Math.round(this.wet || 0), bodyTemp: +(this.bodyTemp ?? 37).toFixed(2),
+      wet: Math.round(this.wet || 0), bodyTemp: +(this.bodyTemp ?? 37).toFixed(2), floorY: this.floorY ? +this.floorY.toFixed(3) : undefined,
     };
   }
 
@@ -776,7 +784,7 @@ export class Player {
     this.yaw = s.yaw;
     Object.assign(this.hp, s.hp);
     this.bleeding = new Set(s.bleeding);
-    for (const k of ['food', 'water', 'fatigue', 'stamina', 'infected', 'infection', 'painkiller', 'kills', 'flashlight', 'active', 'stance', 'pace', 'wet', 'bodyTemp']) if (s[k] !== undefined) this[k] = s[k];
+    for (const k of ['food', 'water', 'fatigue', 'stamina', 'infected', 'infection', 'painkiller', 'kills', 'flashlight', 'active', 'stance', 'pace', 'wet', 'bodyTemp', 'floorY']) if (s[k] !== undefined) this[k] = s[k];
     this.buildViewmodel();
   }
 

@@ -670,6 +670,7 @@ export class Survivors {
   buildDoorCells() {
     this.doorCell = new Uint8Array(NAV_N * NAV_N);
     for (const d of this.world.doors) {
+      if (d.base) continue;
       const b = d.box, r = 0.5;
       for (let x = b.minX - r; x <= b.maxX + r; x += NAV_CELL / 2) {
         for (let z = b.minZ - r; z <= b.maxZ + r; z += NAV_CELL / 2) {
@@ -761,7 +762,7 @@ export class Survivors {
   // Open closed building doors in the survivor's way.
   openDoorsAhead(s) {
     for (const d of this.world.doors) {
-      if (d.open || d.broken) continue;
+      if (d.open || d.broken || d.base) continue; // (survivors stay on the ground floor)
       if (Math.hypot(d.x - s.pos.x, d.z - s.pos.z) < 1.4) {
         setDoor(d, true);
         this.game.zombies.updateNavRegion(d.box.minX, d.box.minZ, d.box.maxX, d.box.maxZ);
@@ -778,7 +779,7 @@ export class Survivors {
     const d = s.pos.distanceTo(p.pos);
     let range = this.game.isNight ? (p.flashlight ? 30 : 16) : 35;
     if (p.prone) range *= 0.45; else if (p.crouch) range *= 0.7;
-    return d < range && hasLOS(this.world.hash, s.pos.x, s.pos.z, p.pos.x, p.pos.z);
+    return d < range && p.floorY < 1 && hasLOS(this.world.hash, s.pos.x, s.pos.z, p.pos.x, p.pos.z);
   }
 
   // Closest survivor visible from a point (used by zombies to pick prey).
@@ -1016,6 +1017,21 @@ export class Survivors {
     opts.forEach(([label, fn], i) => { const b = document.createElement('button'); b.textContent = `${i + 1}. ${label}`; b.onclick = fn; box.appendChild(b); });
     this.dialogOpts = opts;
     sfx.voice(0.6);
+  }
+
+  // A plain menu in the dialogue box (the elevator's floor buttons)
+  openMenu(title, text, opts) {
+    const g = this.game;
+    this.dialogFor = null;
+    g.dialogOpen = true;
+    g.input.unlock();
+    const el = document.getElementById('dialog');
+    el.innerHTML = `<div class="dlg-panel"><div class="dlg-name">${title}</div><div class="dlg-text">${text}</div><div class="dlg-opts"></div><div class="hint">1–${opts.length} to choose · Esc to leave</div></div>`;
+    const box = el.querySelector('.dlg-opts');
+    this.dialogOpts = opts.map(([label, fn]) => [label, () => { this.closeDialog(); fn(); }]);
+    this.dialogOpts.forEach(([label, fn], i) => { const b = document.createElement('button'); b.textContent = `${i + 1}. ${label}`; b.onclick = fn; box.appendChild(b); });
+    el.style.display = 'flex';
+    g.updatePause();
   }
 
   dialogKey(code) {

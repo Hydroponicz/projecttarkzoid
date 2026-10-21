@@ -1,7 +1,8 @@
 // Zombie AI: wander, hear noises, see the player, chase via a BFS flow
 // field (so they find doors), attack, die, and leave lootable corpses.
 import * as THREE from 'three';
-import { moveCircle, hasLOS } from './collision.js';
+import { moveCircle, hasLOS, atHeight } from './collision.js';
+import { LH } from './levels.js';
 
 // Binary min-heap of grid indices keyed by f-score (for A*).
 class Heap {
@@ -98,7 +99,7 @@ export class Zombies {
         let b = 0, win = false;
         for (const box of boxes) {
           // Doors count as walkable: zombies head for them and bash them down.
-          if (box.noCollide || box.door) continue;
+          if (box.noCollide || box.door || !atHeight(box, 0)) continue;
           if (!(x > box.minX - r && x < box.maxX + r && z > box.minZ - r && z < box.maxZ + r)) continue;
           // Low windows too (2 = zombies only: they smash and climb through)
           if (box.window && box.window.sill < 1.2) { win = true; continue; }
@@ -108,6 +109,127 @@ export class Zombies {
       }
     }
     this.fieldTimer = 0;
+    // upper floors in the area are mapped again when next needed
+    for (const B of this.world.levels?.buildings || []) if (B.x0 < maxX + 1 && B.x1 > minX - 1 && B.z0 < maxZ + 1 && B.z1 > minZ - 1) B.sheets = null;
+  }
+
+  // ---------- upper floors ----------
+  // Each upper storey of a building has its own small walking grid. The
+  // stairwell isn't on it: zombies walk to its entrance and climb the
+  // flights by the route (see climbDir).
+  sheetFor(B, L) {
+    B.sheets ??= [];
+    if (B.sheets[L]) return B.sheets[L];
+    const ni = Math.ceil((B.x1 - B.x0) / NAV_CELL), nj = Math.ceil((B.z1 - B.z0) / NAV_CELL);
+    const blocked = new Uint8Array(ni * nj), y = L * LH, r = 0.32, tmp = [];
+    const holes = [...B.holes, ...B.cores.map((c) => ({ x0: c.x0, x1: c.x1, z0: c.z0, z1: c.z1 }))];
+    for (let i = 0; i < ni; i++) {
+      for (let j = 0; j < nj; j++) {
+        const x = B.x0 + (i + 0.5) * NAV_CELL, z = B.z0 + (j + 0.5) * NAV_CELL;
+        let b = holes.some((h) => x > h.x0 - r && x < h.x1 + r && z > h.z0 - r && z < h.z1 + r) ? 1 : 0;
+        if (!b) {
+          for (const box of this.world.hash.query(x - r, z - r, x + r, z + r, tmp)) {
+            if (box.noCollide || box.door || !atHeight(box, y)) continue;
+            if (x > box.minX - r && x < box.maxX + r && z > box.minZ - r && z < box.maxZ + r) { b = 1; break; }
+          }
+        }
+        blocked[i * nj + j] = b;
+      }
+    }
+    return (B.sheets[L] = { ni, nj, blocked });
+  }
+
+  // A* on an upper storey's grid; waypoints, or null
+  sheetPath(B, L, sx, sz, tx, tz) {
+    const S = this.sheetFor(B, L), { ni, nj, blocked } = S;
+    const cell = (v, v0, n) => Math.max(0, Math.min(n - 1, Math.floor((v - v0) / NAV_CELL)));
+    const si = cell(sx, B.x0, ni), sj = cell(sz, B.z0, nj);
+    let ti = cell(tx, B.x0, ni), tj = cell(tz, B.z0, nj);
+    if (blocked[ti * nj + tj]) {
+      let best = -1, bd = Infinity;
+      for (let di = -5; di <= 5; di++) for (let dj = -5; dj <= 5; dj++) {
+        const i = ti + di, j = tj + dj;
+        if (i < 0 || j < 0 || i >= ni || j >= nj || blocked[i * nj + j]) continue;
+        if (di * di + dj * dj < bd) { bd = di * di + dj * dj; best = i * nj + j; }
+      }
+      if (best < 0) return null;
+      ti = Math.floor(best / nj); tj = best % nj;
+    }
+    const N = ni * nj, g = new Float32Array(N).fill(Infinity), came = new Int32Array(N).fill(-1), closed = new Uint8Array(N);
+    const heap = new Heap(N), start = si * nj + sj, goal = ti * nj + tj;
+    const h = (i, j) => { const a = Math.abs(i - ti), b = Math.abs(j - tj); return Math.max(a, b) + 0.414 * Math.min(a, b); };
+    g[start] = 0; heap.push(start, h(si, sj));
+    let found = false;
+    while (heap.n) {
+      const cur = heap.pop();
+      if (closed[cur]) continue;
+      closed[cur] = 1;
+      if (cur === goal) { found = true; break; }
+      const ci = Math.floor(cur / nj), cj = cur % nj;
+      for (let di = -1; di <= 1; di++) for (let dj = -1; dj <= 1; dj++) {
+        if (!di && !dj) continue;
+        const ni2 = ci + di, nj2 = cj + dj;
+        if (ni2 < 0 || nj2 < 0 || ni2 >= ni || nj2 >= nj) continue;
+        const n = ni2 * nj + nj2;
+        if (closed[n] || (blocked[n] && n !== start)) continue;
+        if (di && dj && (blocked[ci * nj + nj2] || blocked[ni2 * nj + cj])) continue;
+        const ng = g[cur] + (di && dj ? 1.414 : 1);
+        if (ng >= g[n]) continue;
+        g[n] = ng; came[n] = cur; heap.push(n, ng + h(ni2, nj2));
+      }
+    }
+    if (!found) return null;
+    const out = [];
+    for (let n = goal; n !== -1 && n !== start; n = came[n]) out.push({ x: B.x0 + (Math.floor(n / nj) + 0.5) * NAV_CELL, z: B.z0 + ((n % nj) + 0.5) * NAV_CELL });
+    return out.reverse();
+  }
+
+  // Steer along an upper-storey path to (tx, tz)
+  sheetDir(zb, tx, tz, dt) {
+    const lv = this.world.levels, B = lv.buildingAt(zb.pos.x, zb.pos.z);
+    if (!B) return null;
+    const L = lv.level(zb.pos.y);
+    zb.spathT = (zb.spathT ?? 0) - dt;
+    const moved = zb.spathGoal ? Math.hypot(zb.spathGoal.x - tx, zb.spathGoal.z - tz) : Infinity;
+    if (zb.spathT <= 0 || moved > 1.5 || !zb.spath) {
+      zb.spath = this.sheetPath(B, L, zb.pos.x, zb.pos.z, tx, tz);
+      zb.spathGoal = { x: tx, z: tz }; zb.spathT = 1 + Math.random() * 0.5;
+    }
+    const path = zb.spath;
+    if (!path?.length) return null;
+    while (path.length > 1 && Math.hypot(path[0].x - zb.pos.x, path[0].z - zb.pos.z) < 0.45) path.shift();
+    const dx = path[0].x - zb.pos.x, dz = path[0].z - zb.pos.z, l = Math.hypot(dx, dz);
+    if (l < 0.2) { path.shift(); return null; }
+    return [dx / l, dz / l];
+  }
+
+  // Get to another floor: walk to the stairwell on this one, then up or down
+  // the flights to the next, as many times as it takes.
+  climbDir(zb, tx, tz, ty, dt) {
+    if (zb.climb) return this.followClimb(zb, dt);
+    const lv = this.world.levels;
+    const own = lv.buildingAt(zb.pos.x, zb.pos.z), theirs = ty > 0.5 ? lv.buildingAt(tx, tz) : null;
+    // upstairs somewhere else: down first; otherwise into their building
+    const B = zb.pos.y > 0.5 ? own : theirs;
+    if (!B) return null;
+    const up = B === theirs && ty > zb.pos.y;
+    const core = B.cores[0], L = lv.level(zb.pos.y);
+    const E = lv.entrance(core, L);
+    if (Math.hypot(E.x - zb.pos.x, E.z - zb.pos.z) < 0.6) {
+      zb.climb = { pts: lv.route(core, L, up), i: 0, t: 0 };
+      return this.followClimb(zb, dt);
+    }
+    return L === 0 ? this.pathDir(zb, E.x, E.z, dt) : this.sheetDir(zb, E.x, E.z, dt);
+  }
+
+  followClimb(zb, dt) {
+    const c = zb.climb;
+    c.t += dt;
+    let p = c.pts[c.i];
+    while (p && Math.hypot(p.x - zb.pos.x, p.z - zb.pos.z) < 0.35) p = c.pts[++c.i];
+    if (!p || c.t > 20) { zb.climb = null; zb.path = zb.spath = null; return null; }
+    const dx = p.x - zb.pos.x, dz = p.z - zb.pos.z, l = Math.hypot(dx, dz) || 1;
+    return [dx / l, dz / l];
   }
 
   // BFS distance field over a window centered on the target.
@@ -252,12 +374,12 @@ export class Zombies {
   // Something happened near (x, z) that zombies close by would notice (a
   // bullet smacking into a wall, a zombie dropping): they turn and come to
   // look where it came from.
-  alertNear(x, z, r, srcX, srcZ) {
+  alertNear(x, z, r, srcX, srcZ, y = this.game?.player?.floorY ?? 0) {
     for (const zb of this.list) {
       if (zb.dead || zb.down || zb.state === 'chase') continue;
-      if (Math.hypot(zb.pos.x - x, zb.pos.z - z) > r) continue;
+      if (Math.hypot(zb.pos.x - x, zb.pos.z - z) > r || Math.abs(zb.pos.y - y) > 4) continue;
       zb.state = 'investigate';
-      zb.target = { x: srcX + (Math.random() - 0.5) * 4, z: srcZ + (Math.random() - 0.5) * 4 };
+      zb.target = { x: srcX + (Math.random() - 0.5) * (y > 0.5 ? 1 : 4), z: srcZ + (Math.random() - 0.5) * (y > 0.5 ? 1 : 4), y };
       zb.path = null;
       zb.hurry = 1;
     }
@@ -279,7 +401,7 @@ export class Zombies {
     return null;
   }
 
-  spawn(x, z, typeName) {
+  spawn(x, z, typeName, y = 0) {
     if (!typeName) {
       const r = Math.random() * 100;
       typeName = r < TYPES.walker.weight ? 'walker' : r < TYPES.walker.weight + TYPES.runner.weight ? 'runner' : 'brute';
@@ -308,7 +430,7 @@ export class Zombies {
     g.traverse((o) => { o.castShadow = true; });
     g.scale.setScalar(t.scale);
     g.rotation.order = 'YXZ'; // lean (x, z) is applied in the body's own frame
-    g.position.set(x, 0, z);
+    g.position.set(x, y, z);
     this.scene.add(g);
     const zb = {
       mesh: g, parts: { head, torso, armL, armR, legL, legR }, type: typeName, def: t,
@@ -326,11 +448,11 @@ export class Zombies {
   }
 
   serialize() {
-    return this.list.map((z) => ({ x: +z.pos.x.toFixed(2), z: +z.pos.z.toFixed(2), type: z.type, hp: Math.round(z.hp) }));
+    return this.list.map((z) => ({ x: +z.pos.x.toFixed(2), z: +z.pos.z.toFixed(2), y: z.pos.y > 0.01 ? +z.pos.y.toFixed(3) : undefined, type: z.type, hp: Math.round(z.hp) }));
   }
 
   restore(saved) {
-    for (const s of saved) { const z = this.spawn(s.x, s.z, s.type); z.hp = s.hp; }
+    for (const s of saved) { const z = this.spawn(s.x, s.z, s.type, s.y || 0); z.hp = s.hp; }
   }
 
   populate(count, player) {
@@ -342,12 +464,19 @@ export class Zombies {
     // military sites, staff and customers in shops and offices.
     for (const sp of this.world.zombieSpawns || []) {
       if (Math.hypot(sp.x - player.x, sp.z - player.z) < 30) continue;
+      const B = sp.y ? this.world.levels.buildingAt(sp.x, sp.z) : null;
       for (let k = 0; k < sp.n; k++) {
         for (let tries = 0; tries < 8; tries++) {
           const x = sp.x + (Math.random() * 2 - 1) * sp.r, z = sp.z + (Math.random() * 2 - 1) * sp.r;
-          const gi = Math.floor((x + HALF) / NAV_CELL), gj = Math.floor((z + HALF) / NAV_CELL);
-          if (this.blocked[gi * NAV_N + gj]) continue;
-          this.spawn(x, z, sp.type || undefined);
+          if (B) {
+            // upstairs: an open spot on that storey's grid
+            const S = this.sheetFor(B, this.world.levels.level(sp.y)), i = Math.floor((x - B.x0) / NAV_CELL), j = Math.floor((z - B.z0) / NAV_CELL);
+            if (i < 0 || j < 0 || i >= S.ni || j >= S.nj || S.blocked[i * S.nj + j]) continue;
+          } else {
+            const gi = Math.floor((x + HALF) / NAV_CELL), gj = Math.floor((z + HALF) / NAV_CELL);
+            if (this.blocked[gi * NAV_N + gj]) continue;
+          }
+          this.spawn(x, z, sp.type || undefined, sp.y || 0);
           break;
         }
       }
@@ -362,14 +491,15 @@ export class Zombies {
   }
 
   // A noise at (x,z) with radius r draws zombies that hear it.
-  noise(x, z, r, loud = false) {
+  noise(x, z, r, loud = false, y = 0) {
     // Rain and wind drown out ordinary noises (not thunder or gunfire-loud ones)
     const W = this.game?.weather;
     if (W && !loud) r *= W.hearMul;
     for (const zb of this.list) {
       if (zb.dead || zb.down || zb.state === 'chase') continue;
-      const d = Math.hypot(zb.pos.x - x, zb.pos.z - z);
-      if (d < r) { zb.state = 'investigate'; zb.target = { x: x + (Math.random() - 0.5) * 3, z: z + (Math.random() - 0.5) * 3 }; zb.path = null; zb.hurry = d < r * 0.5 ? 1 : 0; }
+      const d = Math.hypot(zb.pos.x - x, zb.pos.z - z) + Math.abs(zb.pos.y - y) * 2; // floors muffle
+      const j = y > 0.5 ? 1 : 3; // (indoors upstairs: aim for the room, not a random spot)
+      if (d < r) { zb.state = 'investigate'; zb.target = { x: x + (Math.random() - 0.5) * j, z: z + (Math.random() - 0.5) * j, y }; zb.path = null; zb.hurry = d < r * 0.5 ? 1 : 0; }
     }
   }
 
@@ -393,7 +523,7 @@ export class Zombies {
     if (zb.down) { if (hit) zb.down.impulse(hit.point, hit.dir, hit.force); return false; }
     // knockback
     const dx = zb.pos.x - fromX, dz = zb.pos.z - fromZ, l = Math.hypot(dx, dz) || 1;
-    moveCircle(this.world.hash, zb.pos, zb.radius, (dx / l) * 0.25, (dz / l) * 0.25);
+    this.step(zb, (dx / l) * 0.25, (dz / l) * 0.25);
     if (hit) this.react(zb, hit, head);
     return false;
   }
@@ -423,7 +553,7 @@ export class Zombies {
     zb.mesh.updateMatrixWorld(true);
     return {
       matrix: zb.mesh.matrixWorld, kind: 'zombie', scale: zb.def.scale, mats, look,
-      vel: new THREE.Vector3(zb.vx, 0, zb.vz), owner: zb, ...extra,
+      vel: new THREE.Vector3(zb.vx, 0, zb.vz), owner: zb, floor: zb.pos.y, ...extra,
     };
   }
 
@@ -453,8 +583,8 @@ export class Zombies {
     const yaw = r.yaw, faceDown = r.faceDown;
     this.game.ragdolls.remove(r);
     zb.down = null;
-    zb.pos.set(fx, 0, fz);
-    moveCircle(this.world.hash, zb.pos, zb.radius, 0, 0);
+    zb.pos.set(fx, r.floor || 0, fz);
+    moveCircle(this.world.hash, zb.pos, zb.radius, 0, 0, zb.pos.y);
     // Lying along the body, then pivoting up on the feet.
     zb.dir = faceDown ? yaw : yaw + Math.PI;
     zb.riseSide = faceDown ? 1 : -1;
@@ -468,6 +598,7 @@ export class Zombies {
     const game = this.game;
     this.scene.remove(zb.mesh);
     const c = this.world.addContainer(zb.def.loot || 'body', zb.pos.x, zb.pos.z);
+    if (zb.pos.y > 0.01) { c.base = zb.pos.y; c.y = (c.y || 0) + zb.pos.y; }
     c.type = 'body';
     c.name = zb.def.loot === 'soldier' ? 'Dead Soldier' : 'Zombie';
     c.color = zb.look.top;
@@ -486,7 +617,7 @@ export class Zombies {
     c.ragdoll = r;
     r.onSettle = (rr) => {
       c.x = rr.pelvis.x; c.z = rr.pelvis.z;
-      if (!rr.pooled) { rr.pooled = true; game.fx.pool((rr.pelvis.x + rr.p[JOINT.CHE].x) / 2, (rr.pelvis.z + rr.p[JOINT.CHE].z) / 2, 0.9 + Math.random() * 0.7); }
+      if (!rr.pooled) { rr.pooled = true; game.fx.pool((rr.pelvis.x + rr.p[JOINT.CHE].x) / 2, (rr.pelvis.z + rr.p[JOINT.CHE].z) / 2, 0.9 + Math.random() * 0.7, rr.floor || 0); }
     };
     if (r.sleeping) { r.onSettle(r); r.freeze(); }
   }
@@ -519,6 +650,8 @@ export class Zombies {
       const prey = zb.prey;
       const pdist = Math.hypot(px - zb.pos.x, pz - zb.pos.z);
       const tx0 = prey ? prey.pos.x : px, tz0 = prey ? prey.pos.z : pz;
+      // Floors: a target on another storey is reached by the stairs
+      const zy = zb.pos.y, ty0 = prey ? 0 : player.floorY, sameFloor = Math.abs(ty0 - zy) < 1.0;
       const dx = tx0 - zb.pos.x, dz = tz0 - zb.pos.z;
       const dist = Math.hypot(dx, dz);
       nearest = Math.min(nearest, pdist);
@@ -536,14 +669,14 @@ export class Zombies {
         let range = (player.flashlight ? 30 : 18) * (game.isNight ? 0.8 : 1.3) * player.stealthMul * (game.dev?.invisible ? 0 : 1) * (game.weather?.sightMul ?? 1);
         if (player.prone) range *= 0.4;
         else if (player.crouch) range *= 0.6;
-        const seesPlayer = pdist < range && hasLOS(hash, zb.pos.x, zb.pos.z, px, pz);
+        const seesPlayer = pdist < range && Math.abs(player.floorY - zy) < 1.2 && hasLOS(hash, zb.pos.x, zb.pos.z, px, pz, zy);
         const facing = (x, z, d) => {
           // Zombies need roughly to face their target unless it's very close.
           const ang = Math.atan2(x - zb.pos.x, z - zb.pos.z);
           const da = Math.abs(((ang - zb.dir + Math.PI) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2) - Math.PI);
           return d < 4 || da < 1.4 || zb.state === 'chase';
         };
-        const surv = game.survivors?.nearestVisible(zb.pos, game.isNight ? 14 : 20);
+        const surv = zy < 0.5 ? game.survivors?.nearestVisible(zb.pos, game.isNight ? 14 : 20) : null;
         if (seesPlayer && (!surv || pdist <= surv.d) && facing(px, pz, pdist)) {
           zb.prey = null; zb.state = 'chase'; zb.lastSeen = 4;
         } else if (surv && facing(surv.s.pos.x, surv.s.pos.z, surv.d)) {
@@ -559,19 +692,23 @@ export class Zombies {
         speed = zb.def.chase * (game.isNight ? 1.15 : 1) * (game.weather?.zombieSpeedMul ?? 1);
         // The flow field leads to the player (through doors, which get
         // bashed); beyond it, or after survivors out of sight, A* paths.
-        const direct = zb.canSee && dist < 6 && hasLOS(hash, zb.pos.x, zb.pos.z, tx0, tz0);
+        const direct = !zb.climb && sameFloor && zb.canSee && dist < 6 && hasLOS(hash, zb.pos.x, zb.pos.z, tx0, tz0, zy);
         let dir = null;
-        if (!direct) dir = (!prey && this.flowDir(zb.pos.x, zb.pos.z)) || this.pathDir(zb, tx0, tz0, dt);
+        if (zb.climb || !sameFloor) dir = this.climbDir(zb, tx0, tz0, ty0, dt);
+        else if (!direct) dir = zy > 0.5 ? this.sheetDir(zb, tx0, tz0, dt) : (!prey && player.floorY < 0.5 && this.flowDir(zb.pos.x, zb.pos.z)) || this.pathDir(zb, tx0, tz0, dt);
         if (dir) { mx = dir[0]; mz = dir[1]; }
-        else { mx = dx / (dist || 1); mz = dz / (dist || 1); }
+        else if (sameFloor) { mx = dx / (dist || 1); mz = dz / (dist || 1); }
       } else if (zb.state === 'investigate') {
         const tx = zb.target.x - zb.pos.x, tz = zb.target.z - zb.pos.z;
-        const td = Math.hypot(tx, tz);
-        if (td < 1.2 || (zb.path && !zb.path.length && td < 3)) { zb.state = 'wander'; zb.wanderTimer = 4; zb.path = null; zb.hurry = 0; }
+        const td = Math.hypot(tx, tz), ty = zb.target.y || 0, tSame = Math.abs(ty - zy) < 1.0;
+        if (tSame && !zb.climb && (td < 1.2 || (zb.path && !zb.path.length && td < 3))) { zb.state = 'wander'; zb.wanderTimer = 4; zb.path = null; zb.hurry = 0; }
         else {
-          // Walk (or hurry, if it was close) to the noise, finding a way round walls.
-          const dir = td < 12 && hasLOS(hash, zb.pos.x, zb.pos.z, zb.target.x, zb.target.z) ? null : this.pathDir(zb, zb.target.x, zb.target.z, dt);
-          if (dir) { mx = dir[0]; mz = dir[1]; } else { mx = tx / td; mz = tz / td; }
+          // Walk (or hurry, if it was close) to the noise, finding a way round
+          // walls, and up or down the stairs if it came from another floor.
+          const dir = zb.climb || !tSame ? this.climbDir(zb, zb.target.x, zb.target.z, ty, dt)
+            : td < 12 && hasLOS(hash, zb.pos.x, zb.pos.z, zb.target.x, zb.target.z, zy) ? null
+              : zy > 0.5 ? this.sheetDir(zb, zb.target.x, zb.target.z, dt) : this.pathDir(zb, zb.target.x, zb.target.z, dt);
+          if (dir) { mx = dir[0]; mz = dir[1]; } else if (tSame) { mx = tx / td; mz = tz / td; } else if (!zb.climb) { zb.state = 'wander'; zb.wanderTimer = 4; }
           speed = zb.hurry ? Math.max(zb.def.speed * 1.5, zb.def.chase * 0.75) : zb.def.speed * 1.3;
         }
       } else {
@@ -588,7 +725,7 @@ export class Zombies {
       // Separation from other zombies (only nearby ones matter)
       if (speed > 0) {
         for (const o of this.list) {
-          if (o === zb || o.down) continue;
+          if (o === zb || o.down || Math.abs(o.pos.y - zy) > 1) continue;
           const ox = zb.pos.x - o.pos.x, oz = zb.pos.z - o.pos.z;
           const d2 = ox * ox + oz * oz;
           if (d2 < 0.5 && d2 > 1e-6) { const d = Math.sqrt(d2); mx += (ox / d) * 0.8; mz += (oz / d) * 0.8; }
@@ -599,7 +736,7 @@ export class Zombies {
       zb.attackCd -= dt;
       const reach = 1.0 * zb.def.scale;
       // Only with nothing in between (no clawing through closed doors or walls).
-      if (dist < reach + 0.1 && zb.state === 'chase' && !(zb.rise > 0) && hasLOS(hash, zb.pos.x, zb.pos.z, tx0, tz0)) {
+      if (dist < reach + 0.1 && sameFloor && zb.state === 'chase' && !(zb.rise > 0) && hasLOS(hash, zb.pos.x, zb.pos.z, tx0, tz0, zy)) {
         speed = 0;
         if (zb.attackCd <= 0) {
           zb.attackCd = 1.3;
@@ -616,7 +753,7 @@ export class Zombies {
         const s = this.structureNear(zb);
         const gx = zb.state === 'chase' ? tx0 : zb.target.x, gz = zb.state === 'chase' ? tz0 : zb.target.z;
         if (s && (s.kind === 'door' || s.kind === 'window') && this.across(s, zb.pos.x, zb.pos.z, gx, gz)) {
-          if (s.kind === 'window' && s.state !== 'closed' && s.sill < 1.2) { this.startVault(zb, s); continue; }
+          if (s.kind === 'window' && s.state !== 'closed' && s.sill < 1.2 && !s.base) { this.startVault(zb, s); continue; }
           if (zb.attackCd <= 0 && (s.kind === 'door' || s.state === 'closed')) {
             zb.attackCd = 1.5;
             zb.dir = Math.atan2(s.x - zb.pos.x, s.z - zb.pos.z);
@@ -628,11 +765,11 @@ export class Zombies {
       const ml = Math.hypot(mx, mz);
       if (ml > 0.01 && speed > 0) {
         const before = { x: zb.pos.x, z: zb.pos.z };
-        moveCircle(hash, zb.pos, zb.radius, (mx / ml) * speed * dt, (mz / ml) * speed * dt);
+        this.step(zb, (mx / ml) * speed * dt, (mz / ml) * speed * dt);
         // Don't walk into the player
         const pdx = zb.pos.x - px, pdz = zb.pos.z - pz, pd = Math.hypot(pdx, pdz);
         const minD = zb.radius + player.radius;
-        if (pd < minD && pd > 1e-4) { zb.pos.x = px + (pdx / pd) * minD; zb.pos.z = pz + (pdz / pd) * minD; }
+        if (pd < minD && pd > 1e-4 && Math.abs(player.floorY - zb.pos.y) < 1) { zb.pos.x = px + (pdx / pd) * minD; zb.pos.z = pz + (pdz / pd) * minD; }
         const moved = Math.hypot(zb.pos.x - before.x, zb.pos.z - before.z);
         zb.vx = (zb.pos.x - before.x) / dt; zb.vz = (zb.pos.z - before.z) / dt;
         // Blocked while chasing or following a noise: bash the door or
@@ -641,7 +778,7 @@ export class Zombies {
           zb.stuck += dt;
           const s = zb.stuck > 0.3 ? this.structureNear(zb) : null;
           const climbable = s?.kind === 'window' && s.state !== 'closed';
-          if (climbable && s.sill < 1.2) this.startVault(zb, s);
+          if (climbable && s.sill < 1.2 && !s.base) this.startVault(zb, s);
           else if (zb.stuck > 0.6 && zb.attackCd <= 0) {
             if (s && !climbable) { zb.attackCd = 1.5; game.damageStructure(s, zb.def.dmg[1] * (zb.type === 'brute' ? 3 : 1) * (s.kind === 'door' ? 1.5 : 1), zb.pos); }
             else if (!(zb.detour > 0)) { zb.detour = 0.5 + Math.random() * 0.5; zb.detourSide = Math.random() < 0.5 ? 1 : -1; zb.pathT = 0; zb.stuck = 0; }
@@ -697,11 +834,20 @@ export class Zombies {
     this.nearest = nearest;
   }
 
+  // Move on whatever floor it's on (stairs, storeys); refused where there's
+  // no floor to step to
+  step(zb, dx, dz) {
+    const bx = zb.pos.x, bz = zb.pos.z;
+    moveCircle(this.world.hash, zb.pos, zb.radius, dx, dz, zb.pos.y);
+    const fy = this.world.levels.floorAt(zb.pos.x, zb.pos.z, zb.pos.y);
+    if (fy === null) { zb.pos.x = bx; zb.pos.z = bz; } else zb.pos.y = fy;
+  }
+
   structureNear(zb) {
     const r = zb.radius + 0.5;
     let best = null, bd = r;
     for (const b of this.world.hash.query(zb.pos.x - r, zb.pos.z - r, zb.pos.x + r, zb.pos.z + r, [])) {
-      if (!b.structure || b.noCollide) continue;
+      if (!b.structure || b.noCollide || !atHeight(b, zb.pos.y)) continue;
       const cx = Math.max(b.minX, Math.min(zb.pos.x, b.maxX)), cz = Math.max(b.minZ, Math.min(zb.pos.z, b.maxZ));
       const d = Math.hypot(zb.pos.x - cx, zb.pos.z - cz);
       if (d < bd) { bd = d; best = b.structure; }

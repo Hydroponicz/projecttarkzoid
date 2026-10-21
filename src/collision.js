@@ -1,5 +1,12 @@
 // 2D (XZ plane) collision: axis-aligned boxes in a spatial hash, circle
 // movement with sliding, and segment raycasts for bullets / line of sight.
+// Boxes also have a vertical extent (y0 to h, default 0 to 3: a wall), so
+// in buildings with upper floors only what's on your own floor gets in the
+// way. Movers and rays say what height they're at (0: the ground).
+
+const BODY_H = 1.6;
+// Does a box reach into a body standing at height y?
+export function atHeight(b, y = 0) { return (b.h ?? 3) > y + 0.02 && (b.y0 ?? 0) < y + BODY_H; }
 
 export class SpatialHash {
   constructor(cell = 6) {
@@ -49,13 +56,16 @@ export class SpatialHash {
 const tmp = [];
 
 // Move a circle at pos by (dx, dz), resolving penetration against boxes.
-export function moveCircle(hash, pos, r, dx, dz) {
+// y: the mover's height. Movers that know about floors (pass y) can walk
+// through stair gates; the rest (y left out: on the ground) can't.
+export function moveCircle(hash, pos, r, dx, dz, y) {
   pos.x += dx;
   pos.z += dz;
+  const levels = y !== undefined, yy = y ?? 0;
   for (let iter = 0; iter < 2; iter++) {
     const boxes = hash.query(pos.x - r, pos.z - r, pos.x + r, pos.z + r, tmp);
     for (const b of boxes) {
-      if (b.noCollide) continue;
+      if (b.noCollide || (b.gate && levels) || !atHeight(b, yy)) continue;
       const cx = Math.max(b.minX, Math.min(pos.x, b.maxX));
       const cz = Math.max(b.minZ, Math.min(pos.z, b.maxZ));
       let ox = pos.x - cx, oz = pos.z - cz;
@@ -98,21 +108,22 @@ export function segBox(x1, z1, x2, z2, b) {
 }
 
 // Nearest blocking hit along a segment. `flag` selects which boxes block
-// (e.g. 'blocksShot' or 'blocksSight').
-export function raycast(hash, x1, z1, x2, z2, flag) {
+// (e.g. 'blocksShot' or 'blocksSight'); y is the floor height it runs at.
+export function raycast(hash, x1, z1, x2, z2, flag, y = 0) {
   const boxes = hash.query(Math.min(x1, x2), Math.min(z1, z2), Math.max(x1, x2), Math.max(z1, z2), tmp);
   let best = 1;
   let hit = null;
   for (const b of boxes) {
     if (flag && !b[flag]) continue;
+    if (!atHeight(b, y)) continue;
     const t = segBox(x1, z1, x2, z2, b);
     if (t >= 0 && t < best) { best = t; hit = b; }
   }
   return { t: best, box: hit };
 }
 
-export function hasLOS(hash, x1, z1, x2, z2) {
-  return raycast(hash, x1, z1, x2, z2, 'blocksSight').box === null;
+export function hasLOS(hash, x1, z1, x2, z2, y = 0) {
+  return raycast(hash, x1, z1, x2, z2, 'blocksSight', y).box === null;
 }
 
 // Segment vs circle: returns t of first intersection or -1.

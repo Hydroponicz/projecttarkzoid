@@ -223,6 +223,7 @@ Guns work much like Tarkov's. Each firearm is a detailed procedural model, and i
   - The gun swings across your view onto its side, muzzle up and in, so the magazine well faces you. It turns at your wrist, not around the middle of the gun.
   - The gun follows the hands on springs, so it carries momentum and settles. Pulling the magazine dips it, the new one seating and being slapped home jolts it, and the bolt flying forward kicks it. The view sways a little with the work and glances down at your rig as you reach for a magazine.
   - The hands move in arcs. The wrist comes up from the pouch turned and squares up at the well, and it winds up before the slap.
+  - The motion is continuous. The gun, magazines and hands follow smooth curves that carry their speed through each step of the reload instead of stopping between steps. They ease in and out the way people move a hand, and no two reloads are timed exactly alike.
   - The left hand rocks the old magazine out (AK) or pulls it down (SKS, PM), then pockets it. A quick reload drops it instead.
   - The hand brings the new magazine up from your gear, seats it and slaps it home. On an empty gun it reaches over and racks the charging handle (or lets the pistol's slide drop).
   - The shotgun rolls over so the loading port faces you, and each shell is pushed in with the fingers.
@@ -345,7 +346,7 @@ Zombies and survivors react physically to what hits them.
 | Q / E | Lean left / right |
 | G | Lower / raise your weapon (survivors and traders relax) |
 | 1, 2 | Switch between firearm and melee |
-| F | Interact: open/close doors, search containers, sleep in beds, talk to survivors (1–9 picks a dialogue option), tend garden plots, pick fruit, drink at wells and ponds |
+| F | Interact: open/close doors, search containers, sleep in beds, talk to survivors (1–9 picks a dialogue option), call and ride elevators, tend garden plots, pick fruit, drink at wells and ponds |
 | Tab or I | Inventory. Close it with Esc, Tab, F, the Close button, a click outside, or by walking off. |
 | H | Quick-heal (bandage if bleeding, otherwise a medkit) |
 | L | Flashlight |
@@ -383,6 +384,16 @@ tp farm              tp orchard           tp cabin            tp camp
 god / noclip / invis / freeze / freebuild                    js player.skill
 ```
 
+## Tall buildings
+
+Offices and police stations have two real floors, the hospital three, and the downtown skyscraper six, with the tower rising above them. Every floor has its own rooms, doors, windows, furniture, loot and zombies.
+
+- **Stairs.** A switchback stairwell sits at the end of the corridor. A flight climbs to a half landing, then a second flight turns back up to the next floor. Walk up and down them like anywhere else.
+- **Elevators.** The hospital and skyscraper also have an elevator beside the stairs. Press **F** at the call button by its doors on any floor to call it. Inside, press **F** at the panel and pick a floor with **1–6**. The doors stay open a few seconds, then close, and the car carries you (and anything standing in it) up or down.
+- **Zombies use the stairs.** They hear gunfire and footsteps through the floors (muffled), find their way to the stairwell and climb or descend floor by floor to reach you. They see and attack only on their own floor. Floors and ceilings stop bullets, and you can't jump out of an upstairs window.
+- Survivors stay on the ground floor, and you can only build on the ground.
+- **Saves.** These buildings were rebuilt without moving anything else in town, so existing saves keep their base, stash and traders.
+
 ## The look of the town
 
 Buildings and streets are textured with generated maps: brick, wood siding, concrete panels, and plaster inside. Each wall gets a finish that fits the building. Houses are brick or siding, farm buildings are siding, shops are brick, and everything else is concrete. Wall textures are projected in world space, so every brick is the same size whatever the wall's shape. Floors are planks, with tiles in kitchens and bathrooms and concrete slab in commercial buildings. Roads are asphalt with sidewalks and curbs; dirt tracks are dirt. Houses have gable roofs. Flat roofs have parapets, AC units and vent pipes, and shops have awnings.
@@ -404,6 +415,8 @@ Buildings and streets are textured with generated maps: brick, wood siding, conc
 | `src/skills.js` | XP and levelling for skills that rise with use (Guns) |
 | `src/useanim.js` | Item-use animations: eating, drinking, bandaging, medkits, pills, injections, surgery |
 | `src/worldtex.js` | Generated building, road, ground and grime textures; the world-space wall material |
+| `src/storeys.js` | Multi-storey buildings: floors laid out storey by storey, the stairwell, slabs, the elevator |
+| `src/levels.js` | Floor heights: stairs, storeys and elevators (where movers stand), slabs that stop bullets, elevator control, stair routes for zombies |
 | `src/carmodels.js` | Vehicle models: body profiles, details, wheels, cockpit, hinged doors/hood/trunk |
 | `src/gunmodels.js` | Weapon, magazine and hand models; procedural wood, metal, polymer, fabric and camo textures |
 | `src/survivors.js` | AI survivors: dispositions and trust, A* pathfinding, combat, following, dialogue, trading |

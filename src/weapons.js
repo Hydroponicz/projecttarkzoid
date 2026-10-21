@@ -1106,7 +1106,7 @@ export class GunController {
       ],
       onDone: () => { this.rebuild(true); },
     });
-    p.game.zombies.noise(p.pos.x, p.pos.z, 4);
+    p.game.zombies.noise(p.pos.x, p.pos.z, 4, false, p.floorY);
   }
 
   // Double-tap R during a reload: drop the old magazine instead of stowing it
@@ -1212,7 +1212,7 @@ export class GunController {
     p.yaw += (Math.random() - 0.5) * r.h * 0.006 * rm;
     this.camDebt += climb;
 
-    p.game.zombies.noise(p.pos.x, p.pos.z, def.noise * (suppressed ? 0.22 : 1));
+    p.game.zombies.noise(p.pos.x, p.pos.z, def.noise * (suppressed ? 0.22 : 1), false, p.floorY);
 
     // Cycle the action
     if (def.tube) {
