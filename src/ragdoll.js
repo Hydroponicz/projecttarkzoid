@@ -33,6 +33,9 @@ const ALL_PTS = [PEL, CHE, HEAD, SHL, SHR, ELL, HAL, ELR, HAR, HIL, HIR, KNL, FT
 const LIMB_PTS = [ELL, HAL, ELR, HAR, KNL, FTL, KNR, FTR, HEAD, [HIL, KNL], [HIR, KNR], [KNL, FTL], [KNR, FTR], [SHL, ELL], [SHR, ELR]];
 // Limbs can't pass through the trunk or each other.
 const SELF = [[KNL, KNR], [FTL, FTR], [KNL, CHE], [KNR, CHE], [FTL, CHE], [FTR, CHE], [FTL, HEAD], [FTR, HEAD], [KNL, HEAD], [KNR, HEAD], [FTL, PEL], [FTR, PEL], [FTL, KNR], [FTR, KNL]];
+// Legs are capsules too: a thigh or shin can't pass through the other leg's
+// (one comes to rest on top of the other).
+const LEG_PAIRS = [[HIL, KNL, HIR, KNR], [HIL, KNL, KNR, FTR], [KNL, FTL, HIR, KNR], [KNL, FTL, KNR, FTR]];
 // Spans the muscles hold while the body still has tone (dying, stumbling):
 // shrinking the leg spans buckles the knees so the body crumples.
 const TONE = [[HIL, FTL, 1], [HIR, FTR, 1], [PEL, HEAD, 0], [SHL, HAL, 0], [SHR, HAR, 0], [PEL, KNL, 0], [PEL, KNR, 0]];
@@ -52,6 +55,19 @@ function restPose(kind) {
 
 const _v = new THREE.Vector3(), _a = new THREE.Vector3(), _b = new THREE.Vector3(), _f = new THREE.Vector3(), _d = new THREE.Vector3(), _m2 = new THREE.Vector3();
 const Y = new THREE.Vector3(0, 1, 0);
+
+// Closest points of segments p1-q1 and p2-q2, as fractions [s, t] along each.
+const _d1 = new THREE.Vector3(), _d2 = new THREE.Vector3(), _r = new THREE.Vector3();
+function closestOnSegments(p1, q1, p2, q2) {
+  _d1.subVectors(q1, p1); _d2.subVectors(q2, p2); _r.subVectors(p1, p2);
+  const a = _d1.dot(_d1), e = _d2.dot(_d2), f = _d2.dot(_r);
+  if (a < 1e-9 || e < 1e-9) return [0, 0];
+  const c = _d1.dot(_r), b = _d1.dot(_d2), den = a * e - b * b;
+  let s = den > 1e-9 ? Math.max(0, Math.min(1, (b * f - c * e) / den)) : 0;
+  let t = (b * s + f) / e;
+  if (t < 0) { t = 0; s = Math.max(0, Math.min(1, -c / a)); } else if (t > 1) { t = 1; s = Math.max(0, Math.min(1, (b - c) / a)); }
+  return [s, t];
+}
 const _m = new THREE.Matrix4();
 
 // Materials for bodies rebuilt from saved colors, shared so that settled
@@ -319,6 +335,25 @@ class Ragdoll {
       const diff = (d - min) / (d * (wa + wb));
       p[a].addScaledVector(_v, diff * wa);
       p[b].addScaledVector(_v, -diff * wb);
+    }
+    // Leg bone against leg bone: closest points of the two segments, pushed
+    // apart, the correction shared between the four joints by where the
+    // contact is along each bone (and how heavy they are).
+    const min = (r[KNL] + r[KNR]) * 0.95;
+    for (const [a0, a1, b0, b1] of LEG_PAIRS) {
+      const [s, t] = closestOnSegments(p[a0], p[a1], p[b0], p[b1]);
+      _a.lerpVectors(p[a0], p[a1], s); _b.lerpVectors(p[b0], p[b1], t);
+      _v.subVectors(_a, _b);
+      let d = _v.length();
+      if (d >= min) continue;
+      // crossing dead centre: the higher leg goes on top
+      if (d < 1e-5) { _v.set(0, _a.y >= _b.y ? 1 : -1, 0); d = 0; } else _v.multiplyScalar(1 / d);
+      const w = [INV_MASS[a0] * (1 - s), INV_MASS[a1] * s, INV_MASS[b0] * (1 - t), INV_MASS[b1] * t];
+      const den = w[0] * (1 - s) + w[1] * s + w[2] * (1 - t) + w[3] * t;
+      if (den < 1e-6) continue;
+      const lam = (min - d) / den;
+      p[a0].addScaledVector(_v, lam * w[0]); p[a1].addScaledVector(_v, lam * w[1]);
+      p[b0].addScaledVector(_v, -lam * w[2]); p[b1].addScaledVector(_v, -lam * w[3]);
     }
   }
 
