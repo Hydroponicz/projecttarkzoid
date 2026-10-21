@@ -8,7 +8,8 @@ import { ITEMS, makeItem } from './items.js';
 import { addItem, removeItem, takeItem } from './inventory.js';
 import { sfx } from './audio.js';
 import { segBox } from './collision.js';
-import { MAT, B, C, P, BUILDERS, buildMag, shellModel, metricUV } from './gunmodels.js';
+import { MAT, B, RB, C, P, BUILDERS, buildMag, shellModel, metricUV } from './gunmodels.js';
+import './natoguns.js'; // (registers the NATO weapons and magazines)
 
 export const VM_LAYER = 1; // viewmodel layer: drawn by the main camera, hidden from scope cameras
 
@@ -35,6 +36,48 @@ const CFG = {
     shellTime: 0.55, pumpTime: 0.45, adsSpeed: 6.5,
     optic: [0, -0.008, 0.08], muzzleZ: -0.68,
   },
+  m4a1: {
+    relief: 0.3, hip: [0.125, -0.12, -0.3], adsFov: 62, length: 0.74, ergo: 1.12, weight: 0.95,
+    recoil: { v: 0.82, h: 0.3, cam: 0.36 }, accuracy: 0.001, hipSpread: 0.042,
+    reload: 2.3, charge: 0.5, adsSpeed: 7.5,
+    optic: [0, -0.02, -0.02], muzzleZ: -0.59, boltTravel: 0.03, boltLock: true,
+  },
+  mp5: {
+    relief: 0.3, hip: [0.12, -0.12, -0.3], adsFov: 64, length: 0.55, ergo: 1.18, weight: 0.8,
+    recoil: { v: 0.5, h: 0.24, cam: 0.22 }, accuracy: 0.0022, hipSpread: 0.034,
+    reload: 2.2, charge: 0.45, adsSpeed: 8.5,
+    optic: [0, -0.02, -0.08], muzzleZ: -0.44, boltTravel: 0.05, boltLock: false,
+  },
+  glock17: {
+    relief: 0.42, hip: [0.12, -0.12, -0.42], adsFov: 66, length: 0.45, ergo: 0.9, weight: 0.5,
+    recoil: { v: 0.68, h: 0.3, cam: 0.28 }, accuracy: 0.0034, hipSpread: 0.034,
+    reload: 1.9, charge: 0.35, adsSpeed: 10,
+    muzzleZ: -0.19, boltTravel: 0.04, boltLock: true,
+  },
+  m1911: {
+    relief: 0.42, hip: [0.12, -0.12, -0.42], adsFov: 66, length: 0.45, ergo: 0.85, weight: 0.6,
+    recoil: { v: 1.0, h: 0.36, cam: 0.38 }, accuracy: 0.0032, hipSpread: 0.036,
+    reload: 2.0, charge: 0.35, adsSpeed: 9.5,
+    muzzleZ: -0.21, boltTravel: 0.04, boltLock: true,
+  },
+  m14: {
+    relief: 0.32, hip: [0.125, -0.12, -0.3], adsFov: 60, length: 0.95, ergo: 0.9, weight: 1.3,
+    recoil: { v: 1.6, h: 0.45, cam: 0.62 }, accuracy: 0.0006, hipSpread: 0.05,
+    reload: 2.5, charge: 0.55, adsSpeed: 5.5,
+    optic: [0, -0.024, 0.05], muzzleZ: -0.8, boltTravel: 0.1, boltLock: true,
+  },
+  m870: {
+    relief: 0.3, hip: [0.125, -0.12, -0.32], adsFov: 64, length: 0.82, ergo: 1.0, weight: 1.2,
+    recoil: { v: 2.4, h: 0.62, cam: 1.0 }, accuracy: 0.012, hipSpread: 0.06, pelletSpread: 0.042,
+    shellTime: 0.52, pumpTime: 0.42, adsSpeed: 6.5,
+    optic: [0, -0.008, 0.08], muzzleZ: -0.68,
+  },
+  m249: {
+    relief: 0.33, hip: [0.13, -0.13, -0.3], adsFov: 62, length: 0.98, ergo: 0.62, weight: 2.0,
+    recoil: { v: 0.78, h: 0.42, cam: 0.34 }, accuracy: 0.0018, hipSpread: 0.065,
+    reload: 3.2, charge: 0.6, adsSpeed: 4.5,
+    optic: [0, -0.01, 0.02], muzzleZ: -0.64, boltTravel: 0.06, boltLock: false,
+  },
   sks: {
     relief: 0.33, hip: [0.125, -0.12, -0.3], adsFov: 62, length: 0.8, ergo: 1.05, weight: 1.1,
     recoil: { v: 1.25, h: 0.3, cam: 0.5 }, accuracy: 0.0009, hipSpread: 0.045,
@@ -49,6 +92,7 @@ const OPTIC = {
   sight_holo: { height: 0.045, relief: 0.2 },
   scope_pso: { height: 0.058, relief: 0.075, lens: 0.017 },
   scope_6x: { height: 0.052, relief: 0.085, lens: 0.017 },
+  scope_acog: { height: 0.048, relief: 0.065, lens: 0.015 },
 };
 
 // ---------------------------------------------------------------------------
@@ -57,7 +101,7 @@ const OPTIC = {
 const reticleCache = {};
 function reticleTexture(kind) {
   if (reticleCache[kind]) return reticleCache[kind];
-  const S = kind === 'pso' || kind === 'duplex' ? 512 : 256;
+  const S = kind === 'pso' || kind === 'duplex' || kind === 'acog' ? 512 : 256;
   const c = document.createElement('canvas');
   c.width = c.height = S;
   const g = c.getContext('2d');
@@ -89,6 +133,14 @@ function reticleTexture(kind) {
     g.stroke();
     g.beginPath(); g.moveTo(m - 200, m + 150); g.lineTo(m - 50, m + 150); g.stroke();
     g.font = 'bold 16px monospace'; for (const [t, x] of [['2', -190], ['4', -140], ['6', -100], ['10', -60]]) g.fillText(t, m + x, m + 175);
+  } else if (kind === 'acog') {
+    // Red chevron with a bullet-drop ladder below, fine crosshair lines
+    g.strokeStyle = 'rgba(255,50,30,0.95)'; g.lineWidth = 5; g.shadowColor = 'red'; g.shadowBlur = 4;
+    g.beginPath(); g.moveTo(m - 22, m + 24); g.lineTo(m, m); g.lineTo(m + 22, m + 24); g.stroke();
+    g.shadowBlur = 0; g.strokeStyle = '#000'; g.fillStyle = '#000'; g.lineWidth = 2;
+    g.beginPath(); g.moveTo(m, m + 30); g.lineTo(m, m + 210); g.moveTo(m - 230, m); g.lineTo(m - 60, m); g.moveTo(m + 60, m); g.lineTo(m + 230, m); g.stroke();
+    for (let i = 1; i <= 5; i++) { const y = m + 30 + i * 32, hw = 20 - i * 2.5; g.fillRect(m - hw, y - 1, hw * 2, 3); }
+    g.font = 'bold 15px monospace'; for (let i = 2; i <= 6; i++) g.fillText(String(i), m + 26, m + 30 + (i - 1) * 32 + 5);
   } else if (kind === 'duplex') {
     g.fillStyle = '#000';
     const t = 10, gap = 70;
@@ -160,7 +212,12 @@ function buildOptic(key, gunCfg) {
     g.add(ret);
   } else {
     // Telescopic sight: tube, bells, turrets, mount, PIP eyepiece lens.
-    const len = key === 'scope_6x' ? 0.3 : 0.24;
+    const len = key === 'scope_6x' ? 0.3 : key === 'scope_acog' ? 0.15 : 0.24;
+    if (key === 'scope_acog') {
+      // Squat housing with a fibre-optic strip on top and the rail clamp
+      RB(g, 0.034, 0.036, len, 0.008, MAT.dark, 0, 0, -len / 2 - 0.01);
+      B(g, 0.006, 0.004, 0.08, new THREE.MeshStandardMaterial({ color: 0xc83a2a, emissive: 0x501008 }), 0, 0.019, -len / 2);
+    }
     C(g, 0.015, len, MAT.dark, 0, 0, -len / 2 - 0.02);
     C(g, 0.021, 0.05, MAT.dark, 0, 0, -0.025); // eyepiece bell
     C(g, 0.024, 0.06, MAT.dark, 0, 0, -len - 0.02); // objective bell
@@ -203,7 +260,7 @@ function buildMuzzle(key, parent, at) {
   g.position.set(...at);
   let len;
   if (key === 'brake_ak') { len = 0.07; C(g, 0.013, len, MAT.metal, 0, 0, -len / 2); B(g, 0.03, 0.006, 0.02, MAT.dark, 0, 0.01, -0.03); }
-  else { len = key === 'supp_pm' ? 0.12 : 0.18; C(g, key === 'supp_pm' ? 0.014 : 0.02, len, MAT.dark, 0, 0, -len / 2, 18); }
+  else { const small = key === 'supp_pm' || key === 'supp_pistol'; len = small ? 0.13 : 0.18; C(g, small ? 0.015 : 0.02, len, MAT.dark, 0, 0, -len / 2, 18); }
   parent.add(g);
   return -len;
 }

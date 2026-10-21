@@ -52,7 +52,7 @@ const CHAPTERS = [
     { id: 'drive', text: 'Get a car running and drive 1 km', check: (c) => [Math.min(1000, Math.floor(c.drove || 0)), 1000] },
   ] },
   { title: 'Armed and Dangerous', blurb: 'Knives won\'t cut it forever.', reward: [['mag_ak30', 1], ['ammo_545', 60]], goals: [
-    { id: 'rifle', text: 'Own a rifle (SKS or AK-74)', check: (c, g) => [g.progress.hasItem((it) => it.key === 'sks' || it.key === 'ak74') ? 1 : 0, 1] },
+    { id: 'rifle', text: 'Own a rifle (SKS, AK-74, M4A1 or M14)', check: (c, g) => [g.progress.hasItem((it) => ['sks', 'ak74', 'm4a1', 'm14', 'm249'].includes(it.key)) ? 1 : 0, 1] },
     { id: 'optic', text: 'Mount an optic on a gun', check: (c, g) => [g.progress.hasItem((it) => !!it.mods?.optic) ? 1 : 0, 1] },
     { id: 'armor', text: 'Wear body armor', check: (c, g) => [g.player.equip.armor ? 1 : 0, 1] },
     { id: 'kills50', text: 'Kill 50 zombies', check: (c) => [c.kills, 50] },

@@ -197,7 +197,7 @@ export function EX(parent, pts, width, mat, x = 0, bevel = 0.002) {
   return mesh(parent, geo, mat, x, 0, 0);
 }
 // A line of small screws/rivets on a side face
-function rivets(parent, side, pts, r = 0.0032) {
+export function rivets(parent, side, pts, r = 0.0032) {
   for (const [z, y] of pts) {
     const g = new THREE.CylinderGeometry(r, r, 0.003, 10);
     g.rotateZ(Math.PI / 2);
@@ -233,7 +233,7 @@ function akMag(len, mat) {
   RB(g, 0.03, 0.01, 0.068, 0.003, MAT.dark, 0, -sb - 0.004, bz, ab); // base plate
   return g;
 }
-function boxMag(h, w, d, mat, ribs = 0) {
+export function boxMag(h, w, d, mat, ribs = 0) {
   const g = new THREE.Group();
   RB(g, w, h, d, 0.003, mat, 0, -h / 2, 0);
   for (let i = 0; i < ribs; i++) B(g, w + 0.002, 0.004, d * 0.6, MAT.dark, 0, -0.015 - i * (h - 0.03) / Math.max(1, ribs - 1), 0);
@@ -241,8 +241,11 @@ function boxMag(h, w, d, mat, ribs = 0) {
   B(g, w * 0.7, 0.004, d * 0.6, MAT.brass, 0, 0.001, 0);
   return g;
 }
+// Magazines defined elsewhere (natoguns.js) register their builders here
+export const MAG_BUILDERS = {};
 // Builds the magazine model for a magazine item key.
 export function buildMag(key) {
+  if (MAG_BUILDERS[key]) return MAG_BUILDERS[key]();
   if (key === 'mag_ak30') return akMag(0.18, MAT.plum);
   if (key === 'mag_ak45') return akMag(0.25, MAT.plum);
   if (key === 'mag_pm') { const g = boxMag(0.09, 0.019, 0.03, MAT.blued); B(g, 0.004, 0.06, 0.012, MAT.black, 0.0105, -0.045, 0.004); return g; }

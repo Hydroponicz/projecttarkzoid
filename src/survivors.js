@@ -24,6 +24,13 @@ const AI_GUNS = {
   mp133: { dmg: 55, rate: 1.1, range: 18, acc: 0.75 },
   sks: { dmg: 62, rate: 0.95, range: 55, acc: 0.6 },
   ak74: { dmg: 36, rate: 0.16, range: 50, acc: 0.42, burst: 4 },
+  m4a1: { dmg: 34, rate: 0.13, range: 55, acc: 0.46, burst: 4 },
+  mp5: { dmg: 26, rate: 0.12, range: 30, acc: 0.5, burst: 5 },
+  glock17: { dmg: 28, rate: 0.5, range: 28, acc: 0.56 },
+  m1911: { dmg: 38, rate: 0.65, range: 26, acc: 0.54 },
+  m14: { dmg: 74, rate: 1.0, range: 70, acc: 0.62 },
+  m870: { dmg: 56, rate: 1.1, range: 18, acc: 0.75 },
+  m249: { dmg: 34, rate: 0.12, range: 55, acc: 0.36, burst: 8 },
 };
 const AI_MELEE = { knife: 28, crowbar: 40, axe: 60, hammer: 26 };
 
@@ -116,8 +123,8 @@ class Survivor {
     // Weapon prop
     this.gunMesh = new THREE.Group();
     const key = this.weapon?.key || this.melee;
-    const len = { pm: 0.2, mp133: 0.85, sks: 0.95, ak74: 0.8, knife: 0.25, crowbar: 0.6, axe: 0.7, hammer: 0.35 }[key] || 0.3;
-    box(0.05, 0.07, len, key === 'sks' || key === 'mp133' ? mat(0x5a3a20) : dark, 0, 0, len / 2, this.gunMesh);
+    const len = { pm: 0.2, glock17: 0.2, m1911: 0.22, mp133: 0.85, m870: 0.85, sks: 0.95, m14: 1.05, ak74: 0.8, m4a1: 0.8, mp5: 0.6, m249: 1.0, knife: 0.25, crowbar: 0.6, axe: 0.7, hammer: 0.35 }[key] || 0.3;
+    box(0.05, 0.07, len, key === 'sks' || key === 'mp133' || key === 'm14' ? mat(0x5a3a20) : dark, 0, 0, len / 2, this.gunMesh);
     this.gunMesh.position.set(0.1, 1.3, 0.35);
     g.add(this.gunMesh);
     this.muzzle = new THREE.Object3D();
@@ -860,7 +867,7 @@ export class Survivors {
     const gunChance = disp === 'hostile' ? 0.75 : 0.5;
     let weapon = null, reserve = 0;
     if (Math.random() < gunChance) {
-      const key = pick(disp === 'hostile' ? ['pm', 'pm', 'mp133', 'sks', 'ak74'] : ['pm', 'pm', 'mp133', 'sks']);
+      const key = pick(disp === 'hostile' ? ['pm', 'pm', 'glock17', 'm1911', 'mp133', 'm870', 'sks', 'ak74', 'm4a1', 'mp5'] : ['pm', 'pm', 'glock17', 'm1911', 'mp133', 'm870', 'sks']);
       const def = ITEMS[key];
       weapon = makeItem(key, { loaded: def.tube || ITEMS[def.magKey].cap });
       reserve = Math.floor((def.tube || ITEMS[def.magKey].cap) * (1 + Math.random() * 2));
