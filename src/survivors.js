@@ -816,7 +816,8 @@ export class Survivors {
     const m = new THREE.Vector3();
     s.muzzle.getWorldPosition(m);
     const d = this.distToPlayer(s);
-    sfx.shot(s.weapon.key, false, Math.max(0, 1 - d / 140) ** 1.5);
+    const P = this.game.player, dx = m.x - P.pos.x, dz = m.z - P.pos.z, dl = Math.hypot(dx, dz) || 1;
+    sfx.shot(s.weapon.key, false, Math.max(0, 1 - d / 140) ** 1.5, (dx * Math.cos(P.yaw) - dz * Math.sin(P.yaw)) / dl);
     this.flash.position.copy(m);
     this.flash.intensity = 25;
     const end = new THREE.Vector3(tx, 1.2, tz);

@@ -27,7 +27,7 @@ class Heap {
   }
 }
 import { HALF } from './world.js';
-import { sfx } from './audio.js';
+import { sfx, zombieVoice } from './audio.js';
 import { lookMats, JOINT } from './ragdoll.js';
 
 export const NAV_CELL = 0.6;
@@ -435,7 +435,7 @@ export class Zombies {
     const zb = {
       mesh: g, parts: { head, torso, armL, armR, legL, legR }, type: typeName, def: t,
       pos: g.position, hp: t.hp, maxHp: t.hp, state: 'wander', target: null, lastSeen: 0,
-      phase: Math.random() * 10, attackCd: 0, losTimer: Math.random() * 0.3, canSee: false,
+      phase: Math.random() * 10, voice: zombieVoice(typeName), attackCd: 0, losTimer: Math.random() * 0.3, canSee: false,
       groanTimer: 3 + Math.random() * 10, wanderTimer: 0, dir: Math.random() * Math.PI * 2,
       radius: 0.32 * t.scale, height: 1.85 * t.scale, stagger: 0, dead: false, stuck: 0,
       // Hit reactions: body lean and head snap springs, current velocity,
@@ -504,12 +504,26 @@ export class Zombies {
   }
 
   // hit: { point, dir, force } from the bullet or blow (for reactions and ragdolls)
+  // Its voice, quieter with distance and panned to where it stands
+  vocal(zb, kind, range, loud) {
+    const p = this.game?.player;
+    if (!p) return;
+    const dx = zb.pos.x - p.pos.x, dz = zb.pos.z - p.pos.z;
+    const d = Math.hypot(dx, dz);
+    if (d >= range) return;
+    const pan = d > 0.01 ? (dx * Math.cos(p.yaw) - dz * Math.sin(p.yaw)) / d : 0;
+    // Another floor muffles it
+    const floors = Math.abs((zb.pos.y || 0) - (p.floorY || 0)) > 2 ? 0.4 : 1;
+    sfx.zombie(kind, (1 - d / range) * loud * floors, zb.voice, pan);
+  }
+
   damage(zb, amount, fromX, fromZ, head = false, hit = null) {
     if (zb.dead) return false;
     // Armored zombies (soldiers) shrug off body shots; headshots go through.
     if (zb.def.armor && !head) amount *= 1 - zb.def.armor;
     zb.hp -= amount;
     zb.stagger = 0.35;
+    if (zb.hp > 0 && Math.random() < 0.6) this.vocal(zb, 'hurt', 35, 0.9);
     // Shot from anywhere: it knows where you are now and comes for you.
     zb.state = 'chase';
     zb.prey = null;
@@ -595,6 +609,7 @@ export class Zombies {
 
   kill(zb, hit, head) {
     zb.dead = true;
+    if (!head || Math.random() < 0.3) this.vocal(zb, 'die', 40, 1);
     const game = this.game;
     this.scene.remove(zb.mesh);
     const c = this.world.addContainer(zb.def.loot || 'body', zb.pos.x, zb.pos.z);
@@ -740,6 +755,7 @@ export class Zombies {
         speed = 0;
         if (zb.attackCd <= 0) {
           zb.attackCd = 1.3;
+          this.vocal(zb, 'snarl', 25, 0.9);
           const [a, b] = zb.def.dmg;
           const dmg = a + Math.random() * (b - a);
           if (prey) prey.hurt(dmg, 'zombie', zb);
@@ -828,7 +844,7 @@ export class Zombies {
       zb.groanTimer -= dt;
       if (zb.groanTimer <= 0) {
         zb.groanTimer = (zb.state === 'chase' ? 2.5 : 8) + Math.random() * 8;
-        if (dist < 30) sfx.groan((1 - dist / 30) * 0.8);
+        if (dist < 30) this.vocal(zb, zb.state === 'chase' ? 'growl' : 'groan', 30, 0.8);
       }
     }
     this.nearest = nearest;

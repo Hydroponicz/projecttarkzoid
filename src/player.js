@@ -445,6 +445,7 @@ export class Player {
     if (tHit == null) {
       if (wallD < maxD) {
         g.fx.impact(wallPoint, normal, wallBox?.decalParent, wallBox?.decalInset);
+        if (wallD < 40) sfx.impact(1 - wallD / 40);
         // Zombies near where it smacked in turn to look where it came from.
         g.zombies.alertNear(wallPoint.x, wallPoint.z, 5, this.pos.x, this.pos.z, this.floorY);
       }

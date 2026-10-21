@@ -15,7 +15,7 @@ import { ITEMS, makeItem, migrateItem, itemValue } from './items.js';
 import { combineItems, weaponActions, loadStep } from './weapons.js';
 import { makeGrid, addItem, removeItem } from './inventory.js';
 import { loadSave, writeSave, deleteSave } from './save.js';
-import { initAudio, sfx } from './audio.js';
+import { initAudio, sfx, setAudioEnv } from './audio.js';
 import { Builder, BUILDABLES, buildCostText } from './build.js';
 import { setupCreation } from './character.js';
 import { DevConsole } from './devconsole.js';
@@ -971,6 +971,7 @@ class Game {
     this.updateLighting();
     this.weather.update(dt);
     this.player.update(dt, inp);
+    setAudioEnv(this.world.buildingAt(this.player.pos.x, this.player.pos.z) ? 'in' : 'out');
     if (this.state !== 'play') return;
     if (!this.dev.god) this.weather.updatePlayer(dt);
     if (this.state !== 'play') return;

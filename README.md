@@ -1,6 +1,6 @@
 # Tarkzoid
 
-A first-person zombie survival sandbox in the browser. It has Project Zomboid's persistent world, base building and permadeath, combined with Escape from Tarkov's grid inventory, body-part health and gunplay. Built with [three.js](https://threejs.org/) and Vite. It has no asset files: the geometry is generated in code and the sound is synthesized with WebAudio.
+A first-person zombie survival sandbox in the browser. It has Project Zomboid's persistent world, base building and permadeath, combined with Escape from Tarkov's grid inventory, body-part health and gunplay. Built with [three.js](https://threejs.org/) and Vite. It has no asset files: the geometry is generated in code and the sound is synthesized with WebAudio (real recordings can be dropped in, see [Sound](#sound)).
 
 ## Run it
 
@@ -213,6 +213,22 @@ Reloads, ammo and every other "do you have it" check look through your pockets, 
 
 Guns work much like Tarkov's. Each firearm is a detailed procedural model, and its iron sights are properly aligned with where the bullets go.
 
+| Gun | Calibre | Feeds from | Where to find it |
+| --- | --- | --- | --- |
+| PM | 9×18 | 8-round mag | Bodies, nightstands, police |
+| Glock 17 | 9×19 | 17-round mag | Police lockers, evidence rooms, bodies, soldiers |
+| M1911A1 | .45 ACP | 7-round mag | Evidence rooms, hunting cabins |
+| MP5A3 | 9×19 | 30-round mag, semi/auto | Police lockers |
+| AK-74N | 5.45×39 | 30/45-round mags, semi/auto | Military |
+| M4A1 | 5.56×45 | STANAG 30, semi/auto | Military crates, soldiers, police (rare) |
+| M249 SAW | 5.56×45 | 100-round belt box or STANAG mags, auto | Military crates (rare) |
+| SKS | 7.62×39 | 10-round mag | Hunting cabins, crates, military |
+| M14 | 7.62×51 | 20-round mag, semi-auto | Military crates, hunting cabins (rare) |
+| MP-133 | 12 gauge | Tube, shell by shell | Hunting cabins, crates, police |
+| Remington 870 | 12 gauge | Tube, shell by shell | Police lockers, hunting cabins |
+
+The gunsmith trader sells the NATO guns as your reputation grows.
+
 - **Magazines are items.** Load them in the inventory, round by round, by dragging ammo onto a magazine (or right-click → Load). Loading only continues while the inventory is open. Drag a magazine onto a weapon to insert it.
 - **Chambered rounds.** **R** swaps in your fullest spare magazine. A tactical reload keeps the chambered round (30+1). On an empty reload the bolt has to be racked. Double-tap **R** for a quick reload that drops the old mag on the ground. The MP-133 loads shell by shell; firing interrupts the loading, and you pump between shots. The PM's slide and the SKS bolt lock back when empty.
 - **Models.**
@@ -221,6 +237,10 @@ Guns work much like Tarkov's. Each firearm is a detailed procedural model, and i
     - SKS: one-piece wooden stock and folded bayonet.
     - PM: blued slide with serrations and Bakelite grips.
     - MP-133: walnut stock and a grooved pump.
+    - M4A1: flat-top upper with a rail and flip-up rear sight, A2 front sight tower, ribbed handguard, collapsible stock and a birdcage flash hider.
+    - MP5: stamped receiver, cocking tube over the barrel, drum rear sight, hooded front post and a curved mag.
+    - Glock 17: squared polymer frame and slide. The M1911 has a blued slide, exposed hammer, grip safety and checkered wood grips.
+    - M14: walnut stock, operating rod handle, winged front post and a box mag. The M249 has a heat shield, carry handle, folded bipod and belt box. The Remington 870 has a matte receiver, a bead sight and a ribbed pump.
   - Textures are generated: wood grain, worn and blued metal, stippled polymer, Bakelite.
   - Gloved hands have fingers wrapped round the grip, camo sleeves and a wristwatch.
 - **Reload animations.** Reloads are shown in full, with the body behind them, the way modern shooters animate them:
@@ -251,7 +271,8 @@ Guns work much like Tarkov's. Each firearm is a detailed procedural model, and i
 - **Attachments.** Open the inventory (**Tab**). Drag an attachment onto your weapon (in your hands or in a bag), or right-click the attachment and choose **Attach to …**. Right-click the weapon to detach things. Each part only fits certain guns; hover an item to see what it fits. Attachments change ergonomics, sway and recoil.
   - Red dot and holographic sights project their reticle at infinity, like real reflex sights.
   - The **PSO-1 4×** and **Hunting 6×** are true picture-in-picture scopes: a magnified view renders onto the lens, with the PSO's chevron and rangefinder reticle and an eye-box shadow when the gun sways. The scope view follows the exact path of the bullet, so the reticle is true: shots land within the rifle's spread.
-  - Suppressors cut gunshot noise by about 80%, which matters with zombies around.
+  - The **ACOG 4×** (M4A1, M14, M249) is a picture-in-picture scope with a red chevron and bullet-drop ladder.
+  - Suppressors cut gunshot noise by about 80%, which matters with zombies around. The rifle can fits the AK, SKS, M4A1 and M14; the pistol can fits the Glock, M1911 and MP5.
   - Also a muzzle brake and a vertical foregrip.
 - **Lean** with **Q** / **E**.
 
@@ -322,7 +343,7 @@ Four or five survivors have moved into small houses, shops or gas stations aroun
 Zombies and survivors react physically to what hits them.
 
 - **Hit reactions.** A body rocks away from the hit, and a headshot snaps the head back. Leg shots and heavy blows (shotgun at close range, axe, crowbar) can knock a target off its feet. It goes ragdoll, tumbles, and climbs back up once it settles. You can keep shooting it while it's down.
-- **Death.** Every death is a ragdoll: 15 joints with joint limits, colliding with the ground, walls, cars and furniture. Knees only bend forward and hips have a natural range. Arms and legs collide with the torso (as a solid box) and with each other, so bodies come to rest with their legs out instead of folded through themselves. Bodies collide with other bodies and pile up. Hitting a wall, a window or glass absorbs the blow instead of bouncing the body away. A shot to the legs sweeps the feet out from under the target.
+- **Death.** Every death is a ragdoll: 15 joints with joint limits, colliding with the ground, walls, cars and furniture. Knees only bend forward and hips have a natural range. Arms and legs collide with the torso (as a solid box) and with each other, so bodies come to rest with their legs out instead of folded through themselves. The legs are solid to each other along their whole length: if one leg falls across the other it rests on top of it instead of passing through. Bodies collide with other bodies and pile up. Hitting a wall, a window or glass absorbs the blow instead of bouncing the body away. A shot to the legs sweeps the feet out from under the target.
   - The killing blow pushes where it lands, and a running body keeps its momentum.
   - A headshot drops the body limp on the spot. A body shot buckles the knees first, then the body crumples, sometimes with a few death twitches.
   - Survivors drop their gun as they fall.
@@ -359,6 +380,27 @@ Zombies and survivors react physically to what hits them.
 | V | Claim a safehouse |
 | Esc | Pause. The game goes fullscreen when you spawn; hold Esc or use the pause menu to leave fullscreen. |
 
+## Sound
+
+Everything is synthesized live with WebAudio. Nothing is a looped recording, so no two sounds are quite the same.
+
+- **Gunshots** are built the way a real shot is heard: the supersonic crack of the bullet (rifles), the muzzle blast, the low thump of the gas, the action cycling, and the echo off the town. Every calibre has its own profile: a 9 mm pops, a .45 thumps, 5.56 cracks hard, 7.62×51 booms, and a 12 gauge roars. Indoors the shot slaps off the walls in a short room reverb; outdoors it rolls away in a long tail. Suppressed shots keep the action and a dull thud. Other people's gunfire is panned, duller and further away the further off it is.
+- **Zombies** have voices. A formant synth (throat, vowels and rasp) gives each zombie a pitch and size of its own: walkers moan, runners are higher and raspier, brutes and soldiers are deep. They groan while they wander, growl on the chase, snarl as they swing, cry out when hit and give a death rattle. Every voice is panned to where the zombie is, quieter with distance and muffled from another floor.
+- **Mechanics:** magazines clicking out and seating, bolts and slides, the shotgun pump, brass on the ground, dry fire, footsteps, and bullets chipping walls near you.
+
+**Using real recordings.** Put audio files in `public/sounds/` and list them in `public/sounds/manifest.json`. Each name maps to one or more files, and one is picked at random each time:
+
+```json
+{
+  "shot_m4a1": ["m4_1.ogg", "m4_2.ogg"],
+  "shot_rifle308_supp": ["m14_supp.ogg"],
+  "zombie_groan": ["groan1.ogg", "groan2.ogg", "groan3.ogg"],
+  "mag_in": ["magin.wav"]
+}
+```
+
+Names are `shot_<weapon>` or `shot_<calibre class>` (`pistol9`, `pistol45`, `smg9`, `rifle545`, `rifle556`, `lmg`, `rifle762`, `rifle308`, `shotgun`), with `_supp` for suppressed; `zombie_<groan|growl|snarl|hurt|die>`; `impact`, `mag_out`, `mag_in`, `bolt`, `pump`. Anything not listed stays synthesized.
+
 ## Dev console
 
 Press **`** (backquote) or **F1** to open the dev console, in game or on the menu. It pauses the game while it's open; you can turn that off in its settings. Its toggles are remembered across reloads.
@@ -375,6 +417,7 @@ The command line has Tab completion and ↑/↓ history. Type `help` for the ful
 
 ```
 give ak74            give mag_ak30 3      kit Rifleman        kit Marksman
+give m4a1            give mag_stanag 3    kit Operator        kit Gunner
 give scope_pso       give supp_rifle      kit Builder         spawn brute 3
 survivor hostile 2   survivors            trust 40            spawn walker 5
 tp hospital          tp military          tp checkpoint       tp pharmacy
@@ -423,6 +466,7 @@ Buildings and streets are textured with generated maps: brick, wood siding, conc
 | `src/levels.js` | Floor heights: stairs, storeys and elevators (where movers stand), slabs that stop bullets, elevator control, stair routes for zombies |
 | `src/carmodels.js` | Vehicle models: body profiles, details, wheels, cockpit, hinged doors/hood/trunk |
 | `src/gunmodels.js` | Weapon, magazine and hand models; procedural wood, metal, polymer, fabric and camo textures |
+| `src/natoguns.js` | M4A1, MP5, Glock 17, M1911, M14, Remington 870 and M249 models and their magazines |
 | `src/survivors.js` | AI survivors: dispositions and trust, A* pathfinding, combat, following, dialogue, trading |
 | `src/progress.js` | First-day tutorial, progression chapters and goals, the guide tracker and goals panel |
 | `src/vehicles.js` | Vehicles: door/hood/trunk and driving animations, parts and condition, driving physics, collisions and run-overs, the parts screen, fuel, saving |
@@ -434,7 +478,7 @@ Buildings and streets are textured with generated maps: brick, wood siding, conc
 | `src/items.js` | Item definitions, loot tables, container types |
 | `src/inventory.js` / `src/invui.js` | Grid inventory logic and drag-and-drop UI |
 | `src/hud.js` | HUD, compass, map |
-| `src/audio.js` | Synthesized sound effects |
+| `src/audio.js` | Synthesized gunshots, zombie voices and effects, reverb, and optional recorded samples |
 | `src/devconsole.js` | Dev console: tabs, cheats, overlays, commands |
 | `src/save.js` | Save persistence (localStorage): world seed plus everything that changed |
 
