@@ -413,7 +413,7 @@ export function combineItems(drag, target, ctx) {
     ctx.detach();
     const old = target.mag;
     target.mag = drag;
-    sfx.magIn();
+    sfx.magIn(target.key);
     if (old) stash(old, ctx.src.grid, game, drag);
     return true;
   }
@@ -473,8 +473,8 @@ export function weaponActions(it, src, game) {
       if ((it.tube || 0) < def.tube) out.push([`Load ${ITEMS[def.ammo].name}`, () => game.startLoading(it, false)]);
       if (it.tube > 0) out.push(['Unload shells', () => game.startLoading(it, true)]);
     }
-    if (it.mag) out.push(['Remove magazine', () => { const m = it.mag; it.mag = null; sfx.magOut(); stash(m, grid, game); }]);
-    if (it.chamber) out.push(['Unload chamber', () => { it.chamber = 0; stash(makeItem(def.ammo, { count: 1 }), grid, game); sfx.bolt(); }]);
+    if (it.mag) out.push(['Remove magazine', () => { const m = it.mag; it.mag = null; sfx.magOut(it.key); stash(m, grid, game); }]);
+    if (it.chamber) out.push(['Unload chamber', () => { it.chamber = 0; stash(makeItem(def.ammo, { count: 1 }), grid, game); sfx.bolt(it.key); }]);
     if (def.auto) out.push([`Fire mode: ${it.mode === 'auto' ? 'switch to semi' : 'switch to auto'}`, () => { it.mode = it.mode === 'auto' ? 'semi' : 'auto'; sfx.click(); }]);
     for (const [slot, m] of Object.entries(it.mods)) {
       if (m) out.push([`Detach ${ITEMS[m.key].name}`, () => { it.mods[slot] = null; stash(m, grid, game); sfx.click(1800, 0.2); }]);
@@ -889,7 +889,7 @@ export class GunController {
     // --- input: fire mode, mag check, reload, trigger ---
     if (input.fireMode && def.auto && !this.busy) {
       w.mode = w.mode === 'auto' ? 'semi' : 'auto';
-      sfx.click(); this.play('mode', 0.25);
+      sfx.selector(w.key); this.play('mode', 0.25);
       p.game.hud.message(`Fire mode: ${w.mode.toUpperCase()}`, 1.5);
     }
     // T checks the magazine; T twice quickly (or Shift+T) checks the chamber
@@ -947,7 +947,7 @@ export class GunController {
       else if (parts.bolt) parts.bolt.position.z = travel * 0.45 * pull;
       if (def.tube && parts.pump) parts.pump.position.z = 0.035 * pull;
       if (L && (parts.bolt || parts.slide)) L.position.lerpVectors(L0, (parts.bolt || parts.slide).position.clone().add(new THREE.Vector3(0.03, 0.01, 0.02)), bump(0.08, 0.22, 0.78, 0.92, t));
-      if (Math.abs(pull - 0.5) < 0.02 && !a.clacked) { a.clacked = true; sfx.click(900, 0.25); }
+      if (t >= 0.3 && !a.clacked) { a.clacked = true; sfx.chamber(w.key); } // (halfway back)
     } else if (a.type === 'shell') {
       // A shell in the fingers, pushed up into the loading port
       if (L && !a.shellMesh) { a.shellMesh = shellModel(); a.shellMesh.position.set(0.012, 0.022, -0.03); a.shellMesh.rotation.x = -0.4; a.shellMesh.traverse((o) => o.layers.set(VM_LAYER)); L.add(a.shellMesh); }
@@ -1209,7 +1209,7 @@ export class GunController {
     if (!best) {
       if (!w.chamber && w.mag && w.mag.rounds > 0) return this.startCharge();
       p.game.hud.message(`No loaded ${ITEMS[def.magKey].name.replace(/^.*?\d+-round /, '')}s — load one in your inventory`, 3);
-      sfx.dry();
+      sfx.dry(w.key);
       return;
     }
     if (w.mag && w.mag.rounds >= ITEMS[w.mag.key].cap && w.chamber) return;
@@ -1235,16 +1235,18 @@ export class GunController {
     this.play('reload', tl.dur, {
       tl, opts, cond: c, k: kSpeed, rest, newRoot, time: 0, keys: reloadKeys(tl, opts.pistol),
       events: [
-        { at: at('out', 0.3), fn: () => { if (old) { sfx.magOut(); this.bodyKick({ y: -0.12, rx: -0.5, rz: 0.2 }); } } },
+        { at: at('out', 0.3), fn: () => { if (old) { sfx.magOut(w.key); this.bodyKick({ y: -0.12, rx: -0.5, rz: 0.2 }); } } },
         { at: at('out', 1), fn: () => {
           // Old magazine goes to your inventory, or the ground on a quick reload.
           if (old) { w.mag = null; if (this.anim?.quick || !grids.some((g) => addItem(g, old))) p.game.dropItem(old); }
         } },
         { at: at('fetch', 0), fn: () => { removeItem(bestGrid, best); if (!old) w.mag = null; } },
         { at: at('miss', 0.35), fn: () => { sfx.click(700, 0.25); this.bodyKick({ y: -0.1, rz: 0.5, rx: -0.3 }); p.game.hud.message(c.hurt > c.tired ? 'Your injured arm fumbles the magazine' : 'Your hands are shaking: you fumble the magazine', 2); } },
-        { at: at('seat', 0.9), fn: () => { w.mag = best; sfx.magIn(); this.bodyKick({ y: 0.2, rx: 0.9, rz: -0.35 }); } },
+        { at: at('seat', 0.9), fn: () => { w.mag = best; sfx.magIn(w.key); this.bodyKick({ y: 0.2, rx: 0.9, rz: -0.35 }); } },
         { at: at('slap', 0.55), fn: () => this.bodyKick({ y: 0.3, rx: 1.1 }) },
-        { at: at('charge', 0.56), fn: () => { if (!opts.charge) return; sfx.bolt(); this.bodyKick({ z: 0.25, rx: 1.3, rz: 0.5 }); if (w.mag?.rounds > 0) { w.mag.rounds--; w.chamber = 1; } } },
+        // the bolt heard going back as it's pulled, and slamming home when it's let go
+        { at: at('charge', opts.pistol ? 0.56 : 0.36), fn: () => { const q = ph().charge; if (opts.charge && q) sfx.bolt(w.key, opts.pistol ? 0.15 : (q[1] - q[0]) * 0.27); } },
+        { at: at('charge', 0.56), fn: () => { if (!opts.charge) return; this.bodyKick({ z: 0.25, rx: 1.3, rz: 0.5 }); if (w.mag?.rounds > 0) { w.mag.rounds--; w.chamber = 1; } } },
       ],
       onDone: () => { this.rebuild(true); },
     });
@@ -1271,7 +1273,9 @@ export class GunController {
     const rest = { x: parts.magRoot.position.x, y: parts.magRoot.userData.y0 ?? parts.magRoot.position.y, z: parts.magRoot.userData.z0 ?? parts.magRoot.position.z, rx: parts.magRoot.userData.rx0 ??= parts.magRoot.rotation.x };
     this.play('reload', tl.dur, {
       tl, opts, cond: c, k: kSpeed, rest, time: 0, keys: reloadKeys(tl, opts.pistol),
-      events: [{ at: () => tl.ph.charge[0] + (tl.ph.charge[1] - tl.ph.charge[0]) * 0.56, fn: () => { sfx.bolt(); this.bodyKick({ z: 0.25, rx: 1.3, rz: 0.5 }); if (w.mag?.rounds > 0) { w.mag.rounds--; w.chamber = 1; } } }],
+      events: [
+        { at: () => tl.ph.charge[0] + (tl.ph.charge[1] - tl.ph.charge[0]) * (opts.pistol ? 0.56 : 0.36), fn: () => sfx.bolt(w.key, opts.pistol ? 0.15 : (tl.ph.charge[1] - tl.ph.charge[0]) * 0.27) },
+        { at: () => tl.ph.charge[0] + (tl.ph.charge[1] - tl.ph.charge[0]) * 0.56, fn: () => { this.bodyKick({ z: 0.25, rx: 1.3, rz: 0.5 }); if (w.mag?.rounds > 0) { w.mag.rounds--; w.chamber = 1; } } }],
     });
   }
 
@@ -1314,7 +1318,7 @@ export class GunController {
   fire(w, def, cfg, ctx) {
     const p = this.p;
     if (!w.chamber) {
-      if (!this.dryClicked) { sfx.dry(); this.dryClicked = true; }
+      if (!this.dryClicked) { sfx.dry(w.key); this.dryClicked = true; }
       if (def.tube && w.tube > 0) this.pumpAction();
       return;
     }

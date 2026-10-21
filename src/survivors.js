@@ -606,7 +606,7 @@ class Survivor {
       return;
     }
     if (this.roundsLoaded() <= 0) {
-      if (this.reserve > 0) { this.reloadT = 2.6; if (this.mgr.distToPlayer(this) < 25) sfx.magOut(); if (Math.random() < 0.4) this.say('Reloading!', 0.5); }
+      if (this.reserve > 0) { this.reloadT = 2.6; if (this.mgr.distToPlayer(this) < 25) sfx.magOut(this.weapon?.key); if (Math.random() < 0.4) this.say('Reloading!', 0.5); }
       return;
     }
     // Need line of sight, a moment to aim, and to be roughly facing the target.
@@ -894,7 +894,9 @@ export class Survivors {
     s.muzzle.getWorldPosition(m);
     const d = this.distToPlayer(s);
     const P = this.game.player, dx = m.x - P.pos.x, dz = m.z - P.pos.z, dl = Math.hypot(dx, dz) || 1;
-    sfx.shot(s.weapon.key, false, Math.max(0, 1 - d / 140) ** 1.5, (dx * Math.cos(P.yaw) - dz * Math.sin(P.yaw)) / dl);
+    // close up by the inverse-square-ish falloff; past ~140 m only the low
+    // boom still carries, faint, out to a few hundred metres
+    sfx.shot(s.weapon.key, false, Math.max(Math.max(0, 1 - d / 140) ** 1.5, 0.09 * (1 - d / 360)), (dx * Math.cos(P.yaw) - dz * Math.sin(P.yaw)) / dl, d);
     this.game.lights.burst(m, 25, { distance: 10, exp: 40 });
     const end = new THREE.Vector3(tx, 1.2, tz);
     const sd = end.clone().sub(m), sl = sd.length();

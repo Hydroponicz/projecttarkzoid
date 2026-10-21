@@ -237,17 +237,23 @@ async function loadSamples() {
     }
   } catch { /* no samples: synthesized sound only */ }
 }
-function playSample(name, vol = 1, pan = 0, wet = 0.2) {
-  const list = samples[name];
+// opts: at (start time), rate, pick (which of the files), via (a node to play
+// through, already routed), and a gun's own recording first: name_<weapon>
+function playSample(name, vol = 1, pan = 0, wet = 0.2, opts = {}) {
+  const list = (opts.gun && samples[`${name}_${opts.gun}`]) || samples[name];
   if (!list?.length || !ctx) return false;
   const s = ctx.createBufferSource();
-  s.buffer = list[Math.floor(Math.random() * list.length)];
-  s.playbackRate.value = 0.96 + Math.random() * 0.08;
+  s.buffer = list[(opts.pick ?? Math.floor(Math.random() * 64)) % list.length];
+  s.playbackRate.value = opts.rate ?? 0.96 + Math.random() * 0.08;
   const g = ctx.createGain(); g.gain.value = vol;
-  s.connect(g); out(g, pan, wet, s.buffer.duration + 1);
-  s.start();
-  return true;
+  s.connect(g);
+  const life = Math.max(0, (opts.at ?? 0) - now()) + s.buffer.duration / s.playbackRate.value + 0.3;
+  if (opts.via) { g.connect(opts.via); release(now() + life, s, g); }
+  else out(g, pan, wet, life);
+  s.start(opts.at ?? 0);
+  return g;
 }
+const hasSample = (name, gun) => !!(samples[`${name}_${gun}`]?.length || samples[name]?.length);
 
 // ---------- gunshots ----------
 // crack: supersonic bullet (rifles); blast: [start Hz, end Hz, decay s];
@@ -277,17 +283,20 @@ function crackBuf() {
   for (let i = 0; i < n; i++) d[i] = 1 - (2 * i) / n;
   return crack;
 }
-function gunshot(kind, suppressed, vol, pan = 0) {
+// dist (m): how far off it was fired; the sound takes a while to get here
+function gunshot(kind, suppressed, vol, pan = 0, dist = 0) {
   if (!Number.isFinite(vol) || !Number.isFinite(pan)) return;
   const cls = CALIBRE[kind] || 'rifle545', P = GUN[cls];
-  if (playSample(`shot_${kind}${suppressed ? '_supp' : ''}`, vol, pan, 0.3) || playSample(`shot_${cls}${suppressed ? '_supp' : ''}`, vol, pan, 0.3)) return;
-  const t = now() + 0.003, far = 1 - vol;
+  const t = now() + 0.003 + Math.min(Number.isFinite(dist) ? dist : 0, 700) / 343, far = 1 - vol;
   // Sustained fire: the echoes and the action's clatter of one shot cover
   // the next (and a crowded mix sheds them first)
   const k = (kind || '') + (pan > 0.5 ? 'r' : pan < -0.5 ? 'l' : ''), rapid = t - (lastShot[k] ?? -1) < 0.2;
   lastShot[k] = t;
   const nth = (shotN[k] = rapid ? (shotN[k] || 0) + 1 : 0);
   const crowded = busy() > 110;
+  const sup = suppressed ? '_supp' : '';
+  const rec = [`shot_${kind}${sup}`, `shot_${cls}${sup}`].find((n) => samples[n]?.length);
+  if (rec) { recordedShot(rec, k, t, vol, pan, suppressed, rapid, nth, crowded); return; }
   const bus = ctx.createGain(); bus.gain.value = vol * P.gain;
   const air = filter('lowpass', 700 + 17000 * vol * vol, 0.5); // air soaks up the highs with distance
   bus.connect(air);
@@ -330,6 +339,45 @@ function gunshot(kind, suppressed, vol, pan = 0) {
     for (const [dt, a, f] of [[0.12 + Math.random() * 0.22, 0.22, 1600], [0.42 + Math.random() * 0.4, 0.12, 800], [0.9 + Math.random() * 0.5, 0.06 + far * 0.08, 500]]) {
       const s = noiseSrc(pink, t + dt, 0.6), lp = filter('lowpass', f, 0.6), g = gainEnv(t + dt, 0.004, a * P.gain, 0.08 + far * 0.1);
       s.connect(lp); lp.connect(g); g.connect(bus);
+    }
+  }
+}
+
+// A recorded gunshot. Up close it's just the recording. Further off the air
+// soaks up the crack and the highs and leaves the low boom, which carries;
+// the report comes back off the buildings (the same shot again, later and
+// duller each time, from somewhere else), and more of it is reverb. Heard
+// from indoors it's muffled by the walls. In a burst each shot cuts short
+// the ring of the one before, so the tail of the last one rings out.
+const ringing = {};
+const SHOT_GAIN = 0.43; // (level with the synthesized rifles)
+function recordedShot(name, k, t, vol, pan, suppressed, rapid, nth, crowded) {
+  const far = 1 - vol, muffled = env === 'in' && far > 0.15;
+  const bus = ctx.createGain(); bus.gain.value = vol * SHOT_GAIN;
+  const boom = filter('lowshelf', 200); boom.gain.value = 10 * far;
+  const air = filter('lowpass', (700 + 17000 * vol * vol) * (muffled ? 0.45 : 1), 0.5);
+  bus.connect(boom); boom.connect(air);
+  const pick = Math.floor(Math.random() * 64);
+  const rate = (0.97 + Math.random() * 0.06) * (1 - far * 0.07); // a touch lower and slower far off
+  const echoes = env === 'out' && !suppressed && !crowded && (!rapid || nth % 4 === 0);
+  const life = t - now() + (echoes ? 3.2 : 1.4);
+  out(air, pan, (env === 'in' ? 0.4 : 0.18) + far * 0.65, life);
+  const g = playSample(name, 1, 0, 0, { at: t, rate, pick, via: bus });
+  if (!g) return;
+  const prev = ringing[k];
+  if (prev && prev.end > t) { prev.g.gain.setValueAtTime(1, t + 0.03); prev.g.gain.linearRampToValueAtTime(0, t + 0.09); }
+  ringing[k] = { g, end: t + 1.3 };
+  // The report rolling back off the town (outdoors; less of it up close,
+  // where the recording's own tail does the job)
+  if (echoes) {
+    const n = far > 0.25 ? 3 : 2;
+    for (let i = 0; i < n; i++) {
+      const dt = [0.14 + Math.random() * 0.2, 0.45 + Math.random() * 0.35, 0.95 + Math.random() * 0.5][i];
+      const a = [0.22, 0.13, 0.08][i] * (0.35 + far * 0.9) * vol * SHOT_GAIN;
+      const lp = filter('lowpass', [1500, 900, 550][i] * (0.6 + vol * 0.4), 0.6);
+      const side = Math.max(-1, Math.min(1, pan * 0.4 + (Math.random() - 0.5) * 1.4));
+      out(lp, side, 0.5 + far * 0.4, life + dt);
+      playSample(name, a, 0, 0, { at: t + dt, rate: rate * (0.98 - i * 0.02), pick, via: lp });
     }
   }
 }
@@ -421,9 +469,9 @@ export const sfx = {
     noise(1.8, 90, 0.8, 0.7 * vol, 'lowpass', 1.7, { buf: brown, wet: 0.6, delay: 0.3 + Math.random() * 0.5 });
     noise(1.5, 70, 0.8, 0.45 * vol, 'lowpass', 1.4, { buf: brown, wet: 0.6, delay: 1.1 + Math.random() * 0.7 });
   },
-  shot(kind, suppressed, vol = 1, pan = 0) {
+  shot(kind, suppressed, vol = 1, pan = 0, dist = 0) {
     if (!ctx || vol < 0.02) return;
-    withVol('shot_' + (CALIBRE[kind] || 'rifle545'), () => gunshot(kind, suppressed, vol, pan));
+    withVol('shot_' + (CALIBRE[kind] || 'rifle545'), () => gunshot(kind, suppressed, vol, pan, dist));
   },
   // A bullet smacking into something nearby: a chip of concrete, sometimes a whine
   impact(vol = 1) {
@@ -507,10 +555,22 @@ export const sfx = {
     noise(0.35, 260, 0.8, 0.6 * vol, 'lowpass', 0.3, { delay, buf: brown, pan, wet: 0.4 });
   },
   click(f = 2400, v = 0.12) { if (ctx) tick(0, f, v * 1.4, 4); },
-  magOut() { if (!ctx || playSample('mag_out', 0.6)) return; tick(0, 2800, 0.3); tick(0.012, 1900, 0.2); scrape(0.03, 1400, 900, 0.09, 0.12); },
-  magIn() { if (!ctx || playSample('mag_in', 0.6)) return; scrape(0, 900, 1500, 0.06, 0.12); tick(0.065, 2400, 0.42); ring(0.066, 1800, 0.05, 0.05); tone(180, 0.05, 0.12, 'sine', -60, { delay: 0.065 }); },
-  bolt() {
-    if (!ctx || playSample('bolt', 0.7)) return;
+  // The fire selector, and easing the bolt back to look into the chamber
+  selector(gun) { if (ctx && !playSample('selector', 0.55, 0, 0.15, { gun })) tick(0, 2400, 0.17, 4); },
+  chamber(gun) { if (ctx && !playSample('chamber', 0.5, 0, 0.15, { gun })) tick(0, 900, 0.35, 4); },
+  magOut(gun) { if (!ctx || playSample('mag_out', 0.6, 0, 0.2, { gun })) return; tick(0, 2800, 0.3); tick(0.012, 1900, 0.2); scrape(0.03, 1400, 900, 0.09, 0.12); },
+  magIn(gun) { if (!ctx || playSample('mag_in', 0.6, 0, 0.2, { gun })) return; scrape(0, 900, 1500, 0.06, 0.12); tick(0.065, 2400, 0.42); ring(0.066, 1800, 0.05, 0.05); tone(180, 0.05, 0.12, 'sine', -60, { delay: 0.065 }); },
+  // gap: how long the bolt is held back before it's let go (a recording of
+  // each half plays at its moment: bolt_back, bolt_fwd)
+  bolt(gun, gap = 0.15) {
+    if (!ctx) return;
+    if (hasSample('bolt_back', gun) && hasSample('bolt_fwd', gun)) {
+      const pick = Math.floor(Math.random() * 64);
+      playSample('bolt_back', 0.7, 0, 0.2, { gun, pick });
+      playSample('bolt_fwd', 0.8, 0, 0.2, { gun, pick, at: now() + gap });
+      return;
+    }
+    if (playSample('bolt', 0.7, 0, 0.2, { gun })) return;
     scrape(0, 1200, 2600, 0.07, 0.16); tick(0.07, 2200, 0.3); // back
     tick(0.15, 3000, 0.5); ring(0.152, 2100, 0.07, 0.08); tone(140, 0.06, 0.15, 'sine', -50, { delay: 0.15 }); // home
   },
@@ -541,7 +601,7 @@ export const sfx = {
     // (brass) a last short roll on the ground
     if (!shell && Math.random() < 0.5) scrape(t, f * 0.6, f * 0.5, 0.12, 0.006);
   },
-  dry() { if (ctx) { tick(0, 3400, 0.3, 6); ring(0.001, 2600, 0.02, 0.03); } },
+  dry(gun) { if (ctx && !playSample('dry', 0.5, 0, 0.15, { gun })) { tick(0, 3400, 0.3, 6); ring(0.001, 2600, 0.02, 0.03); } },
   reload() { this.magOut(); setTimeout(() => this.magIn(), 400); },
   swing() { if (ctx) scrape(0, 500, 1400, 0.16, 0.2); },
   hitFlesh() { noise(0.12, 400, 1, 0.5, 'lowpass', 0.12); tone(80, 0.1, 0.3); },

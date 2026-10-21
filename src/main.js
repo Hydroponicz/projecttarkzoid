@@ -104,6 +104,7 @@ class Game {
     this.creation = setupCreation((ch) => this.recruit(ch), () => false);
     this.dev = new DevConsole(this);
     this.audioStats = audioStats; // (for the console: voices playing, output level)
+    this.sfx = sfx; // (and the sounds themselves, to try one: game.sfx.shot('ak74', false, 0.1, 0, 200))
     this.state = 'menu';
     this.invOpen = false;
     this.save = loadSave();
