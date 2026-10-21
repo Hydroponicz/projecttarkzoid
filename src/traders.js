@@ -65,6 +65,7 @@ export const ARCH = {
       { id: 'g36', ll: 3, give: [['ledx', 2], ['laptop', 1], ['mil_battery', 1]], get: ['scope_thermal', 1], stock: 1 },
       { id: 'g37', ll: 2, give: [['gpu', 2], ['wires', 2]], get: ['fpv_drone', 1], stock: 1 },
       { id: 'g38', ll: 3, give: [['mil_battery', 1], ['tape', 2]], get: ['c4', 1], stock: 2 },
+      { id: 'g40', ll: 2, give: [['wires', 2], ['tape', 1]], get: ['breach_charge', 1], stock: 2 },
       { id: 'g39', ll: 3, give: [['mil_cable', 2], ['bolts', 2]], get: ['pg7v', 1], stock: 2 },
       { id: 'g29', ll: 3, give: [['ledx', 2], ['mil_battery', 2]], get: ['designator', 1], stock: 1 },
       { id: 'g30', ll: 3, give: [['laptop', 2], ['mil_cable', 3]], get: ['radio_pack', 1], stock: 1 },

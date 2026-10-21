@@ -17,7 +17,8 @@ function promptFor(t, picked) {
   if (t.kind === 'pump') return `${F}Fuel pump (${Math.round(t.fuel)} L left)`;
   if (t.kind === 'window' && t.base) return t.state === 'broken' ? 'Broken window (too high to climb out)' : `${F}${t.state === 'open' ? 'Close' : 'Open'} window`;
   if (t.kind === 'window') return t.state === 'broken' ? '[Space] Climb through (broken glass)' : t.state === 'open' ? `${F}Close window · [Space] Climb through` : `${F}Open window`;
-  if (t.door || t.kind === 'door') return `${F}${t.open ? 'Close' : 'Open'} ${t.name}${hp}`;
+  if (t.kind === 'door') return picked ? `${F}${t.ang > 0.5 ? 'Close' : 'Open'} ${t.name}${hp} · hold [F] ease it ${t.ang > 0.97 ? 'shut' : 'open'} · [K] kick` : `${t.ang > 0.5 ? 'Close' : 'Open'} ${t.name}${hp}`;
+  if (t.door) return `${F}${t.open ? 'Close' : 'Open'} ${t.name}${hp}`;
   if (t.kind === 'bed' || t.type === 'bed') return `${F}Sleep`;
   if (t.prompt) { const s = t.prompt(); return picked ? s : s.replace(/^\[F\] /, ''); }
   return `${F}Search ${t.name}`;

@@ -611,10 +611,26 @@ export class RagdollSystem {
     const r = new Ragdoll(this, spec);
     if (spec.settleNow) r.settleNow();
     this.list.push(r);
-    // Too many bodies: drop the oldest settled corpse's mesh (its loot stays).
+    // Too many bodies: the oldest corpse goes (a zombie's first), and the
+    // body you could search goes with it. A person's gear stays behind as a
+    // dropped bag.
     const corpses = this.list.filter((x) => !x.alive);
-    if (corpses.length > this.maxBodies) { const old = corpses[0]; old.dispose(); this.list.splice(this.list.indexOf(old), 1); }
+    if (corpses.length > this.maxBodies) {
+      const old = corpses.find((x) => x.kind === 'zombie') || corpses[0];
+      this.remove(old);
+      this.forgetBody(old);
+    }
     return r;
+  }
+
+  forgetBody(r) {
+    const g = this.game, W = g.world;
+    const i = W.containers.findIndex((c, k) => k >= W.generatedContainers && c.ragdoll === r);
+    if (i < 0) return;
+    const c = W.containers[i];
+    if (r.kind === 'zombie' || !c.grid.items.length) { W.containers.splice(i, 1); return; }
+    c.ragdoll = null; c.type = 'drop'; c.name = `${c.name} (belongings)`;
+    c.mesh = g.dropMesh(c.x, c.z, c.base || 0);
   }
 
   dropProp(mesh, a, b, vel) {

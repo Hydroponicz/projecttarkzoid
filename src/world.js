@@ -2,6 +2,7 @@
 // hospital, offices, skyscrapers, police, military sites), roads, trees,
 // cars and lootable containers whose contents fit where they are.
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { SpatialHash } from './collision.js';
 import { CONTAINER_TYPES, rollLoot } from './items.js';
 import { makeGrid, addItem } from './inventory.js';
@@ -12,6 +13,7 @@ import { Levels, LH } from './levels.js';
 import { buildStoreys, STOREYS } from './storeys.js';
 import * as East from './eastern.js';
 import { INTERIOR_LAYER } from './dynlights.js';
+import { buildCover, weatherizeAll } from './groundfx.js';
 
 // Bump when generation changes so old saves don't map loot onto new layouts.
 export const WORLD_VERSION = 7;
@@ -22,6 +24,7 @@ export const HALF = 300;      // map half-size (town in the middle, countryside 
 const ROAD = 8;
 const WALL_H = 3.0;
 const WALL_T = 0.3;
+const TRIM = 0xd8d2c2; // door frames
 const DOOR = 1.8;
 const TREE_LOD = 70;           // trees past this are drawn with simple shapes
 const INTERIOR_RANGE = 45;     // furniture in buildings you're not in, drawn to here
@@ -164,6 +167,9 @@ export function buildWorld(scene, seed) {
     box.decalInset = 0.064; leaf.decalInset = 0.034; // collider is thicker than the panel
     doors.push(d);
     setDoor(d, !closed);
+    // the frame: painted casing round the opening, proud of both faces of the wall
+    const cd = WALL_T + 0.05, along = (a, w, h, y) => (ax === 'x' ? prop(w, h, cd, TRIM, x + a, y, z) : prop(cd, h, w, TRIM, x, y, z + a));
+    along(-half - 0.04, 0.08, 2.24, 1.12); along(half + 0.04, 0.08, 2.24, 1.12); along(0, width + 0.16, 0.09, 2.245);
     return d;
   }
 
@@ -1687,8 +1693,8 @@ export function buildWorld(scene, seed) {
   // draw calls for the whole town. Each door's pivot still swings (and
   // carries bullet holes); sync() copies it into the instances.
   const liveDoors = doors.filter((d) => !d.retired);
-  const doorIM = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 2.15, 0.07), new THREE.MeshStandardMaterial({ map: WT.planks, roughness: 0.8 }), Math.max(1, liveDoors.length));
-  const knobIM = new THREE.InstancedMesh(new THREE.SphereGeometry(0.04, 6, 4), new THREE.MeshStandardMaterial({ color: 0xccaa55, metalness: 0.8 }), Math.max(1, liveDoors.length));
+  const doorIM = new THREE.InstancedMesh(doorLeafGeometry(), new THREE.MeshStandardMaterial({ map: WT.planks, roughness: 0.75 }), Math.max(1, liveDoors.length));
+  const knobIM = new THREE.InstancedMesh(doorHandleGeometry(), new THREE.MeshStandardMaterial({ color: 0xb8a060, metalness: 0.75, roughness: 0.35 }), Math.max(1, liveDoors.length));
   doorIM.castShadow = doorIM.receiveShadow = true;
   const _dl = new THREE.Matrix4(), _dm = new THREE.Matrix4();
   liveDoors.forEach((d, i) => {
@@ -1699,7 +1705,7 @@ export function buildWorld(scene, seed) {
       if (d.broken) { doorIM.setMatrixAt(i, _dm.makeScale(0, 0, 0)); knobIM.setMatrixAt(i, _dm); }
       else {
         doorIM.setMatrixAt(i, _dm.multiplyMatrices(pv.matrix, _dl.makeScale(w - 0.04, 1, 1).setPosition(w / 2, 1.08, 0)));
-        knobIM.setMatrixAt(i, _dm.multiplyMatrices(pv.matrix, _dl.makeTranslation(w - 0.15, 1.0, 0.06)));
+        knobIM.setMatrixAt(i, _dm.multiplyMatrices(pv.matrix, _dl.makeTranslation(w - 0.13, 1.0, 0)));
       }
       doorIM.instanceMatrix.needsUpdate = knobIM.instanceMatrix.needsUpdate = true;
     };
@@ -1731,6 +1737,9 @@ export function buildWorld(scene, seed) {
 
   const generatedContainers = containers.length;
   const houses = buildings.filter((b) => b.kind === 'house');
+  // Snow and wet ground on everything out in the open (see groundfx.js)
+  buildCover(buildings, levels, HALF, WALL_H, LH);
+  weatherizeAll(group);
 
   return {
     group, hash, containers, generatedContainers, buildings, houses, roads, trees, doors, beds, windows, zombieSpawns, landmarks, vehicleSpawns, pumps, levels, slots, layout,
@@ -1820,13 +1829,45 @@ export function setWindow(w, state) {
   w.glass.instanceMatrix.needsUpdate = true;
 }
 
-export function setDoor(d, open) {
-  d.open = open;
-  d.box.noCollide = open;
-  d.box.blocksShot = d.box.blocksSight = !open;
-  if (d.leaf) { d.leaf.noCollide = !open; d.leaf.blocksShot = open; }
-  d.mesh.rotation.y = d.baseRot + (open ? Math.PI / 2 : 0);
+// How far a door is open: 0 shut, 1 wide open (90 degrees), and what that
+// means for getting past it. A door cracked open lets you see and shoot
+// through the gap but not walk through it; from about two thirds open
+// there's room to get by; wide open, the swung panel is in the way instead.
+export function setDoorAng(d, a) {
+  d.ang = a;
+  d.open = a > 0.62;
+  d.box.noCollide = d.open;
+  d.box.blocksShot = d.box.blocksSight = a < 0.06;
+  if (d.leaf) { d.leaf.noCollide = a < 0.92; d.leaf.blocksShot = a >= 0.92; }
+  d.mesh.rotation.y = d.baseRot + a * (Math.PI / 2);
   d.sync?.();
+}
+// All the way open or shut, at once (loading, set-up); see Game.swingDoor
+export function setDoor(d, open) { d.target = open ? 1 : 0; setDoorAng(d, d.target); }
+
+// A panel door (a leaf 1 m wide, scaled to the doorway): stiles and rails
+// round four raised panels, the panels set back a little
+function doorLeafGeometry() {
+  const parts = [], add = (w, h, d, x, y, z = 0) => { const g = new THREE.BoxGeometry(w, h, d); g.translate(x, y + 1.075, z); parts.push(g); };
+  add(0.12, 2.15, 0.07, -0.44, 0); add(0.12, 2.15, 0.07, 0.44, 0);   // stiles
+  add(0.76, 0.12, 0.07, 0, 1.015); add(0.76, 0.22, 0.07, 0, -0.965); // top and bottom rails
+  add(0.76, 0.14, 0.07, 0, -0.04);                                     // lock rail
+  add(0.08, 1.8, 0.07, 0, 0);                                          // muntin between the panels
+  add(0.76, 1.95, 0.03, 0, 0);                                         // the panel boards behind
+  for (const x of [-0.2, 0.2]) { add(0.24, 0.72, 0.05, x, 0.47); add(0.24, 0.66, 0.05, x, -0.5); } // raised fields
+  const g = mergeGeometries(parts.map((p) => p.toNonIndexed()));
+  g.translate(0, -1.075, 0);
+  return g;
+}
+// A lever handle on a backplate, both sides of the leaf
+function doorHandleGeometry() {
+  const parts = [];
+  for (const s of [-1, 1]) {
+    const plate = new THREE.BoxGeometry(0.045, 0.16, 0.012); plate.translate(0, -0.03, s * 0.041); parts.push(plate);
+    const neck = new THREE.CylinderGeometry(0.011, 0.011, 0.05, 8); neck.rotateX(Math.PI / 2); neck.translate(0, 0, s * 0.065); parts.push(neck);
+    const lever = new THREE.BoxGeometry(0.13, 0.022, 0.024); lever.translate(-0.055, 0, s * 0.088); parts.push(lever);
+  }
+  return mergeGeometries(parts.map((p) => p.toNonIndexed()));
 }
 
 export function corpseMesh(parent, x, z, color, rot = Math.random() * Math.PI * 2) {

@@ -519,7 +519,9 @@ export const sfx = {
   pickup() { tone(500, 0.06, 0.12, 'triangle'); },
   hammer() { for (let i = 0; i < 3; i++) { tick(i * 0.16, 1800, 0.55, 2); ring(i * 0.16, 900, 0.06, 0.1); } },
   bash() { noise(0.25, 250, 1, 0.7, 'lowpass', 0.25, { buf: brown, wet: 0.25 }); tone(60, 0.2, 0.4); },
-  door() { if (!ctx) return; scrape(0, 300, 180, 0.25, 0.1); tick(0.2, 1500, 0.15, 2); },
+  door(vol = 1) { if (!ctx) return; scrape(0, 300, 180, 0.25, 0.1 * vol); tick(0.2, 1500, 0.15 * vol, 2); },
+  // a door eased open: a long low creak
+  creak(vol = 1) { if (!ctx) return; scrape(0, 520, 340, 0.9, 0.06 * vol); scrape(0.35, 430, 610, 0.6, 0.04 * vol); },
   chop() { noise(0.12, 700, 2, 0.6, 'bandpass', 0.12); tone(120, 0.08, 0.3); },
   breath() { noise(0.55, 900, 0.6, 0.12, 'bandpass', 0.5, { buf: pink }); noise(0.45, 600, 0.6, 0.09, 'bandpass', 0.4, { delay: 0.52, buf: pink }); },
   heartbeat() { tone(55, 0.15, 0.4); tone(50, 0.15, 0.3, 'sine', 0, { delay: 0.22 }); },

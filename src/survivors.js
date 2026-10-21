@@ -777,7 +777,7 @@ export class Survivors {
       const d = b.door && b.structure;
       if (!d || d.open || d.broken || d.base) continue; // (survivors stay on the ground floor)
       if (Math.hypot(d.x - s.pos.x, d.z - s.pos.z) < 1.4) {
-        setDoor(d, true);
+        this.game.swingDoor ? this.game.swingDoor(d, 1, 3) : setDoor(d, true);
         this.game.zombies.updateNavRegion(d.box.minX, d.box.minZ, d.box.maxX, d.box.maxZ);
         if (this.distToPlayer(s) < 20) sfx.door();
       }

@@ -13,6 +13,7 @@
 import * as THREE from 'three';
 import { ITEMS } from './items.js';
 import { sfx, ambientLoop } from './audio.js';
+import { GROUND } from './groundfx.js';
 
 export const SEASON_DAYS = 7;
 const START_OFFSET = 4; // a new world starts on day 5 of spring
@@ -372,15 +373,6 @@ export class Weather {
     this.snow.frustumCulled = false;
     this.snow.renderOrder = 3;
     g.scene.add(this.rain, this.snow);
-    // Ground overlay: whitens with snow cover, darkens when soaked
-    const ov = new THREE.Mesh(new THREE.PlaneGeometry(g.world.size || 520, g.world.size || 520),
-      new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.9, transparent: true, opacity: 0, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 }));
-    ov.rotation.x = -Math.PI / 2;
-    ov.position.y = 0.004;
-    ov.receiveShadow = true;
-    ov.renderOrder = 1;
-    this.overlay = ov;
-    g.scene.add(ov);
     this.roofTimer = 0;
     this.roofs = [];
   }
@@ -439,11 +431,9 @@ export class Weather {
       this.snow.geometry.setDrawRange(0, ns);
       this.snow.geometry.attributes.position.needsUpdate = true;
     }
-    // Ground: snow cover, or a dark wet sheen
-    const ov = this.overlay;
-    if (this.snowCover > 0.02) { ov.material.color.setHex(0xeef2f8); ov.material.opacity = Math.min(0.88, this.snowCover * 1.1); }
-    else { ov.material.color.setHex(0x0e1214); ov.material.opacity = this.wetGround * 0.28; }
-    ov.visible = ov.material.opacity > 0.01;
+    // Ground: snow cover, or a dark wet sheen (in the world's materials)
+    GROUND.snow.value = this.snowCover > 0.02 ? Math.min(0.9, this.snowCover * 1.1) : 0;
+    GROUND.wet.value = this.snowCover > 0.02 ? 0 : this.wetGround * 0.7;
   }
 
   updateAudio() {
@@ -489,7 +479,8 @@ export class Weather {
 
   dispose() {
     const g = this.game;
-    g.scene.remove(this.rain, this.snow, this.overlay);
+    g.scene.remove(this.rain, this.snow);
+    GROUND.snow.value = GROUND.wet.value = 0;
     if (this.bolt) g.scene.remove(this.bolt.mesh);
     this.rainLoop.set(0); this.windLoop.set(0);
     this.rainLoop.stop?.(); this.windLoop.stop?.();

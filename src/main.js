@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { buildWorld, setDoor, setWindow, WORLD_VERSION } from './world.js';
+import { buildWorld, setDoor, setDoorAng, setWindow, WORLD_VERSION } from './world.js';
 import { callLift } from './levels.js';
 import { Zombies } from './zombies.js';
 import { Player } from './player.js';
@@ -26,6 +26,7 @@ import { combineItems, weaponActions, loadStep } from './weapons.js';
 import { makeGrid, addItem, removeItem } from './inventory.js';
 import { loadSave, writeSave, deleteSave } from './save.js';
 import { initAudio, sfx, setAudioEnv } from './audio.js';
+import { explode } from './explosives.js';
 import { Builder, BUILDABLES, buildCostText } from './build.js';
 import { setupCreation } from './character.js';
 import { DevConsole } from './devconsole.js';
@@ -107,6 +108,8 @@ class Game {
     this.hub = new Hub(this);
     this.chopHits = new Map();
     this.shaking = new Set(); // doors being beaten
+    this.swinging = new Set(); // doors on the move
+    this.charges = []; // breaching charges counting down
 
     this.watchFullscreen();
     addEventListener('resize', () => this.resize());
@@ -440,7 +443,7 @@ class Game {
         const door = slots.doors[i];
         if (!door || !d) return;
         door.hp = d.hp;
-        if (d.broken) this.breakDoor(door, true); else { setDoor(door, d.open); this.doorTint(door); }
+        if (d.broken) this.breakDoor(door, true); else { if (d.ang != null) setDoorAng(door, d.ang); else setDoor(door, d.open); door.target = door.ang; this.doorTint(door); }
       });
       for (const i of w.felled) this.world.fellTree(i);
       (w.windows || []).forEach((st, i) => { const wn = slots.windows[i]; if (wn && st) setWindow(wn, st === 1 ? 'open' : 'broken'); });
@@ -584,7 +587,7 @@ class Game {
         type: c.type, name: c.name, x: +c.x.toFixed(2), z: +c.z.toFixed(2), base: c.base || undefined, grid: c.grid, color: c.color, look: c.look,
         pose: c.ragdoll && !c.ragdoll.dead && c.ragdoll.sleeping ? c.ragdoll.pose() : undefined,
       })),
-      doors: W.slots.doors.map((d) => (d ? { open: d.open, hp: d.hp, broken: d.broken || undefined } : null)),
+      doors: W.slots.doors.map((d) => (d ? { open: d.open, hp: d.hp, broken: d.broken || undefined, ang: d.ang > 0.01 && d.ang < 0.99 ? +d.ang.toFixed(2) : undefined } : null)),
       felled: [...W.felled],
       windows: W.slots.windows.map((wn) => (wn && wn.state === 'open' ? 1 : wn && wn.state === 'broken' ? 2 : 0)),
       structures: this.builder.serialize(),
@@ -870,6 +873,15 @@ class Game {
     for (const s of this.survivors.list) if (!s.dead && s.disp !== 'hostile') out.push(s);
     out.push(...this.world.levels.interactables()); // elevators
     if (this.mission) out.push(...this.mission.interactables()); // the helicopter
+    // A breaching charge for a shut door, if you carry one
+    if (x !== undefined && this.chargeItem()) {
+      for (const d of out) {
+        if (d.kind !== 'door' || d.broken || d.ang > 0.5 || d.charge || Math.abs(d.x - x) > 3 || Math.abs(d.z - z) > 3) continue;
+        d.breach ||= { kind: 'breach', door: d, x: d.x, z: d.z, base: d.base, name: 'Breach', prompt: () => `[F] Plant a breaching charge (${ITEMS[this.chargeItem()?.key || 'c4'].name})` };
+        out.push(d.breach);
+        break;
+      }
+    }
     return out;
   }
 
@@ -886,7 +898,7 @@ class Game {
       if (d > 2.3) continue;
       if (Math.abs((c.base || 0) - p.floorY) > 1.2) continue; // things on other floors
       const dot = dist > 0.6 + (c.reach || 0) * 0.5 ? (dx * fx + dz * fz) / dist : 1;
-      if (dot < 0.7) continue;
+      if (dot < (c.kind === 'door' || c.kind === 'breach' ? 0.25 : 0.7)) continue;
       const score = d * (2 - dot);
       cands.push(c);
       if (score < bestScore) { bestScore = score; best = c; }
@@ -914,10 +926,9 @@ class Game {
 
   interact(t) {
     if (t.kind === 'door') {
-      setDoor(t, !t.open);
-      this.zombies.updateNavRegion(t.box.minX, t.box.minZ, t.box.maxX, t.box.maxZ);
-      sfx.door();
-      this.zombies.noise(t.x, t.z, 3);
+      this.doorHold = { d: t, t: 0, dir: t.ang < 0.97 ? 1 : -1 };
+    } else if (t.kind === 'breach') {
+      this.plantCharge(t.door);
     } else if (t.kind === 'lift') {
       callLift(t.lift, t.level);
       this.hud.message(t.lift.level === t.level && t.lift.state !== 'moving' ? 'The doors slide open.' : 'You press the call button. The elevator is on its way.', 2);
@@ -956,6 +967,136 @@ class Game {
     } else if (t.grid) {
       this.openInventory(t);
       sfx.pickup();
+    }
+  }
+
+  // ---------- doors ----------
+  // Swing a door to open (1) or shut (0), smoothly; speed in full swings a second
+  swingDoor(d, target, speed = 2.4) {
+    if (d.broken || !d.sync) { setDoor(d, target > 0.5); return; }
+    d.target = target; d.speed = speed;
+    d.ang ??= d.open ? 1 : 0;
+    this.swinging.add(d);
+  }
+
+  updateDoors(dt) {
+    // Holding F on a door eases it open (or, wide open, shut) a little at a
+    // time: open a crack to look through. A tap swings it all the way.
+    const H = this.doorHold;
+    if (H) {
+      const d = H.d, held = this.input.keys.has('KeyF') && !d.broken && Math.hypot(d.x - this.player.pos.x, d.z - this.player.pos.z) < 3;
+      H.t += dt;
+      if (held && H.t > 0.22) {
+        if (!H.creep) { H.creep = true; sfx.creak(); }
+        this.swinging.delete(d);
+        const was = d.open;
+        setDoorAng(d, Math.max(0, Math.min(1, d.ang + H.dir * 0.42 * dt)));
+        d.target = d.ang;
+        if (was !== d.open) this.zombies.updateNavRegion(d.box.minX, d.box.minZ, d.box.maxX, d.box.maxZ);
+      } else if (!held) {
+        if (!H.creep && !d.broken) {
+          this.swingDoor(d, d.ang > 0.5 ? 0 : 1);
+          sfx.door();
+          this.zombies.noise(d.x, d.z, 3, false, d.base || 0);
+        }
+        this.doorHold = null;
+      }
+    }
+    for (const d of this.swinging) {
+      if (d.broken) { this.swinging.delete(d); continue; }
+      const step = d.speed * dt, gap = d.target - d.ang;
+      // eases in and out: quick through the middle, settling at the ends
+      const k = Math.abs(gap) < 0.15 ? 0.45 + Math.abs(gap) * 3.6 : 1;
+      const was = d.open;
+      setDoorAng(d, Math.abs(gap) <= step * k ? d.target : d.ang + Math.sign(gap) * step * k);
+      if (was !== d.open) this.zombies.updateNavRegion(d.box.minX, d.box.minZ, d.box.maxX, d.box.maxZ);
+      if (d.ang === d.target) this.swinging.delete(d);
+    }
+    // Breaching charges: beeping faster, then the door comes in
+    for (let i = this.charges.length - 1; i >= 0; i--) {
+      const c = this.charges[i];
+      c.t -= dt; c.beep -= dt;
+      if (c.beep <= 0) { c.beep = Math.max(0.12, c.t / 5); sfx.click?.(2400, 0.25); c.led.visible = true; }
+      else if (c.beep < 0.06 || c.led.visible && c.beep > 0.08) c.led.visible = c.beep < 0.06;
+      if (c.t > 0) continue;
+      this.charges.splice(i, 1);
+      this.world.group.remove(c.mesh);
+      c.door.charge = null;
+      const def = ITEMS[c.key], from = c.mesh.position.clone();
+      if (!c.door.broken) this.breakDoor(c.door, false, from.clone().addScaledVector(c.n, -2));
+      explode(this, from, { radius: def.radius * (c.key === 'c4' ? 1 : 1), damage: def.damage, frag: def.frag, big: def.big, by: 'your breaching charge' });
+    }
+  }
+
+  // The charge you'd use: a breaching charge, else C4
+  chargeItem() {
+    if (!this.player) return null;
+    const grids = this.player.ammoGrids();
+    for (const key of ['breach_charge', 'c4']) for (const g of grids) { const it = g.items.find((i) => i.key === key); if (it) return it; }
+    return null;
+  }
+
+  plantCharge(d) {
+    const it = this.chargeItem();
+    if (!it || d.broken || d.charge) return;
+    for (const g of this.player.ammoGrids()) { const i = g.items.indexOf(it); if (i >= 0) { if (it.count > 1) it.count--; else g.items.splice(i, 1); break; } }
+    // on the face of the door you're standing at
+    const p = this.player.pos, n = d.ax === 'x' ? new THREE.Vector3(0, 0, Math.sign(p.z - d.z) || 1) : new THREE.Vector3(Math.sign(p.x - d.x) || 1, 0, 0);
+    const g = new THREE.Group();
+    const block = new THREE.Mesh(new THREE.BoxGeometry(d.ax === 'x' ? 0.22 : 0.06, 0.14, d.ax === 'x' ? 0.06 : 0.22), new THREE.MeshStandardMaterial({ color: 0xc8c0a0, roughness: 0.9 }));
+    const led = new THREE.Mesh(new THREE.SphereGeometry(0.018, 6, 4), new THREE.MeshBasicMaterial({ color: 0xff2020 }));
+    led.position.set(n.x * 0.035, 0.05, n.z * 0.035);
+    g.add(block, led);
+    g.position.set(d.x + n.x * 0.08, (d.base || 0) + 1.05, d.z + n.z * 0.08);
+    this.world.group.add(g);
+    d.charge = { door: d, mesh: g, led, n, key: it.key, t: 5, beep: 0 };
+    this.charges.push(d.charge);
+    sfx.click?.(900, 0.4);
+    this.hud.message('Charge set: five seconds. Get clear!', 3);
+  }
+
+  // A kick at whatever's in front: a door bursts open (or off its hinges),
+  // a zombie is shoved back and may go down
+  kick() {
+    const p = this.player;
+    if (p.kickCd > 0 || p.stamina < 10 || p.prone) return;
+    p.kickCd = 0.9; p.kickT = 0.45;
+    p.stamina -= 14 * (1 - 0.06 * p.skill.strength);
+    sfx.swing();
+    const fx = -Math.sin(p.yaw), fz = -Math.cos(p.yaw);
+    const ahead = (o, r) => { const dx = o.x - p.pos.x, dz = o.z - p.pos.z, dd = Math.hypot(dx, dz); return dd < r && (dx * fx + dz * fz) / (dd || 1) > 0.55 && Math.abs((o.base || 0) - p.floorY) < 1.2; };
+    const door = (this.lookTarget?.kind === 'door' && ahead(this.lookTarget, 1.9) ? this.lookTarget : null) || this.world.doors.find((d) => !d.broken && d.ang < 0.6 && ahead(d, 1.7));
+    if (door && !door.broken && door.ang < 0.6) {
+      setTimeout(() => this.kickDoor(door), 160); // (the boot lands a moment after you lift it)
+      return;
+    }
+    const str = p.skill.strength;
+    for (const zb of this.zombies.list) {
+      if (zb.down || Math.abs(zb.pos.y - p.floorY) > 1) continue;
+      if (!ahead({ x: zb.pos.x, z: zb.pos.z, base: zb.pos.y }, 1.5 + zb.radius)) continue;
+      const dir = new THREE.Vector3(zb.pos.x - p.pos.x, 0.15, zb.pos.z - p.pos.z).normalize();
+      const killed = this.zombies.damage(zb, 6 + 2 * str, p.pos.x, p.pos.z, false, { point: zb.pos.clone().setY(zb.pos.y + 0.9), dir, force: 5 + str, knock: 0.45 + 0.05 * str });
+      sfx.meleeHit(false);
+      if (killed) { sfx.kill(); p.onKill(zb); }
+      break;
+    }
+  }
+
+  kickDoor(d) {
+    if (this.state !== 'play' || d.broken) return;
+    const p = this.player, str = p.skill.strength;
+    this.zombies.noise(d.x, d.z, 22, false, d.base || 0);
+    this.damageStructure(d, 70 + 18 * str + Math.random() * 40, p.pos);
+    if (d.broken) return;
+    // not off its hinges: it slams open, and anyone behind it takes the edge
+    this.swingDoor(d, 1, 7);
+    sfx.doorBreak?.(0.35);
+    for (const zb of this.zombies.list) {
+      if (zb.down || Math.hypot(zb.pos.x - d.x, zb.pos.z - d.z) > d.w + 0.3) continue;
+      const side = d.ax === 'x' ? Math.sign(zb.pos.z - d.z) !== Math.sign(p.pos.z - d.z) : Math.sign(zb.pos.x - d.x) !== Math.sign(p.pos.x - d.x);
+      if (!side) continue;
+      const dir = new THREE.Vector3(zb.pos.x - p.pos.x, 0.2, zb.pos.z - p.pos.z).normalize();
+      this.zombies.damage(zb, 10, p.pos.x, p.pos.z, false, { point: zb.pos.clone().setY(zb.pos.y + 1.2), dir, force: 8, knock: 0.85 });
     }
   }
 
@@ -1239,6 +1380,7 @@ class Game {
     // your walking pace)
     if (inp.wheel && !this.invOpen && !this.builder.active && !this.player.vehicle && this.lookChoices && this.scrollLook(Math.sign(inp.wheel))) inp.wheel = 0;
     if (inp.interact && !this.invOpen && this.lookTarget) this.interact(this.lookTarget);
+    if (pressed('KeyK') && !this.invOpen && !driving && !this.progress.panelOpen && !this.builder.active) this.kick();
     if (inp.heal && !driving) this.quickHeal(); // (H is the horn in a car)
 
     if (this.builder.active && !this.invOpen) {
@@ -1279,9 +1421,10 @@ class Game {
     this.farming.update(dt);
     this.mission?.update(dt);
     if (this.state !== 'play') return;
+    this.updateDoors(dt);
     for (const d of this.shaking) {
       d.shake -= dt;
-      const base = d.baseRot + (d.open ? Math.PI / 2 : 0);
+      const base = d.baseRot + (d.ang ?? (d.open ? 1 : 0)) * (Math.PI / 2);
       d.mesh.rotation.y = base + (d.shake > 0 ? Math.sin(d.shake * 70) * 0.025 * (d.shake / 0.3) : 0);
       d.sync?.();
       if (d.shake <= 0) this.shaking.delete(d);

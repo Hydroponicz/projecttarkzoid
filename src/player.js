@@ -366,11 +366,15 @@ export class Player {
     this.landDip *= Math.exp(-dt * 8);
     const sp = Math.min(1, speed / 4.6);
     const bobAmt = grounded && moving ? (0.012 + 0.04 * sp) * (1 - this.ads * 0.85) * (this.prone ? 0.3 : 1) : 0;
+    // a kick: the view lurches forward and drops a little, then back
+    this.kickCd = Math.max(0, (this.kickCd || 0) - dt);
+    this.kickT = Math.max(0, (this.kickT || 0) - dt);
+    const kk = this.kickT > 0 ? Math.sin((1 - this.kickT / 0.45) * Math.PI) : 0;
     this.camera.position.set(
-      this.pos.x + rxv * leanDist,
+      this.pos.x + rxv * leanDist - Math.sin(this.yaw) * kk * 0.18,
       this.floorY + this.eye + this.y + Math.abs(Math.sin(this.bob)) * bobAmt - Math.abs(this.lean) * 0.05 - this.landDip,
-      this.pos.z + rzv * leanDist);
-    this.camera.rotation.set(this.pitch - this.landDip * 0.4, this.yaw, Math.sin(this.bob * 0.5) * bobAmt * 0.35 - this.lean * 0.16);
+      this.pos.z + rzv * leanDist - Math.cos(this.yaw) * kk * 0.18);
+    this.camera.rotation.set(this.pitch - this.landDip * 0.4 - kk * 0.12, this.yaw, Math.sin(this.bob * 0.5) * bobAmt * 0.35 - this.lean * 0.16);
     // shaken by cannon fire close by
     const shake = Math.max(this.game.shake || 0, this.game.air?.shake || 0);
     if (shake > 0.01) { this.camera.rotation.x += (Math.random() - 0.5) * 0.03 * shake; this.camera.rotation.y += (Math.random() - 0.5) * 0.03 * shake; }
