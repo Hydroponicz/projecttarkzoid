@@ -145,6 +145,17 @@ export class InventoryUI {
     return wrap;
   }
 
+  // Light up the guns (and their slots) an attachment or magazine fits
+  markFits(def) {
+    for (const e of this.root.querySelectorAll('.item.fits, .item.nofit')) e.classList.remove('fits', 'nofit');
+    if (!def?.fits) return;
+    for (const e of this.root.querySelectorAll('.item')) {
+      const k = e.itemRef?.key;
+      if (!k || ITEMS[k].type !== 'weapon') continue;
+      e.classList.add(def.fits.includes(k) ? 'fits' : 'nofit');
+    }
+  }
+
   renderShop(s) {
     const wrap = document.createElement('div');
     wrap.className = 'shop';
@@ -191,6 +202,10 @@ export class InventoryUI {
     if (def.desc) tip += `\n${def.desc}`;
     el.title = tip;
     el.itemRef = it;
+    if (def.fits) {
+      el.addEventListener('pointerenter', () => this.markFits(def));
+      el.addEventListener('pointerleave', () => { if (!this.drag) this.markFits(null); });
+    }
     el.srcRef = src;
     el.addEventListener('pointerdown', (e) => {
       if (e.button === 2) return;
@@ -256,6 +271,7 @@ export class InventoryUI {
 
   onUp(e) {
     if (!this.drag) return;
+    this.markFits(null);
     const { item, src, ghost } = this.drag;
     ghost.remove();
     const drag = this.drag;
@@ -369,7 +385,11 @@ export class InventoryUI {
         this.changed();
       });
     }
-    for (const [label, fn] of this.opts.actions?.(it, src) ?? []) add(label, () => { fn(); this.changed(); });
+    for (const a of this.opts.actions?.(it, src) ?? []) {
+      if (a.info) { const d = document.createElement('div'); d.className = 'ctx-info'; d.textContent = a.info; m.appendChild(d); continue; }
+      const [label, fn] = a;
+      add(label, () => { fn(); this.changed(); });
+    }
     if (this.opts.onSell) add(`Sell (₽${Math.round(itemValue(it) * 0.7).toLocaleString()})`, () => {
       this.detach(it, src); this.opts.onSell(it); this.changed();
     });

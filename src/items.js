@@ -45,6 +45,13 @@ export const ITEMS = {
   scope_6x: { name: 'Hunting 6x Scope', short: '6x', type: 'optic', w: 3, h: 1, color: '#222', value: 30000, optic: 'scope', zoom: 6, reticle: 'duplex', fits: ['ak74', 'sks', 'm14', 'm4a1'], ergo: 0.8 },
   scope_acog: { name: 'ACOG 4x32 Scope', short: 'ACOG', type: 'optic', w: 2, h: 1, color: '#2a2a26', value: 32000, optic: 'scope', zoom: 4, reticle: 'acog', fits: ['m4a1', 'm14', 'm249'], ergo: 0.9 },
   supp_pm: { name: 'PM Suppressor', short: 'PM supp', type: 'muzzle', w: 2, h: 1, color: '#2a2a2a', value: 14000, suppress: true, recoil: 0.95, fits: ['pm'] },
+  scope_thermal: { name: 'Pulsar Thermal Riflescope 3x', short: 'Thermal', type: 'optic', w: 3, h: 1, color: '#2a2a2a', value: 140000, optic: 'scope', zoom: 3, reticle: 'thermal', thermal: true, fits: ['ak74', 'sks', 'm4a1', 'm14', 'm249'], ergo: 0.78,
+    desc: 'A thermal picture-in-picture scope: the living (and the freshly dead) glow white-hot against a cold grey world, through fog and darkness.' },
+  // Tactical lasers: a visible beam and dot where the bullets go; steadier hip fire
+  laser_peq: { name: 'PEQ-15 Laser Module', short: 'PEQ', type: 'tactical', w: 1, h: 1, color: '#8a7a5a', value: 24000, hip: 0.65, fits: ['ak74', 'm4a1', 'mp5', 'm14', 'm249', 'sks', 'mp133', 'm870'],
+    desc: 'A visible red laser on the rail. Its dot shows where your shots will go, so hip fire is much tighter.' },
+  laser_klesch: { name: 'Klesch-2 Tactical Laser', short: 'Klesch', type: 'tactical', w: 1, h: 1, color: '#3a3a36', value: 16000, hip: 0.72, fits: ['ak74', 'sks', 'mp133', 'pm', 'glock17', 'm1911', 'mp5'],
+    desc: 'A compact Russian laser for rifles and pistols. Its dot shows where your shots will go, so hip fire is tighter.' },
   supp_rifle: { name: 'Rifle Suppressor', short: 'Supp', type: 'muzzle', w: 2, h: 1, color: '#2a2a2a', value: 28000, suppress: true, recoil: 0.85, ergo: 0.9, fits: ['ak74', 'sks', 'm4a1', 'm14'] },
   supp_pistol: { name: '9mm/.45 Suppressor', short: 'Can', type: 'muzzle', w: 2, h: 1, color: '#2a2a2a', value: 18000, suppress: true, recoil: 0.92, fits: ['glock17', 'm1911', 'mp5'] },
   brake_ak: { name: 'Muzzle Brake', short: 'Brake', type: 'muzzle', w: 1, h: 1, color: '#444', value: 7000, recoil: 0.75, fits: ['ak74', 'sks'] },
@@ -194,7 +201,7 @@ const KG = {
   pm: 0.73, mp133: 3.4, ak74: 3.3, sks: 3.85, m4a1: 3.0, mp5: 2.5, glock17: 0.7, m1911: 1.1, m14: 4.5, m870: 3.6, m249: 7.5,
   ammo_9x18: 0.01, ammo_12g: 0.045, ammo_545: 0.011, ammo_762: 0.016, ammo_556: 0.012, ammo_9x19: 0.012, ammo_45: 0.021, ammo_762x51: 0.025,
   mag_pm: 0.09, mag_ak30: 0.23, mag_ak45: 0.33, mag_sks: 0.15, mag_stanag: 0.12, box_m249: 0.4, mag_mp5: 0.12, mag_glock: 0.08, mag_1911: 0.07, mag_m14: 0.25,
-  scope_acog: 0.45, supp_pistol: 0.2, designator: 2.3, radio_pack: 7.5, grenade_f1: 0.6, grenade_rgd5: 0.31, grenade_m67: 0.4,
+  scope_acog: 0.45, supp_pistol: 0.2, designator: 2.3, radio_pack: 7.5, grenade_f1: 0.6, grenade_rgd5: 0.31, grenade_m67: 0.4, scope_thermal: 0.75, laser_peq: 0.2, laser_klesch: 0.15,
   knife: 0.2, crowbar: 1.4, axe: 1.7, hammer: 0.6, saw: 0.6,
   armor_paca: 3.5, armor_6b13: 10.5, helmet_ssh: 1.6, bp_scav: 0.6, bp_tri: 1.2,
   beans: 0.4, crackers: 0.2, water: 0.6, soda: 0.35,
@@ -242,7 +249,7 @@ export function makeItem(key, opts = {}) {
   if (def.stack) it.count = opts.count ?? Math.ceil(def.stack * (0.3 + rng() * 0.5));
   if (def.type === 'weapon') {
     // opts.loaded = rounds to put in the magazine / tube (a round is also chambered).
-    it.mods = { optic: null, muzzle: null, grip: null };
+    it.mods = { optic: null, muzzle: null, grip: null, tactical: null };
     it.mode = def.auto ? 'auto' : 'semi';
     const loaded = opts.loaded ?? (rng() < 0.5 ? Math.floor(rng() * ((def.tube || ITEMS[def.magKey].cap) + 1)) : null);
     if (def.tube) it.tube = loaded ?? 0;
@@ -283,7 +290,7 @@ export function migrateItem(it) {
   if (def.type === 'weapon' && !it.mods) {
     const loaded = it.loaded ?? 0;
     delete it.loaded;
-    it.mods = { optic: null, muzzle: null, grip: null };
+    it.mods = { optic: null, muzzle: null, grip: null, tactical: null };
     it.mode = def.auto ? 'auto' : 'semi';
     it.chamber = 0;
     if (def.tube) it.tube = Math.min(loaded, def.tube);
@@ -326,13 +333,13 @@ export const LOOT_TABLES = {
   foodshelf: [['beans', 5], ['crackers', 4], ['chips', 5], ['rice', 3], ['soda', 4], ['water', 4], ['coffee', 2], ['potato', 1], ['apple', 1], ['honey', 0.4], ['preserves', 0.6]],
   toolshelf: [['hammer', 3], ['saw', 2.5], ['nails', 6], ['tape', 4], ['bolts', 4], ['wires', 3], ['planks', 2], ['axe', 0.8], ['crowbar', 1], ['shovel', 0.8], ['watering_can', 0.6], ['seeds_carrot', 0.5], ['seeds_tomato', 0.5], ['fertilizer', 0.4]],
   // --- police ---
-  policelocker: [['vest_police', 1.2], ['raincoat', 0.8], ['pm', 1.5], ['mag_pm', 3], ['ammo_9x18', 4], ['ammo_12g', 1.5], ['mp133', 0.5], ['armor_paca', 0.6], ['helmet_ssh', 0.4], ['bandage', 2], ['supp_pm', 0.25],
+  policelocker: [['laser_klesch', 0.35], ['vest_police', 1.2], ['raincoat', 0.8], ['pm', 1.5], ['mag_pm', 3], ['ammo_9x18', 4], ['ammo_12g', 1.5], ['mp133', 0.5], ['armor_paca', 0.6], ['helmet_ssh', 0.4], ['bandage', 2], ['supp_pm', 0.25],
     ['glock17', 1.0], ['mag_glock', 2.5], ['ammo_9x19', 3.5], ['m870', 0.6], ['mp5', 0.35], ['mag_mp5', 0.9], ['m4a1', 0.15], ['mag_stanag', 0.5]],
   evidence: [['chain', 2], ['roler', 1], ['flashdrive', 1], ['gpu', 0.5], ['knife', 2], ['ammo_9x18', 2], ['pm', 0.6], ['m1911', 0.5], ['mag_1911', 1], ['ammo_45', 1.5], ['glock17', 0.3], ['supp_pistol', 0.15]],
   // --- military ---
   milcrate: [['rig_tactical', 0.5], ['rig_scav', 0.6], ['ak74', 0.9], ['sks', 0.5], ['mag_ak30', 4], ['mag_ak45', 0.7], ['ammo_545', 4], ['ammo_762', 1.5], ['scope_pso', 0.5], ['sight_reddot', 0.6], ['sight_holo', 0.4],
     ['supp_rifle', 0.3], ['brake_ak', 0.6], ['grip_vert', 0.6], ['armor_6b13', 0.35], ['helmet_6b47', 0.35],
-    ['m4a1', 0.8], ['mag_stanag', 3.5], ['ammo_556', 4], ['m14', 0.3], ['mag_m14', 0.7], ['ammo_762x51', 1.2], ['m249', 0.12], ['box_m249', 0.25], ['scope_acog', 0.3], ['designator', 0.1], ['radio_pack', 0.08], ['grenade_f1', 0.6], ['grenade_rgd5', 0.9], ['grenade_m67', 0.4]],
+    ['m4a1', 0.8], ['mag_stanag', 3.5], ['ammo_556', 4], ['m14', 0.3], ['mag_m14', 0.7], ['ammo_762x51', 1.2], ['m249', 0.12], ['box_m249', 0.25], ['scope_acog', 0.3], ['designator', 0.1], ['radio_pack', 0.08], ['grenade_f1', 0.6], ['grenade_rgd5', 0.9], ['grenade_m67', 0.4], ['laser_peq', 0.4], ['scope_thermal', 0.08]],
   ammobox: [['ammo_545', 6], ['ammo_762', 3], ['ammo_12g', 2], ['ammo_9x18', 2], ['mag_ak30', 1.5], ['ammo_556', 5], ['ammo_9x19', 2.5], ['ammo_45', 1], ['ammo_762x51', 1.5], ['mag_stanag', 1.2]],
   duffel: [['rig_tactical', 0.35], ['parka', 0.8], ['mre', 4], ['water', 2], ['bandage', 2], ['ai2', 2], ['morphine', 0.6], ['mil_battery', 0.25], ['mil_cable', 0.8], ['bp_mil', 0.3], ['armor_6b13', 0.15], ['helmet_6b47', 0.2]],
   soldier: [['rig_scav', 0.5], ['dogtag', 6], ['ammo_545', 3], ['mag_ak30', 2], ['mre', 1.5], ['bandage', 1.5], ['morphine', 0.4], ['mil_cable', 0.3], ['ammo_556', 2.5], ['mag_stanag', 1.5], ['glock17', 0.2], ['m4a1', 0.15], ['designator', 0.03], ['grenade_rgd5', 0.5], ['grenade_f1', 0.25]],

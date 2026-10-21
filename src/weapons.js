@@ -93,6 +93,7 @@ const OPTIC = {
   scope_pso: { height: 0.058, relief: 0.075, lens: 0.017 },
   scope_6x: { height: 0.052, relief: 0.085, lens: 0.017 },
   scope_acog: { height: 0.048, relief: 0.065, lens: 0.015 },
+  scope_thermal: { height: 0.056, relief: 0.07, lens: 0.016 },
 };
 
 // ---------------------------------------------------------------------------
@@ -106,7 +107,14 @@ function reticleTexture(kind) {
   c.width = c.height = S;
   const g = c.getContext('2d');
   const m = S / 2;
-  if (kind === 'dot') {
+  if (kind === 'thermal') {
+    // Thin crosshair with a gap and a centre dot (white with a dark edge)
+    for (const [col, wdt] of [['rgba(0,0,0,0.8)', 4], ['rgba(255,255,255,0.95)', 2]]) {
+      g.strokeStyle = col; g.lineWidth = wdt;
+      g.beginPath(); g.moveTo(m - 110, m); g.lineTo(m - 14, m); g.moveTo(m + 14, m); g.lineTo(m + 110, m); g.moveTo(m, m + 14); g.lineTo(m, m + 110); g.moveTo(m, m - 14); g.lineTo(m, m - 60); g.stroke();
+    }
+    g.fillStyle = '#fff'; g.fillRect(m - 2, m - 2, 4, 4);
+  } else if (kind === 'dot') {
     // Bright core with a soft glow around it.
     const grd = g.createRadialGradient(m, m, m * 0.12, m, m, m * 0.4);
     grd.addColorStop(0, 'rgba(255,40,30,0.8)'); grd.addColorStop(1, 'rgba(255,0,0,0)');
@@ -212,31 +220,48 @@ function buildOptic(key, gunCfg) {
     g.add(ret);
   } else {
     // Telescopic sight: tube, bells, turrets, mount, PIP eyepiece lens.
-    const len = key === 'scope_6x' ? 0.3 : key === 'scope_acog' ? 0.15 : 0.24;
+    const len = key === 'scope_6x' ? 0.3 : key === 'scope_acog' ? 0.15 : key === 'scope_thermal' ? 0.17 : 0.24;
+    if (key === 'scope_thermal') {
+      // A boxy electronic body: battery cap, buttons, the big germanium lens
+      RB(g, 0.044, 0.046, len, 0.008, MAT.polymer, 0, 0.002, -len / 2 - 0.012);
+      C(g, 0.011, 0.03, MAT.dark, 0.026, 0.006, -len / 2 - 0.02);
+      for (const z of [-0.05, -0.07, -0.09]) B(g, 0.012, 0.004, 0.008, MAT.dark, 0, 0.026, z);
+      C(g, 0.026, 0.035, MAT.dark, 0, 0, -len - 0.02);
+      const ge = new THREE.Mesh(new THREE.CircleGeometry(0.022, 24), new THREE.MeshStandardMaterial({ color: 0x2a2030, metalness: 0.9, roughness: 0.15 }));
+      ge.position.z = -len - 0.038; ge.rotation.y = Math.PI; g.add(ge);
+    }
     if (key === 'scope_acog') {
       // Squat housing with a fibre-optic strip on top and the rail clamp
       RB(g, 0.034, 0.036, len, 0.008, MAT.dark, 0, 0, -len / 2 - 0.01);
       B(g, 0.006, 0.004, 0.08, new THREE.MeshStandardMaterial({ color: 0xc83a2a, emissive: 0x501008 }), 0, 0.019, -len / 2);
     }
-    C(g, 0.015, len, MAT.dark, 0, 0, -len / 2 - 0.02);
+    if (key !== 'scope_thermal') {
+      C(g, 0.015, len, MAT.dark, 0, 0, -len / 2 - 0.02);
+      C(g, 0.024, 0.06, MAT.dark, 0, 0, -len - 0.02); // objective bell
+      B(g, 0.016, 0.022, 0.018, MAT.dark, 0, 0.022, -len / 2 - 0.02); // elevation turret
+      B(g, 0.022, 0.016, 0.018, MAT.dark, 0.022, 0, -len / 2 - 0.02); // windage turret
+    }
     C(g, 0.021, 0.05, MAT.dark, 0, 0, -0.025); // eyepiece bell
-    C(g, 0.024, 0.06, MAT.dark, 0, 0, -len - 0.02); // objective bell
-    B(g, 0.016, 0.022, 0.018, MAT.dark, 0, 0.022, -len / 2 - 0.02); // elevation turret
-    B(g, 0.022, 0.016, 0.018, MAT.dark, 0.022, 0, -len / 2 - 0.02); // windage turret
     B(g, 0.022, o.height - 0.012, 0.09, MAT.metal, 0, -o.height / 2 - 0.006, -len / 2 - 0.02); // mount
     const lensMat = new THREE.ShaderMaterial({
       uniforms: {
         map: { value: null }, reticle: { value: reticleTexture(def.reticle) },
-        eyeOff: { value: new THREE.Vector2() }, bright: { value: 0 },
+        eyeOff: { value: new THREE.Vector2() }, bright: { value: 0 }, therm: { value: def.thermal ? 1 : 0 }, time: { value: 0 },
       },
       vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }',
       fragmentShader: `
-        uniform sampler2D map; uniform sampler2D reticle; uniform vec2 eyeOff; uniform float bright;
+        uniform sampler2D map; uniform sampler2D reticle; uniform vec2 eyeOff; uniform float bright; uniform float therm; uniform float time;
         varying vec2 vUv;
         void main() {
           vec2 d = vUv - 0.5 - eyeOff;
           float vig = smoothstep(0.5, 0.36, length(d));
           vec3 col = texture2D(map, vUv).rgb;
+          if (therm > 0.5) {
+            // white-hot: one grey channel, a touch of sensor noise
+            float l = dot(col, vec3(0.3, 0.59, 0.11));
+            float n = fract(sin(dot(vUv * 800.0 + time, vec2(12.9898, 78.233))) * 43758.5453);
+            col = vec3(clamp(l * 1.15 + (n - 0.5) * 0.025, 0.0, 1.0));
+          }
           vec4 ret = texture2D(reticle, vUv);
           col = mix(col, ret.rgb, ret.a);
           col *= vig * bright;
@@ -290,6 +315,20 @@ export function buildWeaponModel(w) {
     B(gp, 0.026, 0.012, 0.06, MAT.dark, x, y + 0.008, z);
     B(gp, 0.024, 0.075, 0.028, MAT.polymer, x, y - 0.035, z, 0.1);
     if (parts.handL) parts.handL.position.set(x, y - 0.03, z + 0.01);
+  }
+  // Tactical laser: on the handguard's side rail, or under a pistol's barrel
+  if (w.mods.tactical) {
+    const key = w.mods.tactical.key, gm = parts.gripMount, mm = parts.muzzleMount;
+    const at = gm ? [gm[0] + 0.03, gm[1] + 0.055, gm[2] - 0.02] : mm && mm[2] > -0.3 ? [0, mm[1] - 0.028, mm[2] + 0.06] : mm ? [0.024, mm[1] - 0.004, mm[2] + 0.28] : [0.03, -0.05, -0.3];
+    const tg = new THREE.Group(); tg.position.set(...at); (parts.gripParent || model).add(tg);
+    if (key === 'laser_peq') {
+      RB(tg, 0.03, 0.03, 0.09, 0.004, new THREE.MeshStandardMaterial({ color: 0x8a7a5a, roughness: 0.8 }), 0, 0, 0);
+      for (const x of [-0.007, 0.007]) { const l = new THREE.Mesh(new THREE.CircleGeometry(0.005, 10), new THREE.MeshBasicMaterial({ color: 0x401010 })); l.position.set(x, 0.004, -0.046); l.rotation.y = Math.PI; tg.add(l); }
+    } else {
+      C(tg, 0.009, 0.06, MAT.dark, 0, 0, 0);
+      B(tg, 0.012, 0.01, 0.03, MAT.dark, 0, 0.008, 0.005);
+    }
+    parts.laser = P(tg, 0, 0, -0.05);
   }
   // Optic: sight axis moves up to the optic, so ADS aligns with it.
   let sight = { y: 0, z: 0, relief: cfg.relief };
@@ -350,6 +389,9 @@ export function approxText(n, cap) {
   return 'Almost empty';
 }
 
+// The attachment slots on a gun
+export const MOD_TYPES = ['optic', 'muzzle', 'grip', 'tactical'];
+
 // Drag-and-drop combinations in the inventory. Returns true if consumed.
 export function combineItems(drag, target, ctx) {
   const dd = ITEMS[drag.key], td = ITEMS[target.key];
@@ -373,7 +415,7 @@ export function combineItems(drag, target, ctx) {
     return true;
   }
   // Attachment onto a weapon.
-  if (['optic', 'muzzle', 'grip'].includes(dd.type) && td.type === 'weapon') {
+  if (MOD_TYPES.includes(dd.type) && td.type === 'weapon') {
     if (!dd.fits.includes(target.key)) { game.hud.message(`${dd.name} doesn't fit the ${td.name}`); return true; }
     ctx.detach();
     const old = target.mods[dd.type];
@@ -401,11 +443,22 @@ export function weaponActions(it, src, game) {
   const grid = src.grid;
   // Attachments and magazines: fit them straight onto the weapon in your hands.
   const held = game.profile.equip.weapon;
-  if (held && held !== it && ['optic', 'muzzle', 'grip', 'mag'].includes(def.type) && def.fits.includes(held.key)) {
+  if (held && held !== it && [...MOD_TYPES, 'mag'].includes(def.type) && def.fits.includes(held.key)) {
     const verb = def.type === 'mag' ? 'Insert into' : 'Attach to';
-    out.push([`${verb} ${ITEMS[held.key].name}`, () => combineItems(it, held, {
+    out.push([`${verb} ${ITEMS[held.key].name} (in your hands)`, () => combineItems(it, held, {
       game, src, detach: () => { if (src.grid) removeItem(src.grid, it); else if (src.equip) src.equip[src.slot] = null; },
     })]);
+  }
+  // Attachments: onto any gun you're carrying that it fits, and a list of
+  // every gun it fits
+  if (MOD_TYPES.includes(def.type)) {
+    const carried = game.player.ammoGrids().flatMap((g) => g.items).filter((x) => x !== held && ITEMS[x.key].type === 'weapon' && def.fits.includes(x.key));
+    for (const gun of carried) {
+      out.push([`Attach to ${ITEMS[gun.key].name}`, () => combineItems(it, gun, {
+        game, src, detach: () => { if (src.grid) removeItem(src.grid, it); else if (src.equip) src.equip[src.slot] = null; },
+      })]);
+    }
+    out.push({ info: `Fits: ${def.fits.map((k) => ITEMS[k].short).join(', ')}` });
   }
   if (def.type === 'mag') {
     const ammoName = ITEMS[def.ammo].name;
@@ -1247,7 +1300,8 @@ export class GunController {
     const armsBroken = (p.hp.armL <= 0 || p.hp.armR <= 0) && p.painkiller <= 0;
     // Hip fire is as accurate as aiming once your Guns skill is maxed
     const gunsK = Math.min(1, (p.skill.guns || 0) / 8), steady = Math.max(this.ads, gunsK);
-    let spread = cfg.accuracy + (1 - this.ads) * cfg.hipSpread * (1 - gunsK);
+    const laser = w.mods.tactical ? ITEMS[w.mods.tactical.key].hip || 1 : 1;
+    let spread = cfg.accuracy + (1 - this.ads) * cfg.hipSpread * (1 - gunsK) * laser;
     if (ctx.moving) spread += 0.012 * (1 - steady * 0.6);
     if (armsBroken) spread += 0.05;
     const origin = this.camera.position.clone();
@@ -1295,9 +1349,11 @@ export class GunController {
 
   // ---------- PIP scope rendering (called before the main render) ----------
   renderScope(renderer, scene) {
+    this.updateLaser(scene);
     const op = this.built?.parts.optic;
     if (!op?.lens || !this.root.visible) return;
     const u = op.lens.material.uniforms;
+    u.time.value = (u.time.value + 0.37) % 100;
     u.bright.value = sstep(0.25, 0.85, this.ads);
     // Eye-box: misalignment between the eye and the scope axis darkens the edge.
     u.eyeOff.value.set(-this.offYaw * 7, this.offPitch * 7 - (1 - this.ads) * 0.6);
@@ -1314,10 +1370,65 @@ export class GunController {
     const autoShadow = renderer.shadowMap.autoUpdate;
     renderer.shadowMap.autoUpdate = false; // reuse this frame's shadow maps
     renderer.setRenderTarget(this.rt);
-    renderer.render(scene, cam);
+    if (op.def.thermal) this.renderThermal(renderer, scene, cam);
+    else renderer.render(scene, cam);
     renderer.setRenderTarget(prevTarget);
     renderer.shadowMap.autoUpdate = autoShadow;
     u.map.value = this.rt.texture;
+  }
+
+  // Thermal: the world drawn cold (flat grey, lit only a little, no fog),
+  // then what's warm drawn white-hot on top of it, hidden where the cold
+  // pass is nearer (walls still hide what's behind them)
+  renderThermal(renderer, scene, cam) {
+    const g = this.p.game;
+    if (!this.coldMat) {
+      // (its own glow, so it reads the same day or night; the sun only shades it)
+      this.coldMat = new THREE.MeshLambertMaterial({ color: 0x3a3a3a, emissive: 0x2c2c2c, fog: false });
+      this.hotMat = new THREE.MeshBasicMaterial({ color: 0xf4f4f0, fog: false });
+      // (all white-hot: not tinted by the zombies' skin and clothes colours)
+      this.hotMat.onBeforeCompile = (sh) => { sh.fragmentShader = sh.fragmentShader.replace('#include <color_fragment>', ''); };
+    }
+    const warm = new Set(Object.values(g.zombies?.crowd?.meshes || {}));
+    for (const s of g.survivors?.list || []) if (!s.dead && s.mesh) warm.add(s.mesh);
+    for (const r of g.ragdolls?.list || []) if (r.age < 240) warm.add(r.group); // bodies cool off
+    for (const v of g.vehicles?.list || []) if (v.running) warm.add(v.group);
+    const fog = scene.fog, bg = scene.background, auto = renderer.autoClear;
+    scene.fog = null; scene.background = this.thermBg || (this.thermBg = new THREE.Color(0x202020));
+    scene.overrideMaterial = this.coldMat;
+    renderer.render(scene, cam);
+    const shown = [];
+    for (const c of scene.children) if (c.visible && !warm.has(c)) { c.visible = false; shown.push(c); }
+    scene.overrideMaterial = this.hotMat;
+    scene.background = null;
+    renderer.autoClear = false;
+    renderer.render(scene, cam);
+    renderer.autoClear = auto;
+    for (const c of shown) c.visible = true;
+    scene.overrideMaterial = null; scene.fog = fog; scene.background = bg;
+  }
+
+  // A laser module: its dot where the bullets would go, and its beam
+  updateLaser(scene) {
+    const parts = this.built?.parts, w = this.w;
+    if (!this.laserDot) {
+      this.laserDot = new THREE.Mesh(new THREE.SphereGeometry(1, 8, 6), new THREE.MeshBasicMaterial({ color: 0xff3020, fog: false, transparent: true, opacity: 0.95, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false }));
+      this.laserBeam = new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3()]), new THREE.LineBasicMaterial({ color: 0xff4030, transparent: true, opacity: 0.3, fog: false, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false }));
+      this.laserDot.visible = this.laserBeam.visible = false;
+      scene.add(this.laserDot, this.laserBeam);
+    }
+    const on = this.root.visible && w?.mods?.tactical && parts?.laser && !this.lowered && !this.p.dead;
+    if (!on) { this.laserDot.visible = this.laserBeam.visible = false; return; }
+    const g = this.p.game, o = this.camera.getWorldPosition(new THREE.Vector3());
+    const q = new THREE.Quaternion().setFromEuler(_scopeEuler.set(this.p.pitch + this.offPitch, this.p.yaw + this.offYaw, 0, 'YXZ'));
+    const dir = new THREE.Vector3(0, 0, -1).applyQuaternion(q);
+    const hit = g.air?.cast(o, dir, 160);
+    const end = hit || o.clone().addScaledVector(dir, 160);
+    this.laserDot.visible = !!hit;
+    if (hit) { this.laserDot.position.copy(hit).addScaledVector(dir, -0.03); this.laserDot.scale.setScalar(Math.max(0.025, o.distanceTo(hit) * 0.004)); }
+    const from = parts.laser.getWorldPosition(new THREE.Vector3());
+    this.laserBeam.geometry.setFromPoints([from, end]);
+    this.laserBeam.visible = true;
   }
 
   // Main camera FOV while aiming with this setup.
