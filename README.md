@@ -29,15 +29,15 @@ npm run build    # static build in dist/
 
 ## The town
 
-The town is a post-Soviet one: panel blocks and courtyards, lock-up garages, a factory with its stack, dachas on the edge. Every world is generated from a seed and laid out in districts, at every density from the nine-storey blocks to garden plots, with loot that fits where you find it:
+The town is a post-Soviet one: panel blocks and courtyards, lock-up garages, factories with their stacks, dachas on the edge. It's seven blocks across (280 m), in a map 600 m across. Every world is generated from a seed and laid out in rings, at every density from the downtown towers to garden plots, with loot that fits where you find it:
 
 | Where | What's there |
 | --- | --- |
-| **Downtown** (centre) | A **skyscraper**: corporate offices with desks, filing cabinets, server racks and executive safes. Expect intel folders, flash drives, laptops and hard drives. |
-| **Civic ring** | The **hospital** (БОЛЬНИЦА: three floors of wards, exam rooms and supply rooms, full of infected patients), the **police station** (ПОЛИЦИЯ: lockers with sidearms, ammo and armor; evidence lockers; patrol cars), an **office block**, the **gastronom** (ГАСТРОНОМ, the big supermarket) and the big housing: two **nine-storey panel blocks** with lifts and two **Stalinkas**, the grand ochre blocks of the 50s. |
+| **Downtown** (the centre and the ring round it) | Three **skyscrapers**, 14 to 20 storeys of corporate offices with desks, filing cabinets, server racks and executive safes (intel folders, flash drives, laptops, hard drives), and the **Hotel Vostok** (ГОСТИНИЦА «ВОСТОК»): a lobby, then 11 to 14 floors of rooms with beds, wardrobes and the guests' things. |
+| **Civic ring** (also downtown) | The **hospital** (БОЛЬНИЦА: three floors of wards, exam rooms and supply rooms, full of infected patients), the **police station** (ПОЛИЦИЯ: lockers with sidearms, ammo and armor; evidence lockers; patrol cars), an **office block**, the **gastronom** (ГАСТРОНОМ, the big supermarket) and a **Stalinka**. Round that, the big housing: two **sixteen-storey tower blocks** and four **nine-storey panel blocks**, all with lifts, and more **Stalinkas**, the grand ochre blocks of the 50s, with a second office block, a gastronom, a clinic, a pharmacy, a hardware store, a gas station, the market and a park. |
 | **Housing** | **Khrushchyovkas** (five-storey panel blocks), each with its courtyard: a playground (swings, a slide, a climbing frame, a sandbox), benches, bins, washing lines and often a row of lock-up garages. The **private sector**: houses behind board and corrugated fences. **Dachas**: little log and board houses in garden plots with greenhouses and wells. |
-| **Industry** | One edge of town. The **Red October plant**: a brick hall with saw-tooth roof lights, a production line, lathes and presses, worker lockers and a tall striped stack, behind a concrete fence. The **boiler house** (КОТЕЛЬНАЯ) with its chimney and the heating mains on stilts, and a long row of **lock-up garages** (some open: shelving, tools, a car someone was fixing). A **warehouse** and the **auto repair** shop. |
-| **Shops and the street** | **ПРОДУКТЫ 24** corner shops, a **pharmacy** (АПТЕКА), a **hardware store** (ХОЗТОВАРЫ), a **gas station** (АЗС 24), a clinic (ПОЛИКЛИНИКА), a **market** with a row of street kiosks, and **Victory Park** with its memorial. Street lamps along every road, bus shelters, kiosks and dumpsters you can search. |
+| **Industry** | One whole edge of town: two of everything. The **Red October plant**: a brick hall with saw-tooth roof lights, a production line, lathes and presses, worker lockers and a tall striped stack, behind a concrete fence. The **boiler house** (КОТЕЛЬНАЯ) with its chimney and the heating mains on stilts, and a long row of **lock-up garages** (some open: shelving, tools, a car someone was fixing). A **warehouse** and the **auto repair** shop. |
+| **Shops and the street** | **ПРОДУКТЫ 24** corner shops, a **pharmacy** (АПТЕКА), a **hardware store** (ХОЗТОВАРЫ), a **gas station** (АЗС 24), a clinic (ПОЛИКЛИНИКА), a **market** with a row of street kiosks, **Victory Park** with its memorial, and the **TV tower**: a red and white steel lattice 90 m up, with the transmitter hall at its foot, the tallest thing for miles. Street lamps along every road, bus shelters, kiosks and dumpsters you can search. |
 | **Military** | A fenced **military outpost** in the corner away from the factories (command post, tents, watchtowers, a helipad and a truck) and **checkpoints** on the streets (barriers, sandbags, a guard booth and a military truck). This is the only place to find AK-74s, AK mags, PSO scopes, 6B13 armor, 6B47 helmets, military rucksacks, MREs and military batteries. Guarded by armored soldier zombies: aim for the head. |
 
 Buildings carry their signs in Cyrillic (АПТЕКА with its green cross, БОЛЬНИЦА, ПОЛИЦИЯ, firm names on the offices); the map (**M**) labels every landmark in English.
@@ -71,13 +71,13 @@ New consumables: **vitamins**, **antibiotics** (slow a zombie infection, don't c
 
 ## The countryside
 
-The town sits in the middle of a map about 440 m across. Around it is farmland and wilderness, laid out on a grid of 40 m parcels. The town's streets continue out as dirt farm tracks, and a ring track loops round the town.
+The town sits in the middle of a map 600 m across. Around it is farmland and wilderness, laid out on a grid of 40 m parcels. The town's streets continue out as dirt farm tracks, and a ring track loops round the town.
 
 | What | What's there |
 | --- | --- |
-| **Farms** (8) | A clapboard **farmhouse** with a pitched roof and a pantry in the kitchen. A red **barn** with a gambrel roof and sliding doors, holding stalls, hay, farm supply shelves, seed racks and sometimes a tractor. Outside: a silo, a chicken coop (eggs), produce crates, round hay bales, a tractor and plow, a pickup truck, a **well**, and a fenced **kitchen garden** whose crops were left growing. A few zombies wander each farm. |
+| **Farms** (up to 15, collective farms among them) | A clapboard **farmhouse** with a pitched roof and a pantry in the kitchen. A red **barn** with a gambrel roof and sliding doors, holding stalls, hay, farm supply shelves, seed racks and sometimes a tractor. Outside: a silo, a chicken coop (eggs), produce crates, round hay bales, a tractor and plow, a pickup truck, a **well**, and a fenced **kitchen garden** whose crops were left growing. A few zombies wander each farm. |
 | **Fields** | Next to the farms: wheat, corn (tall rows you can lose sight in), fenced vegetable rows, plowed earth, pasture with a water trough, and mown hay fields. Corn and vegetable rows can be picked for food and grow back. |
-| **Orchards** (4) | Rows of apple trees. Pick the apples; they grow back over a day or two. |
+| **Orchards** (7) | Rows of apple trees. Pick the apples; they grow back over a day or two. |
 | **Forests** | Dense mixed pine, oak and birch woods with fallen logs, rocks and bushes. Some have **clearings** with berry bushes, a **hunting cabin** (hunting locker with a rifle or shotgun, a pantry, a bed) or an abandoned **campsite**. |
 | **Meadows** | Open grass with scattered trees, boulders (big ones are cover), bushes, berry bushes and **ponds** ringed with reeds. |
 
@@ -464,6 +464,7 @@ give ak74            give mag_ak30 3      kit Rifleman        kit Marksman
 give m4a1            give mag_stanag 3    kit Operator        kit Gunner
 give designator      give radio_pack      kit JTAC            kit Grenadier
 give scope_thermal   give laser_peq       kit Drones          tp factory
+tp hotel             tp tvtower           tp panel16          tp skyscraper
 give scope_pso       give supp_rifle      kit Builder         spawn brute 3
 survivor hostile 2   survivors            trust 40            spawn walker 5
 tp hospital          tp military          tp checkpoint       tp pharmacy
@@ -479,10 +480,10 @@ god / noclip / invis / freeze / freebuild                    js player.skill
 
 ## Tall buildings
 
-Offices and police stations have two real floors, the hospital three, the Stalinkas four, the Khrushchyovkas five, the panel blocks nine, and the downtown skyscraper 9 to 13, all the way up to its roof. Every floor has its own rooms, doors, windows, furniture, loot and zombies.
+Offices and police stations have two real floors, the hospital three, the Stalinkas four, the Khrushchyovkas five, the panel blocks nine, the tower blocks sixteen, the hotel 11 to 14 and the downtown skyscrapers 14 to 20, all the way up to their roofs. That's around 180 real floors in a town. Every floor has its own rooms, doors, windows, furniture, loot and zombies.
 
 - **Stairs.** A switchback stairwell sits at the end of the corridor. A flight climbs to a half landing, then a second flight turns back up to the next floor. Walk up and down them like anywhere else.
-- **Elevators.** The hospital, the nine-storey blocks and the skyscraper also have an elevator beside the stairs. Press **F** at the call button by its doors on any floor to call it. Inside, press **F** at the panel and pick a floor with the number keys (**0** is the tenth) or click it. The doors stay open a few seconds, then close, and the car carries you (and anything standing in it) up or down.
+- **Elevators.** The hospital, the nine- and sixteen-storey blocks, the hotel and the skyscrapers also have an elevator beside the stairs. Press **F** at the call button by its doors on any floor to call it. Inside, press **F** at the panel and pick a floor with the number keys (**0** is the tenth) or click it. The doors stay open a few seconds, then close, and the car carries you (and anything standing in it) up or down.
 - **Zombies use the stairs.** They hear gunfire and footsteps through the floors (muffled), find their way to the stairwell and climb or descend floor by floor to reach you. They see and attack only on their own floor. Floors and ceilings stop bullets, and you can't jump out of an upstairs window.
 - Survivors stay on the ground floor, and you can only build on the ground.
 - **Bodies on the stairs.** Ragdolls, dropped guns and blood land on the flights and landings (and slide down them), not on an invisible floor.
@@ -490,12 +491,25 @@ Offices and police stations have two real floors, the hospital three, the Stalin
 
 ## Performance
 
-The world is drawn with level of detail, the way open-world games do it:
+**Graphics settings** (title menu and pause screen): Low, Medium, High (the default) and Ultra presets, or set each one yourself:
+- **Render scale:** the resolution drawn at (50–150%; the cheapest win on a slow GPU).
+- **Shadows:** off, low (1024, hard-edged) or high (2048, soft).
+- **Sun shadow updates:** every frame or every other frame.
+- **View distance:** the fog closes in to match.
+- **Anti-aliasing:** takes effect after a reload.
+
+The panel shows your frame rate.
+
+How the world stays cheap to draw, the way open-world games do it:
 
 - **Chunks.** Scenery (walls, roofs, fences, sheds, trees) is batched by 40 m chunk. Chunks off screen or past the fog aren't drawn, and the sun's and the flashlight's shadow passes only draw the chunks they reach.
-- **Detail distance.** Small outdoor props (benches, bins, sandbags, posts) are drawn to 100 m. Furniture and fittings are batched by building and by storey, and drawn within 50 m. Inside a tall building, only your storey and the ones directly above and below are drawn. Doors are drawn to 70 m.
-- **The horde.** Zombies are drawn as one instanced mesh per body part, so the whole horde takes a handful of draw calls. Zombies, survivors, cars and bodies past the fog aren't drawn at all.
-- About half the draw calls and triangles of before, in the same views.
+- **Detail distance.** Small outdoor props (benches, bins, sandbags, posts) are drawn to 100 m. Furniture and fittings are batched by building and by storey and drawn within 45 m; the products on shop shelves within 24 m. Inside a tall building, only your storey and the ones directly above and below are drawn.
+- **Trees** past 70 m are drawn as simple shapes (a trunk and one shape of foliage).
+- **Lights.** The scene has a fixed set: the sun, the sky, your flashlight (which is also your headlights when you drive), one light shared by every muzzle flash, explosion and cannon hit, and one for the nearest campfire. Every light costs every pixel on screen, and adding one rebuilds every shader (a hitch), so nothing adds lights any more.
+- **Shadows.** Furniture inside buildings is left out of the sun's shadows (it's under a roof) but still throws them in your flashlight; the flashlight's shadows are only drawn while it's on.
+- **Batching.** Doors are two instanced meshes for the whole town; parked cars that look alike share one model; the horde is one instanced mesh per body part.
+- **Zombies think less the further away they are:** every frame within 35 m, every other frame to 80 m, every fourth beyond, and the ones wandering far off doze. Crowding uses a grid, not every zombie against every other.
+- **Loading** builds the town's batches straight into GPU-ready arrays, and lets the shaders compile in parallel.
 
 ## The look of the town
 
@@ -533,7 +547,9 @@ Buildings and streets are textured with generated maps: brick, wood siding, conc
 | `src/collision.js` | 2D spatial hash, circle-vs-box movement, raycasts |
 | `src/items.js` | Item definitions, loot tables, container types |
 | `src/inventory.js` / `src/invui.js` | Grid inventory logic and drag-and-drop UI |
-| `src/eastern.js` | The post-Soviet street: courtyards and playgrounds, lock-up garage rows, smokestacks, heating mains, kiosks, fences, street lamps, bus shelters, the factory roof |
+| `src/eastern.js` | The post-Soviet street: courtyards and playgrounds, lock-up garage rows, smokestacks, heating mains, kiosks, fences, street lamps, bus shelters, the factory roof, the TV tower |
+| `src/dynlights.js` | The fixed set of dynamic lights (the shared flash, the campfire light), the viewmodel's fill, the interior layer |
+| `src/gfx.js` | Graphics settings: presets, render scale, shadows, view distance, anti-aliasing; the settings panel |
 | `src/explosives.js` | Explosions: fireball, smoke and debris, the flash and boom, damage with distance and cover, windows, doors and bodies |
 | `src/throwables.js` | Grenades (holding, throwing, bouncing, fuses) and the hotbar |
 | `src/drones.js` | FPV drones: flying, the camera feed and OSD, payloads, drops and kamikaze strikes, battery and range |
