@@ -351,9 +351,10 @@ function gunshot(kind, suppressed, vol, pan = 0, dist = 0) {
 // the ring of the one before, so the tail of the last one rings out.
 const ringing = {};
 const SHOT_GAIN = 0.43; // (level with the synthesized rifles)
+const SHOT_TRIM = { shot_sks: 1.75 }; // (recordings that came out quieter than they should)
 function recordedShot(name, k, t, vol, pan, suppressed, rapid, nth, crowded) {
   const far = 1 - vol, muffled = env === 'in' && far > 0.15;
-  const bus = ctx.createGain(); bus.gain.value = vol * SHOT_GAIN;
+  const bus = ctx.createGain(); bus.gain.value = vol * SHOT_GAIN * (SHOT_TRIM[name] ?? 1);
   const boom = filter('lowshelf', 200); boom.gain.value = 10 * far;
   const air = filter('lowpass', (700 + 17000 * vol * vol) * (muffled ? 0.45 : 1), 0.5);
   bus.connect(boom); boom.connect(air);
@@ -373,7 +374,7 @@ function recordedShot(name, k, t, vol, pan, suppressed, rapid, nth, crowded) {
     const n = far > 0.25 ? 3 : 2;
     for (let i = 0; i < n; i++) {
       const dt = [0.14 + Math.random() * 0.2, 0.45 + Math.random() * 0.35, 0.95 + Math.random() * 0.5][i];
-      const a = [0.22, 0.13, 0.08][i] * (0.35 + far * 0.9) * vol * SHOT_GAIN;
+      const a = [0.22, 0.13, 0.08][i] * (0.35 + far * 0.9) * vol * SHOT_GAIN * (SHOT_TRIM[name] ?? 1);
       const lp = filter('lowpass', [1500, 900, 550][i] * (0.6 + vol * 0.4), 0.6);
       const side = Math.max(-1, Math.min(1, pan * 0.4 + (Math.random() - 0.5) * 1.4));
       out(lp, side, 0.5 + far * 0.4, life + dt);

@@ -478,7 +478,7 @@ Everything is synthesized live with WebAudio. Nothing is a looped recording, so 
 
 - **Gunshots** are built the way a real shot is heard: the supersonic crack of the bullet (rifles), the muzzle blast, the low thump of the gas, the action cycling, and the echo off the town. Every calibre has its own profile: a 9 mm pops, a .45 thumps, 5.56 cracks hard, 7.62×51 booms, and a 12 gauge roars. Indoors the shot slaps off the walls in a short room reverb; outdoors it rolls away in a long tail. Suppressed shots keep the action and a dull thud. Other people's gunfire is panned, duller and further away the further off it is.
 - **Zombies** have voices. A formant synth (throat, vowels and rasp) gives each zombie a pitch and size of its own: walkers moan, runners are higher and raspier, brutes and soldiers are deep. They groan while they wander, growl on the chase, snarl as they swing, cry out when hit and give a death rattle. Every voice is panned to where the zombie is, quieter with distance and muffled from another floor.
-- **The AK-74** is a real recording: its shot, and its magazine, bolt, selector and dry fire. Survivors' gunfire carries a few hundred metres: a far-off firefight is a dull, late boom rolling off the buildings.
+- **The AK-74 and SKS** are real recordings: their shots, and their magazines, bolts, selector and dry fire. Survivors' gunfire carries a few hundred metres: a far-off firefight is a dull, late boom rolling off the buildings.
 - **Mechanics:** magazines clicking out and seating, bolts and slides, the shotgun pump, dry fire, footsteps, and bullets chipping walls near you. Spent brass lands with a few quiet, dull tinks as it bounces and rolls; shotgun hulls give hollow plastic taps.
 - **Dying zombies** let out a falling moan, the throat fills with a few wet gurgles, and the last air goes out of them.
 
@@ -499,7 +499,7 @@ Names are `shot_<weapon>` or `shot_<calibre class>` (`pistol9`, `pistol45`, `smg
 
 A recorded gunshot is only needed once, close up: the game makes the distant versions from it. Further away the highs and the crack fall off and the low boom stays, the sound arrives late (343 m/s), the report rolls back off the town as delayed, duller echoes from other directions, and more of it is reverb; heard from indoors it's muffled. In a burst each shot cuts short the ring of the one before, so only the last rings out.
 
-**The AK-74 uses real recordings** (in `public/sounds/ak/`): the gunshot, and the magazine, bolt, fire selector, chamber check and dry fire, cut from:
+**The AK-74 uses real recordings** (in `public/sounds/ak/`): the gunshot, and the magazine, bolt, fire selector, chamber check and dry fire, cut from the recordings below. The SKS fires the same 7.62×39 round as the AK-47 in that recording, so its shot (`public/sounds/sks/`) is the same one a little lower and deeper, with the AK's handling sounds. Both cut from:
 - [AK-47 shot](https://freesound.org/s/855841/) by serutonin-deprivd (Freesound)
 - [AK manipulation](https://freesound.org/s/122690/) by mittelmorder (Freesound)
 

@@ -1,10 +1,52 @@
 {
-  "shot_ak74": ["ak/shot.wav"],
-  "mag_out_ak74": ["ak/magout.wav"],
-  "mag_in_ak74": ["ak/magin.wav"],
-  "bolt_back_ak74": ["ak/boltback1.wav", "ak/boltback2.wav"],
-  "bolt_fwd_ak74": ["ak/boltfwd1.wav", "ak/boltfwd2.wav"],
-  "selector_ak74": ["ak/selector1.wav", "ak/selector2.wav"],
-  "chamber_ak74": ["ak/chamber.wav"],
-  "dry_ak74": ["ak/dry.wav"]
+  "shot_ak74": [
+    "ak/shot.wav"
+  ],
+  "mag_out_ak74": [
+    "ak/magout.wav"
+  ],
+  "mag_in_ak74": [
+    "ak/magin.wav"
+  ],
+  "bolt_back_ak74": [
+    "ak/boltback1.wav",
+    "ak/boltback2.wav"
+  ],
+  "bolt_fwd_ak74": [
+    "ak/boltfwd1.wav",
+    "ak/boltfwd2.wav"
+  ],
+  "selector_ak74": [
+    "ak/selector1.wav",
+    "ak/selector2.wav"
+  ],
+  "chamber_ak74": [
+    "ak/chamber.wav"
+  ],
+  "dry_ak74": [
+    "ak/dry.wav"
+  ],
+  "shot_sks": [
+    "sks/shot.wav"
+  ],
+  "mag_out_sks": [
+    "ak/magout.wav"
+  ],
+  "mag_in_sks": [
+    "ak/magin.wav"
+  ],
+  "bolt_back_sks": [
+    "ak/boltback1.wav",
+    "ak/boltback2.wav"
+  ],
+  "bolt_fwd_sks": [
+    "ak/boltfwd1.wav",
+    "ak/boltfwd2.wav"
+  ],
+  "chamber_sks": [
+    "ak/chamber.wav"
+  ],
+  "dry_sks": [
+    "ak/dry.wav"
+  ]
 }
