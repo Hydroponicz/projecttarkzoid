@@ -12,6 +12,8 @@ npm run build    # static build in dist/
 
 ## How it plays
 
+**The survival guide.** Press **F2** any time (or use the button on the pause screen or title menu) for the in-game guide: a searchable wiki of every mechanic, with a summary of how to play and what to do first. Type to search; results are ranked and the words are highlighted. The game is paused while it's open.
+
 1. **Create a survivor.** Pick a name and a profession: Unemployed, Police Officer, Fire Officer, Carpenter, Nurse, Burglar, Farmer or Veteran. Each comes with skill bonuses and a starting kit. Then spend points on Strength, Fitness, Agility, Dexterity, Aiming, Guns, Carpentry, Stealth, First Aid and Farming.
 2. **Follow the guide.** A new character starts a ten-step "First day" tutorial, shown top right. It covers moving, scavenging, the inventory, eating, arming yourself, a first kill, claiming a safehouse, finding a trader, making a deal and fortifying. Each step gives a small reward. After that, five chapters of goals lead the way:
    1. **Dig In**: build, sleep, stock your safehouse, survive to day 3, harvest a crop you grew.
@@ -21,7 +23,7 @@ npm run build    # static build in dist/
    5. **Long Haul**: day 14, 250 kills, 15 jobs.
 
    Each chapter pays out gear. **J** opens the goals panel; **K** (while it's open) skips the tutorial.
-3. **Fly in.** A new survivor is choppered in: on the creation screen you pick the one gun you bring (AK-74N, M4A1, SKS, MP5, MP-133, a PM, or nothing). A Mi-8 comes in low over the fields and the rooftops, flares and sets down on the edge of town, and you jump out of the door as it lifts away. Space, Esc or Enter skips it. The town is persistent and procedurally generated. Loot doesn't respawn. The world is saved automatically (every 30 seconds, when you sleep, and when you close the tab).
+3. **Fly in.** A new survivor is choppered in: on the creation screen you pick the one gun you bring (AK-74N, M4A1, SKS, MP5, MP-133, a PM, or nothing) and, for a new world, when you go in: three choices, each a different season with a random day and time of day (dawn, morning, afternoon, dusk, night or the dead of night), and you can roll three others. A Mi-8 comes in low over the fields and the rooftops, flares and sets down on the edge of town, and you jump out of the door as it lifts away. Space, Esc or Enter skips it. While you're in the air nothing on the ground can hurt you or see you. The first time you step off, the **survival guide** opens (and the game pauses). The town is persistent and procedurally generated. Loot doesn't respawn. The world is saved automatically (every 30 seconds, when you sleep, and when you close the tab).
 3. **Make a home.** Claim the building you're standing in as your safehouse with **V**. Outdoors, **V** claims a 20×20 m camp instead. Zombies never respawn near your safehouse.
 4. **Build.** Press **B** to build walls, barricades, doors, storage crates, beds, campfires and rain barrels out of planks and nails, or dig garden plots with a shovel. You need a hammer. Planks come from lumber piles in warehouses, or you can chop trees with an axe and saw the logs into planks. Hammering is loud and draws zombies.
 5. **Survive the nights.** One in-game minute passes per real second, so a full day takes 24 minutes. At night zombies move faster, and more of them spawn as the days go by. Sleep in a bed to recover fatigue and health. Sleeping outside your safehouse may wake you to company.
@@ -280,7 +282,7 @@ The gunsmith trader sells the NATO guns as your reputation grows.
   - Red dot and holographic sights project their reticle at infinity, like real reflex sights.
   - The **PSO-1 4×** and **Hunting 6×** are true picture-in-picture scopes: a magnified view renders onto the lens, with the PSO's chevron and rangefinder reticle and an eye-box shadow when the gun sways. The scope view follows the exact path of the bullet, so the reticle is true: shots land within the rifle's spread.
   - The **ACOG 4×** (M4A1, M14, M249) is a picture-in-picture scope with a red chevron and bullet-drop ladder.
-  - The **Pulsar thermal 3×** is a picture-in-picture thermal scope: the world in the lens goes grey and cold, and anything warm (zombies, survivors) glows white hot, even in the dark. Rare: military crates or the gunsmith.
+  - The **Pulsar thermal 3×** is a picture-in-picture thermal scope: the world in the lens goes grey and cold, and anything warm shows by how warm it is, even in the dark: people white-hot, running engines hot, zombies a faint but clear glow, and a body cooling to nothing over 20 seconds. Rare: military crates or the gunsmith.
   - **Lasers** go on the tactical rail: the **PEQ-15** (rifles, the MP5, shotguns) and the **Klesch-2** (also pistols). A red dot shows on whatever you're pointing at, the beam shows in the dark, and your hip fire tightens up a lot.
   - **What fits what.** Hover an attachment, or right-click it, to see which guns it goes on; the guns you're carrying that take it light up in your inventory. Right-click → **Attach to** lists every gun you carry that it fits.
   - Suppressors cut gunshot noise by about 80%, which matters with zombies around. The rifle can fits the AK, SKS, M4A1 and M14; the pistol can fits the Glock, M1911 and MP5.
@@ -383,7 +385,8 @@ Zombies and survivors react physically to what hits them.
 | Q / E | Lean left / right |
 | G | Lower / raise your weapon (survivors and traders relax) |
 | 1, 2 | Switch between firearm and melee |
-| F | Interact: open/close doors, search containers, sleep in beds, talk to survivors (1–9 picks a dialogue option), call and ride elevators, tend garden plots, pick fruit, drink at wells and ponds |
+| F | Interact: open/close doors, search containers, sleep in beds, talk to survivors (1–9 picks a dialogue option), call and ride elevators, tend garden plots, pick fruit, drink at wells and ponds. With several things in reach (a body in a doorway), they're all listed: the mouse wheel picks one |
+| F2 | Survival guide (pauses the game) |
 | Tab or I | Inventory. Close it with Esc, Tab, F, the Close button, a click outside, or by walking off. |
 | H | Quick-heal (bandage if bleeding, otherwise a medkit) |
 | L | Flashlight |
@@ -393,6 +396,8 @@ Zombies and survivors react physically to what hits them.
 | 3–6 | Hotbar: use what's in the slot, or bring up a grenade (LMB throw, RMB lob) |
 | V | Claim a safehouse |
 | Esc | Pause. The game goes fullscreen when you spawn; hold Esc or use the pause menu to leave fullscreen. |
+
+Browser shortcuts that are easy to hit with Ctrl held (Ctrl+W, Ctrl+D, Ctrl+S…) are blocked while you play. Chrome and Edge only let a page keep Ctrl+W in fullscreen (where the game holds it); elsewhere, closing the tab mid-game asks you first.
 
 ## Grenades and the hotbar
 
@@ -549,6 +554,7 @@ Buildings and streets are textured with generated maps: brick, wood siding, conc
 | `src/inventory.js` / `src/invui.js` | Grid inventory logic and drag-and-drop UI |
 | `src/eastern.js` | The post-Soviet street: courtyards and playgrounds, lock-up garage rows, smokestacks, heating mains, kiosks, fences, street lamps, bus shelters, the factory roof, the TV tower |
 | `src/dynlights.js` | The fixed set of dynamic lights (the shared flash, the campfire light), the viewmodel's fill, the interior layer |
+| `src/guide.js` | The survival guide (F2): the articles, search and the panel |
 | `src/gfx.js` | Graphics settings: presets, render scale, shadows, view distance, anti-aliasing; the settings panel |
 | `src/explosives.js` | Explosions: fireball, smoke and debris, the flash and boom, damage with distance and cover, windows, doors and bodies |
 | `src/throwables.js` | Grenades (holding, throwing, bouncing, fuses) and the hotbar |

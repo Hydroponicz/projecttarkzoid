@@ -1,6 +1,7 @@
 // Character creation: name, profession and skill points (Project Zomboid style).
 import { ITEMS, makeItem } from './items.js';
 import { makeGrid, addItem } from './inventory.js';
+import { SEASONS, SEASON_DAYS } from './weather.js';
 
 export const STATS = {
   strength: { name: 'Strength', desc: 'Melee damage, less stamina per swing' },
@@ -74,9 +75,25 @@ export function makeCharacter(name, profKey, bought, gun = 'none') {
 }
 
 // Wires up the creation screen. Calls onDone(character) when the player spawns.
-export function setupCreation(onDone) {
+// When you go in: three to choose from, each a different season, a random
+// day of it and a time of day
+const TIMES = [[5.4, 7.2, 'dawn'], [8, 11.5, 'morning'], [12, 16, 'afternoon'], [17.5, 19.8, 'dusk'], [21, 23.8, 'night'], [1, 4.5, 'the dead of night']];
+const SEASON_NOTE = { spring: 'mild, wet, things growing', summer: 'long hot days, short nights', autumn: 'cool, rain and fog, the leaves turning', winter: 'freezing, snow, short days: dress warm' };
+export function rollInsertions() {
+  const shuffle = (a) => { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
+  const seasons = shuffle([0, 1, 2, 3]).slice(0, 3), times = shuffle([...TIMES]).slice(0, 3);
+  return seasons.map((season, i) => {
+    const [t0, t1, when] = times[i];
+    return { season, day: 1 + Math.floor(Math.random() * SEASON_DAYS), minute: Math.round((t0 + Math.random() * (t1 - t0)) * 60), when };
+  });
+}
+export const insertionLabel = (o) => `${SEASONS[o.season].name}, day ${o.day} · ${String(Math.floor(o.minute / 60)).padStart(2, '0')}:${String(o.minute % 60).padStart(2, '0')}`;
+
+// fresh: whether the world is new (the insertion time only applies then)
+export function setupCreation(onDone, fresh = () => true) {
   const $ = (id) => document.getElementById(id);
   let prof = 'unemployed', gun = 'ak74';
+  let inserts = rollInsertions(), insertPick = 0;
   const bought = Object.fromEntries(Object.keys(STATS).map((k) => [k, 0]));
   $('cc-name').value = randomName();
   $('cc-random').onclick = () => { $('cc-name').value = randomName(); };
@@ -121,6 +138,16 @@ export function setupCreation(onDone) {
       });
       $('cc-stats').appendChild(row);
     }
+    // When: three insertions (a fresh world only; otherwise it carries on)
+    $('cc-when').innerHTML = '';
+    $('cc-when-head').style.display = $('cc-when').style.display = fresh() ? '' : 'none';
+    inserts.forEach((o, i) => {
+      const b = document.createElement('button');
+      b.className = 'prof gun' + (i === insertPick ? ' sel' : '');
+      b.innerHTML = `${insertionLabel(o)}<small>${o.when} · ${SEASON_NOTE[SEASONS[o.season].id]}</small>`;
+      b.onclick = () => { insertPick = i; render(); };
+      $('cc-when').appendChild(b);
+    });
     $('cc-guns').innerHTML = '';
     for (const [k, gdef] of Object.entries(INSERT_GUNS)) {
       const b = document.createElement('button');
@@ -140,7 +167,10 @@ export function setupCreation(onDone) {
 
   $('cc-start').onclick = () => {
     const name = $('cc-name').value.trim() || randomName();
-    onDone(makeCharacter(name, prof, bought, gun));
+    const ch = makeCharacter(name, prof, bought, gun);
+    if (fresh()) ch.insert = inserts[insertPick];
+    onDone(ch);
   };
-  return { reset() { prof = 'unemployed'; gun = 'ak74'; for (const k in bought) bought[k] = 0; $('cc-name').value = randomName(); render(); } };
+  $('cc-reroll').onclick = () => { inserts = rollInsertions(); insertPick = 0; render(); };
+  return { reset() { prof = 'unemployed'; gun = 'ak74'; for (const k in bought) bought[k] = 0; inserts = rollInsertions(); insertPick = 0; $('cc-name').value = randomName(); render(); } };
 }

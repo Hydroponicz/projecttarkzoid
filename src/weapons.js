@@ -12,6 +12,8 @@ import { segBox } from './collision.js';
 import { MAT, B, RB, C, P, BUILDERS, buildMag, shellModel, metricUV } from './gunmodels.js';
 import './natoguns.js'; // (registers the NATO weapons and magazines)
 
+const ZOMBIE_HEAT = 0.45; // the dead walking: faint but there on a thermal sight
+const BODY_COOL = 20;     // seconds for a body to cool to nothing
 export const VM_LAYER = 1; // viewmodel layer: drawn by the main camera, hidden from scope cameras
 
 // ---------------------------------------------------------------------------
@@ -1380,34 +1382,60 @@ export class GunController {
   }
 
   // Thermal: the world drawn cold (flat grey, lit only a little, no fog),
-  // then what's warm drawn white-hot on top of it, hidden where the cold
-  // pass is nearer (walls still hide what's behind them)
+  // then what's warm drawn on top of it by how warm it is, hidden where the
+  // cold pass is nearer (walls still hide what's behind them). People and
+  // running engines are white-hot; the dead walking only faintly warm; a body
+  // cools to nothing over 20 seconds.
   renderThermal(renderer, scene, cam) {
     const g = this.p.game;
     if (!this.coldMat) {
       // (its own glow, so it reads the same day or night; the sun only shades it)
       this.coldMat = new THREE.MeshLambertMaterial({ color: 0x3a3a3a, emissive: 0x2c2c2c, fog: false });
-      this.hotMat = new THREE.MeshBasicMaterial({ color: 0xf4f4f0, fog: false });
-      // (all white-hot: not tinted by the zombies' skin and clothes colours)
-      this.hotMat.onBeforeCompile = (sh) => { sh.fragmentShader = sh.fragmentShader.replace('#include <color_fragment>', ''); };
+      this.hotMats = [];
     }
-    const warm = new Set(Object.values(g.zombies?.crowd?.meshes || {}));
-    for (const s of g.survivors?.list || []) if (!s.dead && s.mesh) warm.add(s.mesh);
-    for (const r of g.ragdolls?.list || []) if (r.age < 240) warm.add(r.group); // bodies cool off
-    for (const v of g.vehicles?.list || []) if (v.running) warm.add(v.group);
+    // heat 0..1 by top-level object
+    const heat = new Map(), add = (o, h) => { if (o && h > 0.04) heat.set(o, Math.max(h, heat.get(o) || 0)); };
+    for (const im of Object.values(g.zombies?.crowd?.meshes || {})) add(im, ZOMBIE_HEAT);
+    for (const s of g.survivors?.list || []) if (!s.dead) add(s.mesh, 1);
+    for (const t of g.traders?.list || []) if (t.npc && !t.npc.dead) add(t.npc.mesh, 1);
+    for (const r of g.ragdolls?.list || []) {
+      const warm = r.kind === 'zombie' ? ZOMBIE_HEAT : 1;
+      add(r.group, r.alive ? warm : warm * Math.max(0, 1 - (r.age + (r.coldFor || 0)) / BODY_COOL));
+    }
+    for (const v of g.vehicles?.list || []) if (v.running) add(v.group, 0.85);
     const fog = scene.fog, bg = scene.background, auto = renderer.autoClear;
     scene.fog = null; scene.background = this.thermBg || (this.thermBg = new THREE.Color(0x202020));
     scene.overrideMaterial = this.coldMat;
     renderer.render(scene, cam);
-    const shown = [];
-    for (const c of scene.children) if (c.visible && !warm.has(c)) { c.visible = false; shown.push(c); }
-    scene.overrideMaterial = this.hotMat;
+    // one pass per heat level, each showing only what's that warm
+    const levels = new Map();
+    for (const [o, h] of heat) { const q = Math.max(1, Math.round(h * 12)); if (!levels.has(q)) levels.set(q, new Set()); levels.get(q).add(o); }
+    const was = scene.children.map((c) => c.visible);
+    const crowd = g.zombies?.crowd;
+    if (crowd) crowd.hold = true; // (the horde as placed for the cold pass)
     scene.background = null;
     renderer.autoClear = false;
-    renderer.render(scene, cam);
+    for (const [q, set] of levels) {
+      scene.children.forEach((c, i) => { c.visible = was[i] && set.has(c); });
+      scene.overrideMaterial = this.hotMat(q / 12);
+      renderer.render(scene, cam);
+    }
+    if (crowd) crowd.hold = false;
     renderer.autoClear = auto;
-    for (const c of shown) c.visible = true;
+    scene.children.forEach((c, i) => { c.visible = was[i]; });
     scene.overrideMaterial = null; scene.fog = fog; scene.background = bg;
+  }
+  // A flat material for something this warm (cold grey up to white-hot)
+  hotMat(h) {
+    const q = Math.round(h * 12);
+    if (!this.hotMats[q]) {
+      const m = new THREE.MeshBasicMaterial({ color: new THREE.Color(0x3c3c3a).lerp(new THREE.Color(0xf4f4f0), h), fog: false });
+      // (flat: not tinted by the zombies' skin and clothes colours)
+      m.onBeforeCompile = (sh) => { sh.fragmentShader = sh.fragmentShader.replace('#include <color_fragment>', ''); };
+      m.customProgramCacheKey = () => 'thermal-hot';
+      this.hotMats[q] = m;
+    }
+    return this.hotMats[q];
   }
 
   // A laser module: its dot where the bullets would go, and its beam

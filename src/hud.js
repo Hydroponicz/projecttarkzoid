@@ -7,6 +7,23 @@ import { HALF, TOWN } from './world.js';
 const $ = (id) => document.getElementById(id);
 const DIRS = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
 
+// What the prompt says for something you can use (key shown on the picked one)
+function promptFor(t, picked) {
+  const F = picked ? '[F] ' : '';
+  const hp = t.hp != null && t.hp < t.maxHp ? ` (${Math.ceil(t.hp)}/${t.maxHp})` : '';
+  if (t.kind === 'survivor' && t.trader) return `${F}Trade with ${t.name} (${t.trader.def.title})`;
+  if (t.kind === 'survivor') return `${F}Talk to ${t.met ? t.name : 'the stranger'}`;
+  if (t.kind === 'vehicle') { const pr = t.v.problems(); return `${F}${t.name} (${pr.length ? pr[0].toLowerCase() : t.v.flats().length ? 'flat tire' : 'runs'})`; }
+  if (t.kind === 'pump') return `${F}Fuel pump (${Math.round(t.fuel)} L left)`;
+  if (t.kind === 'window' && t.base) return t.state === 'broken' ? 'Broken window (too high to climb out)' : `${F}${t.state === 'open' ? 'Close' : 'Open'} window`;
+  if (t.kind === 'window') return t.state === 'broken' ? '[Space] Climb through (broken glass)' : t.state === 'open' ? `${F}Close window · [Space] Climb through` : `${F}Open window`;
+  if (t.door || t.kind === 'door') return `${F}${t.open ? 'Close' : 'Open'} ${t.name}${hp}`;
+  if (t.kind === 'bed' || t.type === 'bed') return `${F}Sleep`;
+  if (t.prompt) { const s = t.prompt(); return picked ? s : s.replace(/^\[F\] /, ''); }
+  return `${F}Search ${t.name}`;
+}
+const esc = (s) => String(s).replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[c]);
+
 export class HUD {
   constructor() {
     this.el = $('hud');
@@ -130,24 +147,27 @@ export class HUD {
     if (b.active) {
       text = b.valid ? '[LMB] Build · [R] Rotate' : b.reason;
       if (b.target) text += ` · [X] Dismantle ${b.target.name} (${Math.ceil(b.target.hp)}/${b.target.maxHp})`;
+    } else if (game.lookChoices) {
+      // several things in reach: all of them, the picked one marked
+      const pick = game.lookTarget;
+      const rows = game.lookChoices.map((t) => `<div class="pick${t === pick ? ' on' : ''}">${t === pick ? '▶ ' : ''}${esc(promptFor(t, t === pick))}</div>`);
+      prompt.style.display = 'block';
+      prompt.innerHTML = rows.join('') + '<div class="pick-hint">Mouse wheel to choose · [F] to use</div>';
+      prompt.classList.add('multi');
+      this.updateBuildBar(game);
+      this.afterPrompt(game, p, dt);
+      return;
     } else if (game.lookTarget) {
-      const t = game.lookTarget;
-      const hp = t.hp != null && t.hp < t.maxHp ? ` (${Math.ceil(t.hp)}/${t.maxHp})` : '';
-      if (t.kind === 'survivor' && t.trader) text = `[F] Trade with ${t.name} (${t.trader.def.title})`;
-      else if (t.kind === 'survivor') text = `[F] Talk to ${t.met ? t.name : 'the stranger'}`;
-      else if (t.kind === 'vehicle') { const pr = t.v.problems(); text = `[F] ${t.name} (${pr.length ? pr[0].toLowerCase() : t.v.flats().length ? 'flat tire' : 'runs'})`; }
-      else if (t.kind === 'pump') text = `[F] Fuel pump (${Math.round(t.fuel)} L left)`;
-      else if (t.kind === 'window' && t.base) text = t.state === 'broken' ? 'Broken window (too high to climb out)' : `[F] ${t.state === 'open' ? 'Close' : 'Open'} window`;
-      else if (t.kind === 'window') text = t.state === 'broken' ? '[Space] Climb through (broken glass)' : t.state === 'open' ? '[F] Close window · [Space] Climb through' : '[F] Open window';
-      else if (t.door || t.kind === 'door') text = `[F] ${t.open ? 'Close' : 'Open'} ${t.name}${hp}`;
-      else if (t.kind === 'bed' || t.type === 'bed') text = '[F] Sleep';
-      else if (t.prompt) text = t.prompt();
-      else text = `[F] Search ${t.name}`;
+      text = promptFor(game.lookTarget, true);
     }
     prompt.style.display = text ? 'block' : 'none';
     prompt.textContent = text;
+    prompt.classList.remove('multi');
     this.updateBuildBar(game);
+    this.afterPrompt(game, p, dt);
+  }
 
+  afterPrompt(game, p, dt) {
     // Holding breath: the edges of your vision close in a little
     $('focus').style.opacity = p.active === 'gun' && p.gun ? (p.gun.holdK || 0) * 0.55 : 0;
     $('vignette').style.opacity = Math.max(p.hurtFlash, (1 - Math.min(p.hp.thorax / 85, p.hp.head / 35)) * 0.6);

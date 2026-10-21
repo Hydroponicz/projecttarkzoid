@@ -66,7 +66,7 @@ export class Weather {
   constructor(game, saved) {
     this.game = game;
     const s = saved || {};
-    this.offset = s.offset ?? START_OFFSET;
+    this.offset = s.offset ?? game.save?.startOffset ?? START_OFFSET;
     this.state = s.state || 'cloudy';
     this.next = s.next || null;
     this.left = s.left ?? 4 * 60;       // game minutes until the front changes

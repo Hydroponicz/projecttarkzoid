@@ -101,6 +101,8 @@ class Ragdoll {
     this.onSettle = spec.onSettle;
     this.look = spec.look;
     this.alive = !!spec.alive;
+    this.kind = spec.kind; // (zombie or human: how warm it was)
+    this.coldFor = spec.pose ? 1e9 : 0; // (a body from a save is long cold)
     this.floor = spec.floor || 0; // height of the floor it lies on (upper storeys)
     this.sleeping = false;
     this.still = 0;

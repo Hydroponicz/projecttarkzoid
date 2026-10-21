@@ -19,6 +19,14 @@ export class Input {
       this.pressed.add(e.code);
       if (e.code === 'Tab' || (e.code === 'Space' && this.locked)) e.preventDefault();
     });
+    // Browser shortcuts that are easy to hit with Ctrl held (it drops a
+    // drone, and sits by the movement keys): close tab, bookmark, save page,
+    // find, print, new window. The page can stop most of these; Ctrl+W only
+    // in fullscreen (keyboard lock), elsewhere the leave prompt catches it.
+    window.addEventListener('keydown', (e) => {
+      if ((e.ctrlKey || e.metaKey) && ['KeyW', 'KeyD', 'KeyS', 'KeyF', 'KeyP', 'KeyN', 'KeyQ', 'KeyE', 'KeyR', 'KeyG', 'KeyH', 'KeyJ', 'KeyK', 'KeyL', 'KeyB', 'KeyU', 'KeyO'].includes(e.code)
+        && !e.target.closest?.('input, textarea, select')) e.preventDefault();
+    }, { capture: true });
     window.addEventListener('keyup', (e) => this.keys.delete(e.code));
     window.addEventListener('blur', () => { this.keys.clear(); this.mouse = [false, false]; });
     // Mouse look. Browsers sometimes report a bogus jump: in the first events

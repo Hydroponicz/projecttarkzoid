@@ -666,8 +666,10 @@ export class Player {
   onKill(target) { this.kills++; this.game.hud.message('Kill confirmed'); this.game.traders?.onKill(target); this.game.progress?.onKill(target); }
 
   // ---------- health ----------
+  // (in the helicopter you're not really standing at the landing zone yet)
+  get aboard() { return !!this.game.intro; }
   takeZombieHit(amount, zb) {
-    if (this.dead) return;
+    if (this.dead || this.aboard) return;
     if (this.vehicle) amount *= 0.4; // reaching in through the window
     let r = Math.random(), part = 'thorax';
     for (const [k, wgt] of HIT_WEIGHTS) { r -= wgt; if (r <= 0) { part = k; break; } }
@@ -695,7 +697,7 @@ export class Player {
 
   // Shot by an AI survivor: like a zombie hit, but no bite/infection.
   takeBulletHit(amount, from) {
-    if (this.dead) return;
+    if (this.dead || this.aboard) return;
     let r = Math.random(), part = 'thorax';
     for (const [k, wgt] of HIT_WEIGHTS) { r -= wgt; if (r <= 0) { part = k; break; } }
     const armor = part === 'head' ? this.equip.helmet : (part === 'thorax' || part === 'stomach') ? this.equip.armor : null;
@@ -714,7 +716,7 @@ export class Player {
   }
 
   damagePart(part, amount) {
-    if (this.game.dev?.god) return;
+    if (this.game.dev?.god || this.aboard) return;
     const before = this.hp[part];
     this.hp[part] = Math.max(0, before - amount);
     let overflow = amount - before;

@@ -96,6 +96,7 @@ class Crowd {
   }
 
   draw(list) {
+    if (this.hold) return; // (a second pass over the same frame: keep what's drawn)
     let n = 0;
     for (const zb of list) if (zb.mesh.visible) n++;
     if (n > this.cap) this.grow(Math.ceil(n / 256) * 256);
@@ -762,7 +763,7 @@ export class Zombies {
       zb.losTimer -= dt;
       if (zb.losTimer <= 0) {
         zb.losTimer = 0.25;
-        let range = (player.flashlight ? 30 : 18) * (night ? 0.8 : 1.3) * player.stealthMul * (game.dev?.invisible ? 0 : 1) * (game.weather?.sightMul ?? 1);
+        let range = (player.flashlight ? 30 : 18) * (night ? 0.8 : 1.3) * player.stealthMul * (game.dev?.invisible || player.aboard ? 0 : 1) * (game.weather?.sightMul ?? 1);
         if (player.prone) range *= 0.4;
         else if (player.crouch) range *= 0.6;
         const seesPlayer = pdist < range && Math.abs(player.floorY - zy) < 1.2 && hasLOS(hash, zb.pos.x, zb.pos.z, px, pz, zy);

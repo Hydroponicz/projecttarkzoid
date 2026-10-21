@@ -784,7 +784,7 @@ export class Survivors {
 
   canSeePlayer(s) {
     const p = this.game.player;
-    if (this.game.dev?.invisible) return false;
+    if (this.game.dev?.invisible || p.aboard) return false;
     const d = s.pos.distanceTo(p.pos);
     let range = this.game.isNight ? (p.flashlight ? 30 : 16) : 35;
     if (p.prone) range *= 0.45; else if (p.crouch) range *= 0.7;

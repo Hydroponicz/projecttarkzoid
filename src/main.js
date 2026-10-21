@@ -16,6 +16,7 @@ import { Drones } from './drones.js';
 import { Intro, findLZ } from './intro.js';
 import { DynLights, VM_FILL, INTERIOR_LAYER } from './dynlights.js';
 import { loadGfx, applyGfx, setupGfxPanel } from './gfx.js';
+import { setupGuide } from './guide.js';
 import { Traders } from './traders.js';
 import { Progress } from './progress.js';
 import { Vehicles } from './vehicles.js';
@@ -30,7 +31,7 @@ import { setupCreation } from './character.js';
 import { DevConsole } from './devconsole.js';
 import { Survivors } from './survivors.js';
 import { Farming } from './farming.js';
-import { Weather } from './weather.js';
+import { Weather, SEASON_DAYS } from './weather.js';
 
 const $ = (id) => document.getElementById(id);
 const SCREENS = ['menu', 'create', 'death'];
@@ -77,7 +78,7 @@ class Game {
     this.builder = new Builder(this);
     this.buildables = BUILDABLES;
     this.buildCost = buildCostText;
-    this.creation = setupCreation((ch) => this.spawnCharacter(ch));
+    this.creation = setupCreation((ch) => this.spawnCharacter(ch), () => !this.save?.world);
     this.dev = new DevConsole(this);
     this.state = 'menu';
     this.invOpen = false;
@@ -107,6 +108,8 @@ class Game {
     this.soundPanel = setupSoundPanel();
     $('btn-sound').onclick = $('btn-sound-menu').onclick = () => this.soundPanel.open();
     this.gfxPanel = setupGfxPanel(this);
+    this.guide = setupGuide(this); // F2
+    $('btn-guide').onclick = $('btn-guide-menu').onclick = () => this.guide.open();
     $('btn-gfx').onclick = $('btn-gfx-menu').onclick = () => this.gfxPanel.open();
     $('btn-fullscreen').onclick = () => { if (document.fullscreenElement) this.exitFullscreen(); else this.enterFullscreen(); };
     $('btn-inv-close').onclick = () => this.closeInventory();
@@ -125,7 +128,12 @@ class Game {
       this.creation.reset();
       this.showScreen('create');
     };
-    addEventListener('beforeunload', () => this.saveGame());
+    addEventListener('beforeunload', (e) => {
+      this.saveGame();
+      // Ctrl+W (or a stray close) while playing asks first; where the
+      // browser lets a page keep the key (fullscreen) it never gets here
+      if (this.state === 'play' && !navigator.webdriver) { e.preventDefault(); e.returnValue = ''; }
+    });
     document.addEventListener('visibilitychange', () => { if (document.hidden) this.saveGame(); });
 
     this.last = performance.now();
@@ -181,7 +189,9 @@ class Game {
     el.requestFullscreen({ navigationUI: 'hide' })
       // Capture Esc (Chrome/Edge) so closing menus doesn't also exit fullscreen.
       // Holding Esc still leaves fullscreen.
-      .then(() => navigator.keyboard?.lock?.(['Escape']))
+      // and the Ctrl shortcuts that would close or reopen the tab mid-fight
+      // (Ctrl+W, Ctrl+T, Ctrl+N): in fullscreen the page can keep them
+      .then(() => navigator.keyboard?.lock?.(['Escape', 'KeyW', 'KeyT', 'KeyN', 'KeyQ']))
       .catch(() => { this.wantFullscreen = !!document.fullscreenElement; });
   }
 
@@ -246,6 +256,13 @@ class Game {
   // ---------- world lifecycle ----------
   spawnCharacter(ch) {
     if (!this.save) this.save = { seed: Math.floor(Math.random() * 2 ** 31), worldVersion: WORLD_VERSION, time: START_TIME, safehouse: null, world: null, graveyard: [] };
+    // A fresh world starts when and in the season you chose to go in
+    // (automated test runs keep the time they set up)
+    if (ch.insert && !this.save.world && (!navigator.webdriver || localStorage.getItem('tarkzoid-insert'))) {
+      this.save.time = ch.insert.minute;
+      this.save.startOffset = ch.insert.season * SEASON_DAYS + ch.insert.day - 1;
+    }
+    delete ch.insert;
     ch.spawnTime = this.save.time;
     this.save.character = ch;
     writeSave(this.save);
@@ -503,6 +520,9 @@ class Game {
 
   onDeath(reason) {
     if (this.state !== 'play') return;
+    // (never under a cinematic: it would hide the death screen)
+    if (this.intro) { this.intro.dispose(); this.intro = null; }
+    document.body.classList.remove('cinematic');
     const ch = this.profile;
     const p = this.player;
     // Leave a corpse with everything the character carried.
@@ -552,7 +572,7 @@ class Game {
   }
 
   updatePause() {
-    const ui = this.invOpen || this.hud.mapOpen || this.dev.open || this.dialogOpen || this.traderOpen || this.vehicleOpen || this.farmOpen;
+    const ui = this.invOpen || this.hud.mapOpen || this.dev.open || this.dialogOpen || this.traderOpen || this.vehicleOpen || this.farmOpen || this.guideOpen;
     const show = this.state === 'play' && !this.input.locked && !ui && !this.awaitingRelock;
     $('pause').style.display = show ? 'flex' : 'none';
     $('relock').style.display = this.state === 'play' && this.awaitingRelock && !this.input.locked && !ui ? 'block' : 'none';
@@ -739,6 +759,7 @@ class Game {
     const p = this.player;
     const fx = -Math.sin(p.yaw), fz = -Math.cos(p.yaw);
     let best = null, bestScore = Infinity;
+    const cands = [];
     // (thousands of containers: skip the far ones before anything else)
     const px = p.pos.x, pz = p.pos.z;
     for (const c of this.interactables(px, pz)) {
@@ -749,9 +770,28 @@ class Game {
       const dot = dist > 0.6 + (c.reach || 0) * 0.5 ? (dx * fx + dz * fz) / dist : 1;
       if (dot < 0.7) continue;
       const score = d * (2 - dot);
+      cands.push(c);
       if (score < bestScore) { bestScore = score; best = c; }
     }
-    return best;
+    // Several things in reach (a body in a doorway, a shelf by a door): list
+    // them all and let the mouse wheel pick. The list keeps its order while
+    // you look around, and what you picked stays picked while it's in reach.
+    if (cands.length < 2) { this.lookChoices = null; this.lookPick = null; return best; }
+    const prev = this.lookChoices || [];
+    const list = [...prev.filter((c) => cands.includes(c)), ...cands.filter((c) => !prev.includes(c))].slice(0, 6);
+    this.lookChoices = list;
+    if (!list.includes(this.lookPick)) this.lookPick = list.includes(best) ? best : list[0];
+    return this.lookPick;
+  }
+  // Mouse wheel over the list of things in reach
+  scrollLook(dir) {
+    const L = this.lookChoices;
+    if (!L) return false;
+    const i = L.indexOf(this.lookPick);
+    this.lookPick = L[(i + dir + L.length) % L.length];
+    this.lookTarget = this.lookPick;
+    sfx.click?.();
+    return true;
   }
 
   interact(t) {
@@ -990,7 +1030,10 @@ class Game {
       if (!this.dev.freeze) this.zombies.update(dt, this.player, this);
       if (!this.intro.done) return;
       this.heliOut = this.intro; this.intro = null;
-      this.input.lock();
+      // Off the helicopter for the first time: the survival guide (paused)
+      let seen = true;
+      try { seen = !!localStorage.getItem('tarkzoid-guide-seen') || (navigator.webdriver && !localStorage.getItem('tarkzoid-intro-guide')); localStorage.setItem('tarkzoid-guide-seen', '1'); } catch {}
+      if (!seen) { this.guide.open('how'); this.hud.message('The survival guide: F2 opens it any time.', 6); } else this.input.lock();
       return;
     }
     if (this.heliOut && !this.heliOut.depart(dt)) this.heliOut = null;
@@ -1038,7 +1081,7 @@ class Game {
     }
     if (inp.map) { this.hud.toggleMap(); if (this.hud.mapOpen) this.input.unlock(); else this.resume(); this.updatePause(); }
     if (this.hud.mapOpen && pressed('Escape')) { this.hud.toggleMap(false); this.resume(); }
-    const paused = !this.input.locked && !this.invOpen && !this.hud.mapOpen && !this.dev.open && !this.dialogOpen && !this.traderOpen && !this.vehicleOpen && !this.farmOpen && !this.awaitingRelock;
+    const paused = this.guideOpen || !this.input.locked && !this.invOpen && !this.hud.mapOpen && !this.dev.open && !this.dialogOpen && !this.traderOpen && !this.vehicleOpen && !this.farmOpen && !this.awaitingRelock;
     if (paused || this.sleeping) return;
     if (this.dev.open && this.dev.pauseWhileOpen) {
       // Simulation paused, but keep the view in sync with console edits.
@@ -1060,6 +1103,9 @@ class Game {
       this.hud.message(this.builder.active ? 'Build mode: 1–8 select, R rotate, LMB build, X dismantle, B exit' : 'Build mode off');
     }
     if (pressed('KeyV') && !this.invOpen && !driving) this.claimSafehouse();
+    // With more than one thing in reach the wheel picks between them (not
+    // your walking pace)
+    if (inp.wheel && !this.invOpen && !this.builder.active && !this.player.vehicle && this.lookChoices && this.scrollLook(Math.sign(inp.wheel))) inp.wheel = 0;
     if (inp.interact && !this.invOpen && this.lookTarget) this.interact(this.lookTarget);
     if (inp.heal && !driving) this.quickHeal(); // (H is the horn in a car)
 
