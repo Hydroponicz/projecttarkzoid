@@ -38,7 +38,7 @@ Every world is generated from a seed, laid out in districts, with loot that fits
 | **Outskirts** | Houses, a **hardware store** (tools, nails, lumber), a **gas station** (snacks and drinks), warehouses, a clinic, parks and parking lots. |
 | **Military** | A fenced **military outpost** in one corner (command post, tents, watchtowers, a helipad and a truck) and **checkpoints** on the streets (barriers, sandbags, a guard booth and a military truck). This is the only place to find AK-74s, AK mags, PSO scopes, 6B13 armor, 6B47 helmets, military rucksacks, MREs and military batteries. Guarded by armored soldier zombies: aim for the head. |
 
-Buildings carry signs (pharmacy cross, HOSPITAL, POLICE, company names), offices and the hospital have lit upper floors, and the map (**M**) labels every landmark.
+Buildings carry signs (pharmacy cross, HOSPITAL, POLICE, company names), and the map (**M**) labels every landmark.
 
 **Interiors.** Buildings are laid out and furnished for what they are.
 - **Houses** are split into real rooms joined by interior doors:
@@ -79,7 +79,7 @@ The town sits in the middle of a map about 440 m across. Around it is farmland a
 
 New loot: farm supply shelves (shovels, watering cans, fertilizer, seeds), seed racks, produce crates, chicken coops, pantries (preserves, honey, milk), hay piles and hunting lockers. Hardware stores also stock some seeds and tools, and grocery shelves carry some produce.
 
-Most zombies are in town; the countryside is quieter. Everything far away is hidden by fog, and the scenery is split into chunks so only what's near you gets drawn.
+Most zombies are in town; the countryside is quieter. Everything far away is hidden by fog, and the scenery is split into chunks so only what's near you gets drawn (see [Performance](#performance)).
 
 ## Weather and seasons
 
@@ -124,6 +124,10 @@ Most zombies are in town; the countryside is quieter. Everything far away is hid
 - **Saved:** the calendar, the current front and the next one, snow cover, wet ground, your wetness and body temperature.
 
 ## Clothing storage
+
+**Your character.** The inventory shows your character in 3D beside the equipment slots, wearing what you have on: the jacket or coat, body armor, vest or chest rig, helmet and backpack, with your gun slung across the back and your melee weapon on the hip. It turns slowly; drag it to turn it yourself. Your body looks the same if you die.
+
+**Skills.** The inventory's skills page lists every skill with its level. Guns, Agility, Dexterity and Farming rise with use; each has a bar of experience toward the next level and says what trains it. The rest are set when the character is made.
 
 What you wear adds inventory space. Each pocket or pouch is its own small grid, Tarkov-style, so its shape matters: an AK magazine needs a tall 1×2 pouch, a can of beans fits anywhere. When you open your inventory, the pockets show up under the jacket's and vest's names, and things stay in them if you take the garment off.
 
@@ -343,6 +347,7 @@ Four or five survivors have moved into small houses, shops or gas stations aroun
 Zombies and survivors react physically to what hits them.
 
 - **Hit reactions.** A body rocks away from the hit, and a headshot snaps the head back. Leg shots and heavy blows (shotgun at close range, axe, crowbar) can knock a target off its feet. It goes ragdoll, tumbles, and climbs back up once it settles. You can keep shooting it while it's down.
+- **Ground.** Bodies settle on whatever is under them: stair flights and landings, the elevator car, the sidewalk (they slide up over the kerb rather than being shoved along it), a car's hood. A body can't move faster than a car could throw it, so a scuffle with a wall or kerb can't fling it across the street.
 - **Death.** Every death is a ragdoll: 15 joints with joint limits, colliding with the ground, walls, cars and furniture. Knees only bend forward and hips have a natural range. Arms and legs collide with the torso (as a solid box) and with each other, so bodies come to rest with their legs out instead of folded through themselves. The legs are solid to each other along their whole length: if one leg falls across the other it rests on top of it instead of passing through. Bodies collide with other bodies and pile up. Hitting a wall, a window or glass absorbs the blow instead of bouncing the body away. A shot to the legs sweeps the feet out from under the target.
   - The killing blow pushes where it lands, and a running body keeps its momentum.
   - A headshot drops the body limp on the spot. A body shot buckles the knees first, then the body crumples, sometimes with a few death twitches.
@@ -433,13 +438,23 @@ god / noclip / invis / freeze / freebuild                    js player.skill
 
 ## Tall buildings
 
-Offices and police stations have two real floors, the hospital three, and the downtown skyscraper six, with the tower rising above them. Every floor has its own rooms, doors, windows, furniture, loot and zombies.
+Offices and police stations have two real floors, the hospital three, and the downtown skyscraper 9 to 13, all the way up to its roof. Every floor has its own rooms, doors, windows, furniture, loot and zombies.
 
 - **Stairs.** A switchback stairwell sits at the end of the corridor. A flight climbs to a half landing, then a second flight turns back up to the next floor. Walk up and down them like anywhere else.
-- **Elevators.** The hospital and skyscraper also have an elevator beside the stairs. Press **F** at the call button by its doors on any floor to call it. Inside, press **F** at the panel and pick a floor with **1–6**. The doors stay open a few seconds, then close, and the car carries you (and anything standing in it) up or down.
+- **Elevators.** The hospital and skyscraper also have an elevator beside the stairs. Press **F** at the call button by its doors on any floor to call it. Inside, press **F** at the panel and pick a floor with the number keys (**0** is the tenth) or click it. The doors stay open a few seconds, then close, and the car carries you (and anything standing in it) up or down.
 - **Zombies use the stairs.** They hear gunfire and footsteps through the floors (muffled), find their way to the stairwell and climb or descend floor by floor to reach you. They see and attack only on their own floor. Floors and ceilings stop bullets, and you can't jump out of an upstairs window.
 - Survivors stay on the ground floor, and you can only build on the ground.
-- **Saves.** These buildings were rebuilt without moving anything else in town, so existing saves keep their base, stash and traders.
+- **Bodies on the stairs.** Ragdolls, dropped guns and blood land on the flights and landings (and slide down them), not on an invisible floor.
+- **Saves.** These buildings were rebuilt without moving anything else in town, so existing saves keep their base, stash and traders. (When the skyscraper got its full height, its upper floors' loot started fresh.)
+
+## Performance
+
+The world is drawn with level of detail, the way open-world games do it:
+
+- **Chunks.** Scenery (walls, roofs, fences, sheds, trees) is batched by 40 m chunk. Chunks off screen or past the fog aren't drawn, and the sun's and the flashlight's shadow passes only draw the chunks they reach.
+- **Detail distance.** Small outdoor props (benches, bins, sandbags, posts) are drawn to 100 m. Furniture and fittings are batched by building and by storey, and drawn within 50 m. Inside a tall building, only your storey and the ones directly above and below are drawn. Doors are drawn to 70 m.
+- **The horde.** Zombies are drawn as one instanced mesh per body part, so the whole horde takes a handful of draw calls. Zombies, survivors, cars and bodies past the fog aren't drawn at all.
+- About half the draw calls and triangles of before, in the same views.
 
 ## The look of the town
 
@@ -452,14 +467,14 @@ Buildings and streets are textured with generated maps: brick, wood siding, conc
 | `src/main.js` | Game state machine (menu → creation → play → death), save/load, day/night, interactions, sleep, safehouse |
 | `src/character.js` | Professions, skills and the character creation screen |
 | `src/build.js` | Carpentry: placing, saving and dismantling structures |
-| `src/world.js` | Seeded procedural town: districts, building archetypes (including farmhouses, barns and cabins with pitched roofs), house room layouts, furnishing by room and business, doors and windows, military sites, cars; merges static scenery (vertex colours; the town as one batch, the countryside in chunks) |
+| `src/world.js` | Seeded procedural town: districts, building archetypes (including farmhouses, barns and cabins with pitched roofs), house room layouts, furnishing by room and business, doors and windows, military sites, cars; merges static scenery (vertex colours) into level-of-detail batches by chunk, building and storey, and culls them; keeps garage openings clear |
 | `src/countryside.js` | Farmland and wilderness: dirt tracks, farms, fields, orchards, forests with clearings, meadows and ponds, instanced trees by species, rocks, bushes and corn |
 | `src/weather.js` | Seasons, weather fronts, temperature, rain and snow particles, lightning and thunder, snow cover, wetness and body temperature, rain barrels, seasonal foliage |
 | `src/farming.js` | Garden plots, crops and growth, watering and fertilizer, harvests, wells and ponds, foraging, the Farming skill and the plot screen |
 | `src/furniture.js` | Box-built furniture and container models (kitchens, beds, sofas, shelving, racks, desks…) |
 | `src/player.js` | First-person controller, leaning, melee, body-part health, status effects |
 | `src/weapons.js` | Firearms: optics, PIP scopes, sway/recoil physics, reload timelines and condition variants, magazines, attachments |
-| `src/skills.js` | XP and levelling for skills that rise with use (Guns, Agility, Dexterity) |
+| `src/skills.js` | XP and levelling for skills that rise with use (Guns, Agility, Dexterity), and the skills page |
 | `src/useanim.js` | Item-use animations: eating, drinking, bandaging, medkits, pills, injections, surgery |
 | `src/worldtex.js` | Generated building, road, ground and grime textures; the world-space wall material |
 | `src/storeys.js` | Multi-storey buildings: floors laid out storey by storey, the stairwell, slabs, the elevator |
@@ -471,12 +486,13 @@ Buildings and streets are textured with generated maps: brick, wood siding, conc
 | `src/progress.js` | First-day tutorial, progression chapters and goals, the guide tracker and goals panel |
 | `src/vehicles.js` | Vehicles: door/hood/trunk and driving animations, parts and condition, driving physics, collisions and run-overs, the parts screen, fuel, saving |
 | `src/traders.js` | Trading posts: placement, renovation props, barter offers, loyalty, quests, trader screen and quest tracker |
-| `src/zombies.js` | Zombie spawning, perception, flow-field pathing, attacks, hit reactions, knockdowns, corpses |
+| `src/zombies.js` | Zombie spawning, perception, flow-field pathing, attacks, hit reactions, knockdowns, corpses, voices; draws the horde instanced |
 | `src/ragdoll.js` | Verlet ragdolls (death, knockdown, get-up), dropped weapons, corpse freezing |
 | `src/fx.js` | Instanced particles (blood, dust, sparks), brass, decals (bullet holes, splatter, blood pools) |
 | `src/collision.js` | 2D spatial hash, circle-vs-box movement, raycasts |
 | `src/items.js` | Item definitions, loot tables, container types |
 | `src/inventory.js` / `src/invui.js` | Grid inventory logic and drag-and-drop UI |
+| `src/paperdoll.js` | The 3D figure of your character in the inventory |
 | `src/hud.js` | HUD, compass, map |
 | `src/audio.js` | Synthesized gunshots, zombie voices and effects, reverb, and optional recorded samples |
 | `src/devconsole.js` | Dev console: tabs, cheats, overlays, commands |

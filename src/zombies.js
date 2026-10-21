@@ -661,7 +661,7 @@ export class Zombies {
     const yaw = r.yaw, faceDown = r.faceDown;
     this.game.ragdolls.remove(r);
     zb.down = null;
-    zb.pos.set(fx, r.floor || 0, fz);
+    zb.pos.set(fx, r.floor > 0.2 ? r.floor : 0, fz); // (a storey or a stair flight; not the kerb)
     moveCircle(this.world.hash, zb.pos, zb.radius, 0, 0, zb.pos.y);
     // Lying along the body, then pivoting up on the feet.
     zb.dir = faceDown ? yaw : yaw + Math.PI;
