@@ -672,7 +672,8 @@ export class GunController {
     const fx = -Math.sin(p.yaw), fz = -Math.cos(p.yaw);
     let near = cfg.length;
     for (const b of p.game.world.hash.query(cam.x - 1, cam.z - 1, cam.x + 1, cam.z + 1, [])) {
-      if (b.noCollide || (b.h ?? 3) < cam.y - 0.3) continue;
+      // Only what's at gun height (not the floors above or below)
+      if (b.noCollide || (b.h ?? 3) < cam.y - 0.3 || (b.y0 ?? 0) > cam.y + 0.2) continue;
       const t = segBox(cam.x, cam.z, cam.x + fx * cfg.length, cam.z + fz * cfg.length, b);
       if (t >= 0) near = Math.min(near, t * cfg.length);
     }

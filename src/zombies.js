@@ -632,6 +632,8 @@ export class Zombies {
     c.ragdoll = r;
     r.onSettle = (rr) => {
       c.x = rr.pelvis.x; c.z = rr.pelvis.z;
+      // where it came to rest (it may have slid down a flight of stairs)
+      if (rr.floor > 0.01 || c.base) c.base = rr.floor || undefined;
       if (!rr.pooled) { rr.pooled = true; game.fx.pool((rr.pelvis.x + rr.p[JOINT.CHE].x) / 2, (rr.pelvis.z + rr.p[JOINT.CHE].z) / 2, 0.9 + Math.random() * 0.7, rr.floor || 0); }
     };
     if (r.sleeping) { r.onSettle(r); r.freeze(); }

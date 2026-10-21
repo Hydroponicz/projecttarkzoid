@@ -44,13 +44,26 @@ export class Levels {
     return Math.abs(L * LH - y) < MAX_STEP ? L * LH : null;
   }
 
-  // The floor below a point in the air (where blood, brass and bodies land)
-  floorUnder(x, z, y) {
+  // The highest floor surface at or below height y at (x, z): a storey's
+  // slab, a stair flight, the elevator car, or the ground (for bodies and
+  // things falling, which can't step but can land anywhere)
+  groundUnder(x, z, y) {
     const B = this.buildingAt(x, z);
     if (!B) return 0;
-    const f = this.floorAt(x, z, Math.max(0, y - 0.9));
-    if (f !== null && f <= y + 0.05) return f;
-    return Math.max(0, Math.min(B.top, Math.floor((y + 0.2) / LH))) * LH;
+    for (const c of B.cores) {
+      if (x < c.x0 || x > c.x1 || z < c.z0 || z > c.z1) continue;
+      // the nearest flight, else the one below it, else the ground floor
+      const h = coreHeight(c, x, z, y);
+      if (h === null) return 0;
+      if (h <= y + 0.05) return h;
+      const h2 = coreHeight(c, x, z, y - LH);
+      return h2 !== null && h2 <= y + 0.05 ? h2 : 0;
+    }
+    for (const l of B.lifts) {
+      if (x < l.x0 || x > l.x1 || z < l.z0 || z > l.z1) continue;
+      return l.y <= y + 0.05 ? l.y : 0;
+    }
+    return Math.max(0, Math.min(B.top, Math.floor((y + 0.05) / LH))) * LH;
   }
 
   // Storey index for a height (stairs count as the storey below the landing)

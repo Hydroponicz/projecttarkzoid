@@ -61,6 +61,12 @@ export function buildWorld(scene, seed) {
   scene.add(group);
   const fur = createFurnisher(group);
 
+  // Garage and barn openings: nothing stands in them. Pieces placed there are
+  // still rolled (the random sequence, and so the town, stays the same) but
+  // left out.
+  const clearZones = [];
+  const inClear = (x0, z0, x1, z1) => clearZones.some((r) => x0 < r.x1 && x1 > r.x0 && z0 < r.z1 && z1 > r.z0);
+
   const ctAssets = {}; // shared geometry/material per container type
   const allBoxes = [];  // every collider, in order (so a building's can be found again)
   const addBox = (minX, minZ, maxX, maxZ, props) => {
@@ -107,6 +113,9 @@ export function buildWorld(scene, seed) {
   }
 
   // Sidewalks with curbs along every town street, broken at the junctions
+  // (also kept as a grid of rectangles: bodies lie on them, not in them)
+  const walks = new Map();
+  const addWalk = (r) => { for (let gx = Math.floor(r.x0 / 8); gx <= Math.floor(r.x1 / 8); gx++) for (let gz = Math.floor(r.z0 / 8); gz <= Math.floor(r.z1 / 8); gz++) { const k = gx * 1000 + gz; if (!walks.has(k)) walks.set(k, []); walks.get(k).push(r); } };
   for (const k of [-100, -60, -20, 20, 60, 100]) for (const axis of ['x', 'z']) for (const side of [-1, 1]) {
     for (let c = -100; c < 100; c += BLOCK) {
       const a0 = c + ROAD / 2 + 0.2, a1 = c + BLOCK - ROAD / 2 - 0.2, len = a1 - a0, mid = (a0 + a1) / 2;
@@ -119,6 +128,8 @@ export function buildWorld(scene, seed) {
       const curb = new THREE.Mesh(new THREE.BoxGeometry(axis === 'x' ? 0.14 : len, 0.14, axis === 'x' ? len : 0.14), curbMat);
       curb.position.set(axis === 'x' ? coff : mid, 0.07, axis === 'x' ? mid : coff);
       group.add(curb);
+      const w0 = Math.min(coff, off) - (side < 0 ? 0.8 : 0.07), w1 = Math.max(coff, off) + (side < 0 ? 0.07 : 0.8);
+      addWalk(axis === 'x' ? { x0: w0, x1: w1, z0: a0, z1: a1 } : { x0: a0, x1: a1, z0: w0, z1: w1 });
     }
   }
 
@@ -189,6 +200,8 @@ export function buildWorld(scene, seed) {
       }
       c.y = ct.wall ? 1.2 : sh;
       const rw = Math.abs(Math.cos(rot)) > 0.5 ? sw : sd, rd = Math.abs(Math.cos(rot)) > 0.5 ? sd : sw;
+      // (keeps its mesh reference: later placement still steers around it)
+      if (inClear(x - rw / 2, z - rd / 2, x + rw / 2, z + rd / 2)) { c.retired = true; c.mesh.removeFromParent(); containers.push(c); return c; }
       if (!ct.wall) addBox(x - rw / 2, z - rd / 2, x + rw / 2, z + rd / 2, { blocksSight: false, h: sh });
     }
     containers.push(c);
@@ -424,7 +437,8 @@ export function buildWorld(scene, seed) {
         const r = footRect(x, z, w, d, rot);
         if (!opt.noOcc) occ.push(r);
         if (CONTAINER_TYPES[type]) return { c: addContainer(type, x, z, rot, { rng: true, model: opt }), x, z, rot, r, type };
-        fur.model(type, x, z, rot, opt, rand);
+        const m = fur.model(type, x, z, rot, opt, rand);
+        if (inClear(r.x0, r.z0, r.x1, r.z1)) { m?.removeFromParent(); return { x, z, rot, r, type }; }
         if (h > 0) addBox(r.x0 + 0.03, r.z0 + 0.03, r.x1 - 0.03, r.z1 - 0.03, { blocksSight: false, blocksShot: h > 0.8, h });
         return { x, z, rot, r, type };
       },
@@ -874,7 +888,15 @@ export function buildWorld(scene, seed) {
     const outerDoors = [];
     for (const [side, ax, a0, a1, fixed] of [['n', 'x', x0, x1, z0], ['s', 'x', x0, x1, z1], ['w', 'z', z0, z1, x0], ['e', 'z', z0, z1, x1]]) {
       const made = wallWithOpenings(ax, a0, a1, fixed, ext[side], color);
-      if (made.garages) b.garages = made.garages;
+      if (made.garages) {
+        b.garages = made.garages;
+        // a clear lane 3 m into the building, a little wider than the opening
+        for (const g of made.garages) {
+          const ins = g.ax === 'x' ? Math.sign(cz - g.z) : Math.sign(cx - g.x), hw = g.w / 2 + 0.3;
+          clearZones.push(g.ax === 'x' ? { x0: g.x - hw, x1: g.x + hw, z0: Math.min(g.z, g.z + ins * 3), z1: Math.max(g.z, g.z + ins * 3) }
+            : { x0: Math.min(g.x, g.x + ins * 3), x1: Math.max(g.x, g.x + ins * 3), z0: g.z - hw, z1: g.z + hw });
+        }
+      }
       outerDoors.push(...made.doors);
       bDoors.push(...made.doors);
       b.windows.push(...made.windows);
@@ -1443,6 +1465,12 @@ export function buildWorld(scene, seed) {
     },
     cull(x, z, range) {
       for (const f of far) f.o.visible = Math.hypot(f.c.x - x, f.c.z - z) - f.r < range;
+    },
+    // Height of the ground at (x, z): a sidewalk is 10 cm up
+    groundAt(x, z) {
+      const list = walks.get(Math.floor(x / 8) * 1000 + Math.floor(z / 8));
+      if (list) for (const r of list) if (x > r.x0 && x < r.x1 && z > r.z0 && z < r.z1) return 0.1;
+      return 0;
     },
     buildingAt(x, z) { return buildings.find((b) => !b.area && x > b.x0 && x < b.x1 && z > b.z0 && z < b.z1) || null; },
     dispose: () => scene.remove(group),

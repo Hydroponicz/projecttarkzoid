@@ -279,22 +279,24 @@ export function buildStoreys(c, b) {
 
   // ---------- stairs between storey base and base + LH ----------
   function stairs(base) {
-    const laneW = (coreW - 0.2) / 2, zA = core.z0 + laneW / 2, zB = core.z1 - laneW / 2;
+    // Everything stops 1 cm short of the walls: faces in the same plane as a
+    // wall flicker through it.
+    const E = 0.012, laneW = (coreW - 0.2) / 2 - 2 * E, zA = core.z0 + E + laneW / 2, zB = core.z1 - E - laneW / 2;
     const rise = LH / 2 / STEPS, tread = RUN / STEPS, col = 0x8a8a86;
     for (let i = 0; i < STEPS; i++) {
       // lane A climbs eastward from the storey to the landing
       const hA = rise * (i + 1);
-      c.prop(tread + 0.01, rise + 0.12, laneW, col, core.x0 + NEAR + (i + 0.5) * tread, base + hA - (rise + 0.12) / 2, zA);
+      c.prop(tread + 0.01, rise + 0.025, laneW, col, core.x0 + NEAR + (i + 0.5) * tread, base + hA - (rise + 0.025) / 2, zA);
       // lane B climbs westward from the landing to the next storey
       const hB = LH / 2 + rise * (i + 1);
-      c.prop(tread + 0.01, rise + 0.12, laneW, col, core.x0 + NEAR + RUN - (i + 0.5) * tread, base + hB - (rise + 0.12) / 2, zB);
+      c.prop(tread + 0.01, rise + 0.025, laneW, col, core.x0 + NEAR + RUN - (i + 0.5) * tread, base + hB - (rise + 0.025) / 2, zB);
     }
     // sloped undersides
     const len = Math.hypot(RUN, LH / 2), ang = Math.atan2(LH / 2, RUN);
-    const sA = c.prop(len, 0.12, laneW, col, core.x0 + NEAR + RUN / 2, base + LH / 4 - 0.12, zA); sA.rotation.z = ang;
-    const sB = c.prop(len, 0.12, laneW, col, core.x0 + NEAR + RUN / 2, base + LH * 0.75 - 0.12, zB); sB.rotation.z = -ang;
+    const sA = c.prop(len, 0.12, laneW - 0.01, col, core.x0 + NEAR + RUN / 2, base + LH / 4 - 0.12, zA); sA.rotation.z = ang;
+    const sB = c.prop(len, 0.12, laneW - 0.01, col, core.x0 + NEAR + RUN / 2, base + LH * 0.75 - 0.12, zB); sB.rotation.z = -ang;
     // the half landing, and handrails on the middle wall
-    c.prop(LAND, 0.2, coreW, col, core.x0 + NEAR + RUN + LAND / 2, base + LH / 2 - 0.1, zc);
+    c.prop(LAND - E, 0.2, coreW - 2 * E, col, core.x0 + NEAR + RUN + (LAND - E) / 2, base + LH / 2 - 0.1, zc);
     for (const [z, h0, h1] of [[zc - 0.13, 0, LH / 2], [zc + 0.13, LH / 2, LH]]) {
       const r = c.prop(len, 0.05, 0.05, 0x3a3a3c, core.x0 + NEAR + RUN / 2, base + (h0 + h1) / 2 + 0.9, z);
       r.rotation.z = h1 > h0 && z < zc ? ang : -ang;

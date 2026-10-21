@@ -284,7 +284,8 @@ class Survivor {
     if (r) {
       r.onSettle = (rr) => {
         body.x = rr.pelvis.x; body.z = rr.pelvis.z;
-        if (!rr.pooled) { rr.pooled = true; game.fx.pool((rr.pelvis.x + rr.p[JOINT.CHE].x) / 2, (rr.pelvis.z + rr.p[JOINT.CHE].z) / 2, 1 + Math.random() * 0.6); }
+        if (rr.floor > 0.01) body.base = rr.floor;
+        if (!rr.pooled) { rr.pooled = true; game.fx.pool((rr.pelvis.x + rr.p[JOINT.CHE].x) / 2, (rr.pelvis.z + rr.p[JOINT.CHE].z) / 2, 1 + Math.random() * 0.6, rr.floor || 0); }
       };
       if (r.sleeping) { r.onSettle(r); r.freeze(); }
     }
@@ -980,6 +981,7 @@ export class Survivors {
     s.say_ = null;
     s.sayT = 0;
     this.dialogFor = s;
+    this.menuOpen = false;
     g.dialogOpen = true;
     g.input.unlock();
     this.renderDialog(s, s.disp === 'friendly' ? s.line('greet') : s.line('warn'));
@@ -992,6 +994,7 @@ export class Survivors {
     if (!g.dialogOpen) return;
     g.dialogOpen = false;
     this.dialogFor = null;
+    this.menuOpen = false;
     document.getElementById('dialog').style.display = 'none';
     if (!g.invOpen) g.resume();
     g.updatePause();
@@ -1031,6 +1034,7 @@ export class Survivors {
   openMenu(title, text, opts) {
     const g = this.game;
     this.dialogFor = null;
+    this.menuOpen = true;
     g.dialogOpen = true;
     g.input.unlock();
     const el = document.getElementById('dialog');

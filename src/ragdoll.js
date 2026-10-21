@@ -11,6 +11,7 @@ import { sfx } from './audio.js';
 const PEL = 0, CHE = 1, HEAD = 2, SHL = 3, ELL = 4, HAL = 5, SHR = 6, ELR = 7, HAR = 8,
   HIL = 9, KNL = 10, FTL = 11, HIR = 12, KNR = 13, FTR = 14;
 const N = 15;
+const VMAX = 16; // m/s, fastest a joint moves
 const RADII = [0.15, 0.16, 0.13, 0.08, 0.065, 0.06, 0.08, 0.065, 0.06, 0.09, 0.075, 0.07, 0.09, 0.075, 0.07];
 // Inverse masses: the trunk is heavy, hands and feet are light.
 const INV_MASS = [0.45, 0.5, 1.1, 0.9, 1.4, 2.0, 0.9, 1.4, 2.0, 0.8, 1.1, 1.5, 0.8, 1.1, 1.5];
@@ -251,8 +252,13 @@ class Ragdoll {
     // A body that has nearly stopped loses energy fast (stops it rocking
     // on its back forever).
     const damp = this.slow ? 0.93 : 0.995;
+    const vmax = VMAX * h;
     for (let i = 0; i < N; i++) {
-      const vx = (p[i].x - q[i].x) * damp, vy = (p[i].y - q[i].y) * damp, vz = (p[i].z - q[i].z) * damp;
+      let vx = (p[i].x - q[i].x) * damp, vy = (p[i].y - q[i].y) * damp, vz = (p[i].z - q[i].z) * damp;
+      // No joint outruns a body thrown by a car (a constraint fight with a
+      // wall or a kerb can't fling it across the street)
+      const v2 = vx * vx + vy * vy + vz * vz;
+      if (v2 > vmax * vmax) { const k = vmax / Math.sqrt(v2); vx *= k; vy *= k; vz *= k; }
       q[i].copy(p[i]);
       p[i].x += vx; p[i].y += vy - g; p[i].z += vz;
     }
@@ -429,10 +435,12 @@ class Ragdoll {
     const p = this.p, q = this.q, hash = this.sys.hash;
     for (let i = 0; i < N; i++) {
       const r = this.r[i], pt = p[i];
-      // Ground (or the storey's floor)
-      if (pt.y < this.floor + r) {
+      // The ground under it: a storey's floor, a stair flight, a sidewalk
+      const fl = this.sys.ground(pt.x, pt.z, Math.max(pt.y, q[i].y) + 0.02);
+      if (i === PEL) this.floor = fl; // where its blood pools
+      if (pt.y < fl + r) {
         const impact = q[i].y - pt.y;
-        pt.y = this.floor + r;
+        pt.y = fl + r;
         q[i].y = pt.y; // inelastic: kill the downward velocity on contact
         if (friction) { q[i].x += (pt.x - q[i].x) * 0.35; q[i].z += (pt.z - q[i].z) * 0.35; }
         if ((i === PEL || i === CHE) && !this.landed && impact > 0.02) { this.landed = true; this.sys.thud(pt, impact); }
@@ -449,7 +457,12 @@ class Ragdoll {
         if (d2 >= r * r) continue;
         // Only a limb coming down onto a low object rests on it; one that
         // meets it from the side is pushed aside (no popping up onto sills).
-        if (top - (b.y0 ?? 0) < 1.2 && q[i].y - r >= top - 0.04) { pt.y = top + r; if (q[i].y < pt.y) q[i].y = pt.y; continue; }
+        // A low lip (a step, a kerb) it slides up onto.
+        if (top - (b.y0 ?? 0) < 2.7 && (q[i].y - r >= top - 0.04 || top - (pt.y - r) < 0.12)) {
+          pt.y = top + r; if (q[i].y < pt.y) q[i].y = pt.y;
+          if (friction) { q[i].x += (pt.x - q[i].x) * 0.35; q[i].z += (pt.z - q[i].z) * 0.35; }
+          continue;
+        }
         const ox = pt.x, oz = pt.z;
         if (d2 > 1e-8) { const d = Math.sqrt(d2); pt.x += (dx / d) * (r - d); pt.z += (dz / d) * (r - d); }
         else {
@@ -547,7 +560,8 @@ class Prop {
       const p = this.p[i], q = this.q[i];
       const vx = p.x - q.x, vy = p.y - q.y, vz = p.z - q.z;
       q.copy(p); p.x += vx * 0.99; p.y += vy - 9.8 * h * h; p.z += vz * 0.99;
-      if (p.y < 0.03) { p.y = 0.03; q.x += (p.x - q.x) * 0.4; q.z += (p.z - q.z) * 0.4; }
+      const fl = this.sys.ground(p.x, p.z, Math.max(p.y, q.y) + 0.02) + 0.03;
+      if (p.y < fl) { p.y = fl; q.x += (p.x - q.x) * 0.4; q.z += (p.z - q.z) * 0.4; }
     }
     _v.subVectors(this.p[1], this.p[0]);
     const d = _v.length() || 1e-6, diff = (d - this.len) / d / 2;
@@ -583,6 +597,13 @@ export class RagdollSystem {
   dropProp(mesh, a, b, vel) {
     this.props.push(new Prop(this, mesh, a, b, vel));
     if (this.props.length > 20) { const p = this.props.shift(); this.scene.remove(p.mesh); }
+  }
+
+  // Floor height under a joint at height y
+  ground(x, z, y) {
+    const W = this.game.world, lv = W.levels;
+    if (lv?.buildingAt(x, z)) return lv.groundUnder(x, z, y);
+    return W.groundAt ? W.groundAt(x, z) : 0;
   }
 
   remove(r) { r.dispose(); const i = this.list.indexOf(r); if (i >= 0) this.list.splice(i, 1); }

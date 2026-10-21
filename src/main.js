@@ -254,7 +254,7 @@ class Game {
       s.worldVersion = WORLD_VERSION;
     }
     this.world = buildWorld(this.scene, s.seed);
-    this.fx.floorUnder = (x, z, y) => this.world.levels.floorUnder(x, z, y);
+    this.fx.floorUnder = (x, z, y) => (this.world.levels.buildingAt(x, z) ? this.world.levels.groundUnder(x, z, y) : this.world.groundAt(x, z));
     // The same check by fingerprint, for layout changes that came without a
     // WORLD_VERSION bump (saves from before the fingerprint: their traders
     // must still stand in their buildings, and the counts must match).
@@ -899,7 +899,9 @@ class Game {
       // Talking: number keys pick an option; Esc, walking or distance ends it.
       const s = this.survivors.dialogFor;
       for (const c of this.input.pressed) if (c.startsWith('Digit') || c === 'Escape') this.survivors.dialogKey(c);
-      if (['KeyW', 'KeyA', 'KeyS', 'KeyD'].some(pressed) || !s || s.dead || s.pos.distanceTo(this.player.pos) > 4) this.survivors.closeDialog();
+      // A plain menu (the elevator) has no one to walk away from
+      const gone = s ? s.dead || s.pos.distanceTo(this.player.pos) > 4 : !this.survivors.menuOpen;
+      if (['KeyW', 'KeyA', 'KeyS', 'KeyD'].some(pressed) || gone) this.survivors.closeDialog();
       inp.interact = inp.inventory = inp.slot1 = inp.slot2 = inp.reload = inp.jump = false;
     } else if (this.vehicleOpen) {
       // Looking over a vehicle: Esc, Tab or walking off closes it
