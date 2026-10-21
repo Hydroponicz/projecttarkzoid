@@ -683,6 +683,7 @@ export class Player {
       bleedChance *= 0.3; biteChance *= 0.2;
     }
     this.damagePart(part, amount);
+    if (this.dead) return; // (that killed you: the world is already gone)
     if (Math.random() < bleedChance) { this.bleeding.add(part); this.game.hud.message(`${PARTS[part].name} is bleeding`); }
     if (!this.infected && Math.random() < biteChance) {
       this.infected = true;
@@ -709,6 +710,7 @@ export class Player {
       bleedChance *= 0.3;
     }
     this.damagePart(part, amount);
+    if (this.dead) return; // (that killed you: the world is already gone)
     if (Math.random() < bleedChance) this.bleeding.add(part);
     this.hurtFlash = 1;
     sfx.hurt();

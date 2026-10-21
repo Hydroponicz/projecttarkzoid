@@ -1782,7 +1782,14 @@ export function buildWorld(scene, seed) {
       return 0;
     },
     buildingAt(x, z) { return buildings.find((b) => !b.area && x > b.x0 && x < b.x1 && z > b.z0 && z < b.z1) || null; },
-    dispose: () => scene.remove(group),
+    // Free what the town holds on the GPU (a new character builds a new one)
+    dispose: () => {
+      scene.remove(group);
+      group.traverse((o) => {
+        if (o.isInstancedMesh) o.dispose();
+        if (o.geometry && !o.geometry.userData.shared) o.geometry.dispose();
+      });
+    },
   };
 }
 

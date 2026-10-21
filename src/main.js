@@ -541,7 +541,10 @@ class Game {
     this.saveGame();
     this.save.character = null;
     writeSave(this.save);
-    this.teardown();
+    // (the world comes down once this frame is over: whatever is mid-way
+    // through its turn, the zombie that landed the blow, the bleed that
+    // finished you, still has a world to finish it in)
+    this.deathTeardown = true;
     this.showScreen('death');
     $('death-title').textContent = `${ch.name.toUpperCase()} IS DEAD`;
     $('death-reason').textContent = reason;
@@ -1001,6 +1004,11 @@ class Game {
 
   // ---------- main loop ----------
   loop(t) {
+    // (next frame first: one frame going wrong must never stop the game)
+    requestAnimationFrame((tt) => this.loop(tt));
+    try { this.frame(t); } catch (e) { console.error(e); }
+  }
+  frame(t) {
     const dt = Math.min(0.05, (t - this.last) / 1000);
     // frame rate, averaged over half a second (shown in the graphics panel)
     this.fpsN = (this.fpsN || 0) + 1; this.fpsT = (this.fpsT || 0) + (t - this.last) / 1000;
@@ -1014,7 +1022,7 @@ class Game {
       this.renderer.render(this.scene, this.camera);
       if (this.invOpen) this.doll?.render(dt);
     }
-    requestAnimationFrame((tt) => this.loop(tt));
+    if (this.deathTeardown) { this.deathTeardown = false; this.teardown(); }
   }
 
   update(dt, now) {
