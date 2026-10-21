@@ -101,7 +101,7 @@ export const ARTICLES = [
 <tr><td>${K('C')} / ${K('X')} / ${K('Space')}</td><td>Crouch / prone / jump (Space also climbs through open or broken windows)</td></tr>
 <tr><td>Left / right mouse</td><td>Fire or swing / aim down sights</td></tr>
 <tr><td>${K('R')} / double-tap ${K('R')}</td><td>Reload / quick reload (drops the old magazine)</td></tr>
-<tr><td>${K('T')} / ${K('Z')}</td><td>Check magazine / switch fire mode</td></tr>
+<tr><td>${K('T')} / ${K('Z')}</td><td>Check magazine (double-tap or Shift+T: check the chamber) / switch fire mode</td></tr>
 <tr><td>${K('Q')} / ${K('E')}</td><td>Lean left / right</td></tr>
 <tr><td>${K('G')}</td><td>Lower or raise your weapon (survivors relax)</td></tr>
 <tr><td>${K('1')} ${K('2')}</td><td>Firearm / melee</td></tr>
@@ -239,7 +239,7 @@ export const ARTICLES = [
 <li><b>Magazines are items.</b> Load them in the inventory by dragging ammo onto a magazine (or right-click → Load). Loading carries on round by round while the inventory is open.</li>
 <li>${K('R')} swaps in your fullest spare magazine from your pockets, vest, jacket or backpack. A tactical reload keeps the round in the chamber. An empty gun needs its bolt racked (it does that for you). Double-tap ${K('R')} for a quick reload that drops the old magazine on the ground.</li>
 <li>Shotguns load shell by shell; firing interrupts the loading.</li>
-<li><b>No ammo counter.</b> ${K('T')} checks the magazine for a rough reading.</li>
+<li><b>No ammo counter.</b> ${K('T')} checks the magazine for a rough reading; double-tap it (or Shift+T) to pull the bolt back a little and see which round is chambered.</li>
 <li>${K('Z')} switches fire mode on guns that have one.</li>
 <li>Tired, cold or injured hands reload slower and can fumble the magazine.</li>
 </ul>` },

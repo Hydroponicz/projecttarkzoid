@@ -196,6 +196,9 @@ class Ragdoll {
     }
     this.group = g;
     this.sys.scene.add(g);
+    // legs it no longer has (blown or shot off)
+    if (spec.lost?.L) this.segs[4].m.visible = this.segs[5].m.visible = false;
+    if (spec.lost?.R) this.segs[6].m.visible = this.segs[7].m.visible = false;
   }
 
   // Orientation basis for the torso: up along the spine, right along the shoulders.
@@ -513,7 +516,7 @@ class Ragdoll {
     this.group.updateMatrixWorld(true);
     const byMat = new Map();
     this.group.traverse((o) => {
-      if (!o.isMesh) return;
+      if (!o.isMesh || !o.visible) return;
       const geo = o.geometry.clone().applyMatrix4(o.matrixWorld);
       if (!byMat.has(o.material)) byMat.set(o.material, []);
       byMat.get(o.material).push(geo);

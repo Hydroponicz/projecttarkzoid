@@ -480,6 +480,7 @@ export class Player {
     const rd = g.ragdolls?.raycast(origin, dir, sv ? sv.t : z ? z.t : wallD);
     const tHit = rd ? rd.t : sv ? sv.t : z ? z.t : null;
     breakGlass(tHit ?? wallD);
+    g.zombies.nearMiss(origin, dir, Math.min(tHit ?? wallD, maxD), z?.zb); // (the crack of it going past)
     if (g.dev?.tracers) g.fx.debugTrace(origin, origin.clone().addScaledVector(dir, Math.min(tHit ?? wallD, maxD)), tHit != null ? 'flesh' : 'wall');
     if (tHit == null) {
       if (wallD < maxD) {

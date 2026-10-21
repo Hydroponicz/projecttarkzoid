@@ -80,7 +80,7 @@ class Survivor {
     this.disp = d.disp;
     this.trust = d.trust;
     this.met = d.met;
-    this.hp = d.hp; this.maxHp = d.maxHp || 100;
+    this.maxHp = d.maxHp || 150; this.hp = Math.min(d.hp ?? this.maxHp, this.maxHp);
     this.weapon = d.weapon;   // weapon item (or null)
     this.melee = d.melee;     // melee item key
     this.reserve = d.reserve; // spare rounds for the weapon
@@ -186,6 +186,7 @@ class Survivor {
   // hit: { point, dir, force } of the bullet or blow, for reactions and the ragdoll
   hurt(dmg, source, attacker, hit = null) {
     if (this.dead) return;
+    if (source === 'zombie') dmg *= 0.55; // (they've learned to keep one at arm's length)
     this.hp -= dmg;
     this.hitFlash = 0.15;
     if (Math.random() < 0.5) this.say(pick(HURT_LINES), 0.6);
@@ -365,7 +366,7 @@ class Survivor {
     if (this.target === p && (p.dead || this.disp !== 'hostile' && this.aggroPlayer <= 0)) this.target = null;
 
     // Slowly heal when nothing is going on
-    if (!this.target) { this.regen += dt; if (this.regen > 4) { this.regen = 0; this.hp = Math.min(this.maxHp, this.hp + 2); } }
+    if (!this.target) { this.regen += dt; if (this.regen > 2) { this.regen = 0; this.hp = Math.min(this.maxHp, this.hp + 3); } }
 
     // --- watch the player's gun: aiming at them (or a raised gun pointed
     // their way up close) makes them nervous; a lowered weapon never does ---
@@ -397,8 +398,10 @@ class Survivor {
       this.state = 'combat';
       const tp = t.pos;
       const dT = this.pos.distanceTo(tp);
-      const fleeHp = this.order === 'follow' ? 15 : 30;
-      if (this.hp < fleeHp && this.disp !== 'friendly') {
+      const fleeHp = this.order === 'follow' ? 25 : 45;
+      // a crowd closing in on someone with no gun (or no rounds): get out
+      if (!this.crowdT || (this.crowdT -= dt) <= 0) { this.crowdT = 0.5; this.crowd = !hasAmmo && t.def ? game.zombies.list.filter((z) => Math.abs(z.pos.x - this.pos.x) < 7 && Math.abs(z.pos.z - this.pos.z) < 7).length : 0; }
+      if (this.hp < fleeHp || this.crowd >= 3) {
         // Run away from the threat
         if (!this.fleeing) { this.fleeing = true; this.say(pick(FLEE_LINES)); }
         this.state = 'flee';
@@ -706,7 +709,7 @@ class Survivor {
     return {
       id: this.id, name: this.name, persona: this.persona, disp: this.disp, trust: Math.round(this.trust), met: this.met,
       hp: Math.round(this.hp), x: +this.pos.x.toFixed(2), z: +this.pos.z.toFixed(2), dir: this.dir,
-      weapon: this.weapon, melee: this.melee, reserve: this.reserve, inv: this.inv, look: this.look, order: this.order, skill: this.skill, maxHp: this.maxHp > 100 ? this.maxHp : undefined, vip: this.vip || undefined, gid: this.gid || undefined, nades: this.nades || undefined,
+      weapon: this.weapon, melee: this.melee, reserve: this.reserve, inv: this.inv, look: this.look, order: this.order, skill: this.skill, maxHp: this.maxHp !== 150 ? this.maxHp : undefined, vip: this.vip || undefined, gid: this.gid || undefined, nades: this.nades || undefined,
     };
   }
 }
@@ -759,9 +762,9 @@ export class Survivors {
     if (i < 0 || j < 0 || i >= NAV_N || j >= NAV_N) return false;
     const k = i * NAV_N + j;
     if (!this.nav[k]) return true;
-    // a shut door they'll open; a wide-open one has its panel in the way instead
+    // a shut door they'll open; one ajar, the panel's where it is (the grid knows)
     const di = this.doorCell[k];
-    return di > 0 && (this.world.doors[di - 1].ang ?? 0) < 0.92;
+    return di > 0 && (this.world.doors[di - 1].ang ?? 0) < 0.03;
   }
 
   // Straight walkable line on the nav grid (doors count as walkable).
@@ -867,6 +870,7 @@ export class Survivors {
     let best = null, bd = range;
     for (const s of this.list) {
       if (s.dead || s.trader) continue; // traders are left alone
+      if (s.vip && s.order === 'wait') continue; // (a scientist lying low, holed up)
       const d = s.pos.distanceTo(pos);
       if (d < bd && hasLOS(this.world.hash, pos.x, pos.z, s.pos.x, s.pos.z)) { bd = d; best = s; }
     }
@@ -893,6 +897,8 @@ export class Survivors {
     sfx.shot(s.weapon.key, false, Math.max(0, 1 - d / 140) ** 1.5, (dx * Math.cos(P.yaw) - dz * Math.sin(P.yaw)) / dl);
     this.game.lights.burst(m, 25, { distance: 10, exp: 40 });
     const end = new THREE.Vector3(tx, 1.2, tz);
+    const sd = end.clone().sub(m), sl = sd.length();
+    if (sl > 1) this.game.zombies.nearMiss(m, sd.divideScalar(sl), sl, s.target?.def ? s.target : null);
     const geo = new THREE.BufferGeometry().setFromPoints([m, end]);
     const line = new THREE.Line(geo, new THREE.LineBasicMaterial({ color: 0xffdd88, transparent: true, opacity: 0.7 }));
     this.scene.add(line);
@@ -958,7 +964,7 @@ export class Survivors {
       disp,
       trust: disp === 'friendly' ? 30 : disp === 'neutral' ? 5 : -50,
       met: false,
-      hp: 100,
+      hp: 150,
       x: opts.x, z: opts.z,
       weapon, reserve,
       melee: pick(['knife', 'crowbar', 'hammer', 'axe', 'knife']),

@@ -42,7 +42,7 @@ const START_TIME = 9 * 60;      // day 1, 09:00
 const AUTOSAVE = 30;            // seconds
 const NIGHT = new THREE.Color(0x10141c), DAY = new THREE.Color(0x7d8a96);
 // what a door's colliders are doing: shut, passable, swung wide
-const doorState = (d) => (d.open ? 1 : 0) + (d.ang >= 0.92 ? 2 : 0);
+const doorState = (d) => (d.ang < 0.03 ? -1 : Math.round((d.ang || 0) * 5)); // (shut, or which fifth of the swing)
 const smooth = (a, b, x) => { const t = Math.max(0, Math.min(1, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
 
 class Game {
@@ -1038,8 +1038,9 @@ class Game {
   // The walking grids round a door whose colliders changed (the doorway,
   // and the swung panel inside)
   doorNav(d) {
-    const b = d.box, l = d.leaf || b;
-    this.zombies.updateNavRegion(Math.min(b.minX, l.minX), Math.min(b.minZ, l.minZ), Math.max(b.maxX, l.maxX), Math.max(b.maxZ, l.maxZ));
+    // (the doorway and everywhere the panel swings through)
+    const R = d.w + 0.2;
+    this.zombies.updateNavRegion((d.mesh?.position.x ?? d.x) - R, (d.mesh?.position.z ?? d.z) - R, (d.mesh?.position.x ?? d.x) + R, (d.mesh?.position.z ?? d.z) + R);
   }
 
   // The charge you'd use: a breaching charge, else C4
@@ -1274,7 +1275,7 @@ class Game {
     d.box.blocksShot = d.box.blocksSight = false;
     d.box.structure = null;
     d.box.decalParent = null;
-    if (d.leaf) { d.leaf.noCollide = true; d.leaf.blocksShot = false; d.leaf.decalParent = null; }
+    for (const s of d.segs || []) { s.noCollide = true; s.blocksShot = false; s.decalParent = null; s.structure = null; }
     this.world.group.remove(d.mesh);
     d.sync?.();
     if (!silent) this.zombies.updateNavRegion(d.box.minX, d.box.minZ, d.box.maxX, d.box.maxZ);

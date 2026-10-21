@@ -58,14 +58,14 @@ export const ITEMS = {
   grip_vert: { name: 'Vertical Foregrip', short: 'Grip', type: 'grip', w: 1, h: 1, color: '#222', value: 6000, recoil: 0.9, ergo: 1.15, fits: ['ak74', 'mp133', 'm4a1', 'mp5', 'm870', 'm249'] },
 
   // --- ammo ---
-  ammo_9x18: { name: '9x18mm PM', short: '9x18', type: 'ammo', w: 1, h: 1, color: '#8a7a3a', value: 40, stack: 50 },
-  ammo_12g: { name: '12/70 Buckshot', short: '12g', type: 'ammo', w: 1, h: 1, color: '#8a3a3a', value: 90, stack: 20 },
-  ammo_545: { name: '5.45x39mm', short: '5.45', type: 'ammo', w: 1, h: 1, color: '#7a8a3a', value: 120, stack: 60 },
-  ammo_762: { name: '7.62x39mm', short: '7.62', type: 'ammo', w: 1, h: 1, color: '#9a6a2a', value: 150, stack: 40 },
-  ammo_556: { name: '5.56x45mm NATO', short: '5.56', type: 'ammo', w: 1, h: 1, color: '#8a8a3a', value: 140, stack: 60 },
-  ammo_9x19: { name: '9x19mm Parabellum', short: '9mm', type: 'ammo', w: 1, h: 1, color: '#a08a3a', value: 60, stack: 50 },
-  ammo_45: { name: '.45 ACP', short: '.45', type: 'ammo', w: 1, h: 1, color: '#9a7a2a', value: 90, stack: 40 },
-  ammo_762x51: { name: '7.62x51mm NATO', short: '.308', type: 'ammo', w: 1, h: 1, color: '#8a5a2a', value: 230, stack: 40 },
+  ammo_9x18: { name: '9x18mm PM', round: 'PST gzh', short: '9x18', type: 'ammo', w: 1, h: 1, color: '#8a7a3a', value: 40, stack: 50 },
+  ammo_12g: { name: '12/70 Buckshot', round: '7mm buckshot', short: '12g', type: 'ammo', w: 1, h: 1, color: '#8a3a3a', value: 90, stack: 20 },
+  ammo_545: { name: '5.45x39mm', round: 'PS gs', short: '5.45', type: 'ammo', w: 1, h: 1, color: '#7a8a3a', value: 120, stack: 60 },
+  ammo_762: { name: '7.62x39mm', round: 'PS gzh', short: '7.62', type: 'ammo', w: 1, h: 1, color: '#9a6a2a', value: 150, stack: 40 },
+  ammo_556: { name: '5.56x45mm NATO', round: 'M855', short: '5.56', type: 'ammo', w: 1, h: 1, color: '#8a8a3a', value: 140, stack: 60 },
+  ammo_9x19: { name: '9x19mm Parabellum', round: 'FMJ', short: '9mm', type: 'ammo', w: 1, h: 1, color: '#a08a3a', value: 60, stack: 50 },
+  ammo_45: { name: '.45 ACP', round: 'FMJ', short: '.45', type: 'ammo', w: 1, h: 1, color: '#9a7a2a', value: 90, stack: 40 },
+  ammo_762x51: { name: '7.62x51mm NATO', round: 'M80', short: '.308', type: 'ammo', w: 1, h: 1, color: '#8a5a2a', value: 230, stack: 40 },
 
   // --- melee ---
   knife: { name: 'Kitchen Knife', short: 'Knife', type: 'melee', w: 1, h: 2, color: '#777', value: 1500, damage: 38, range: 1.5, rate: 0.45 },

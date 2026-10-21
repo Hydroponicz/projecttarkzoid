@@ -56,6 +56,7 @@ export function explode(game, pos, opts = {}) {
     const dmg = hurt(dd) * cover(zb.pos.x, zb.pos.z, zb.pos.y);
     if (!dmg) continue;
     const dir = new THREE.Vector3(zb.pos.x - pos.x, 1.4, zb.pos.z - pos.z).normalize();
+    if (dd < R * 0.65) game.zombies.blastLegs(zb, (1 - dd / (R * 0.65)) * cover(zb.pos.x, zb.pos.z, zb.pos.y), dir); // (legs blown off)
     const killed = game.zombies.damage(zb, dmg, pos.x, pos.z, false, { point: zb.pos.clone().setY(zb.pos.y + 0.9), dir, force: Math.min(16, (dmg / D) * 18 * big) });
     if (killed && opts.byPlayer !== false) { p.kills++; game.traders?.onKill(zb); game.progress?.onKill(zb); }
   }

@@ -892,7 +892,13 @@ export class GunController {
       sfx.click(); this.play('mode', 0.25);
       p.game.hud.message(`Fire mode: ${w.mode.toUpperCase()}`, 1.5);
     }
-    if (input.check && !this.busy) this.play('check', 1.1, { events: [{ at: 0.55, fn: () => this.showCheck() }] });
+    // T checks the magazine; T twice quickly (or Shift+T) checks the chamber
+    if (input.check) {
+      const keys = p.game.input.keys, again = this.time - (this.lastT ?? -9) < 0.45;
+      this.lastT = this.time;
+      if (((again && this.anim?.type === 'check') || keys.has('ShiftLeft') || keys.has('ShiftRight')) && (!this.busy || this.anim?.type === 'check')) { this.anim = null; this.play('chamber', 1.35, { events: [{ at: 0.5, fn: () => this.showChamber() }] }); }
+      else if (!this.busy) this.play('check', 1.1, { events: [{ at: 0.55, fn: () => this.showCheck() }] });
+    }
     if (input.reload && !ctx.sprinting) {
       const quick = this.time - this.lastR < 0.35;
       this.lastR = this.time;
@@ -931,6 +937,17 @@ export class GunController {
       if (parts.magRoot && w.mag) parts.magRoot.position.y -= 0.03 * bump(0.25, 0.4, 0.6, 0.75, t);
       if (def.tube && parts.pump) parts.pump.position.z += 0.03 * bump(0.25, 0.4, 0.6, 0.75, t);
       if (L && w.mag) L.position.lerpVectors(L0, parts.magRoot.position.clone().add(new THREE.Vector3(-0.02, -0.06, 0)), bump(0.1, 0.25, 0.75, 0.9, t));
+    } else if (a.type === 'chamber') {
+      // Rolled over to look into the ejection port; the bolt (or slide, or the
+      // pump) eased back just far enough to see brass, then let go
+      const k = bump(0, 0.22, 0.75, 1, t), pull = bump(0.2, 0.38, 0.62, 0.78, t);
+      pose.rotation.z += 0.75 * k; pose.rotation.x += 0.18 * k; pose.position.x += 0.03 * k; pose.position.y += 0.03 * k;
+      const travel = cfg.boltTravel || 0.05;
+      if (parts.slide) parts.slide.position.z = travel * 0.45 * pull;
+      else if (parts.bolt) parts.bolt.position.z = travel * 0.45 * pull;
+      if (def.tube && parts.pump) parts.pump.position.z = 0.035 * pull;
+      if (L && (parts.bolt || parts.slide)) L.position.lerpVectors(L0, (parts.bolt || parts.slide).position.clone().add(new THREE.Vector3(0.03, 0.01, 0.02)), bump(0.08, 0.22, 0.78, 0.92, t));
+      if (Math.abs(pull - 0.5) < 0.02 && !a.clacked) { a.clacked = true; sfx.click(900, 0.25); }
     } else if (a.type === 'shell') {
       // A shell in the fingers, pushed up into the loading port
       if (L && !a.shellMesh) { a.shellMesh = shellModel(); a.shellMesh.position.set(0.012, 0.022, -0.03); a.shellMesh.rotation.x = -0.4; a.shellMesh.traverse((o) => o.layers.set(VM_LAYER)); L.add(a.shellMesh); }
@@ -1168,6 +1185,16 @@ export class GunController {
     const cap = def.tube || (w.mag ? ITEMS[w.mag.key].cap : 0);
     this.check = { text: (def.tube ? 'Tube: ' : 'Mag: ') + approxText(n, cap), t: 3 };
     sfx.click(1600, 0.1);
+  }
+
+  // What's in the chamber, and what round it is (the round type: there's one
+  // per calibre for now; a magazine of mixed rounds will say which is up)
+  showChamber() {
+    const w = this.w;
+    if (!w) return;
+    const def = ITEMS[w.key], am = ITEMS[w.chamberKey || def.ammo];
+    this.check = { text: w.chamber ? `Chambered: ${am.name}${am.round ? ' ' + am.round : ''}` : 'Chamber: empty', t: 3.5 };
+    sfx.click(1300, 0.12);
   }
 
   // ---------- reloading ----------

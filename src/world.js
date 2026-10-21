@@ -156,15 +156,20 @@ export function buildWorld(scene, seed) {
     group.add(pivot);
     const t = 0.08;
     const box = addBox(ax === 'x' ? x - half : x - t, ax === 'x' ? z - t : z - half, ax === 'x' ? x + half : x + t, ax === 'x' ? z + t : z + half, { h: 2.2 });
-    // The open door panel is solid too: you (and zombies) go around it.
-    const r = pivot.rotation.y + Math.PI / 2, ex = Math.cos(r) * (width - 0.1), ez = -Math.sin(r) * (width - 0.1);
-    const hx = pivot.position.x + Math.cos(r) * 0.1, hz = pivot.position.z - Math.sin(r) * 0.1;
-    const leaf = addBox(Math.min(hx, hx + ex) - 0.05, Math.min(hz, hz + ez) - 0.05, Math.max(hx, hx + ex) + 0.05, Math.max(hz, hz + ez) + 0.05, { h: 2.2, blocksSight: false });
-    const d = { kind: 'door', name: 'Door', x, z, ax, w: width, open: false, hp: 300, maxHp: 300, box, leaf, mesh: pivot, baseRot: pivot.rotation.y, index: doors.length };
+    // The panel itself, once it's off the latch: a chain of short boxes that
+    // follow it round as it swings, so a gap is exactly as wide as it looks
+    const segs = [];
+    for (let i = 0, n = Math.max(6, Math.ceil((width - 0.06) / 0.12)); i < n; i++) {
+      const sg = addBox(x, z, x, z, { h: 2.2, blocksSight: false, noCollide: true });
+      sg.decalParent = pivot; sg.decalInset = 0.034; // (the collider is thicker than the panel)
+      segs.push(sg);
+    }
+    const d = { kind: 'door', name: 'Door', x, z, ax, w: width, open: false, hp: 300, maxHp: 300, box, segs, hash, mesh: pivot, baseRot: pivot.rotation.y, index: doors.length };
     box.structure = d;
     box.door = true;
-    box.decalParent = leaf.decalParent = pivot;
-    box.decalInset = 0.064; leaf.decalInset = 0.034; // collider is thicker than the panel
+    box.decalParent = pivot;
+    box.decalInset = 0.064;
+    for (const sg of segs) sg.structure = d;
     doors.push(d);
     setDoor(d, !closed);
     // the frame: painted casing round the opening, proud of both faces of the wall
@@ -1836,10 +1841,25 @@ export function setWindow(w, state) {
 export function setDoorAng(d, a) {
   d.ang = a;
   d.open = a > 0.62;
-  d.box.noCollide = d.open;
-  d.box.blocksShot = d.box.blocksSight = a < 0.06;
-  if (d.leaf) { d.leaf.noCollide = a < 0.92; d.leaf.blocksShot = a >= 0.92; }
+  // shut: the doorway's own box; off the latch: the panel's boxes
+  const shut = a < 0.03;
+  d.box.noCollide = !shut && !!d.segs;
+  if (!d.segs) d.box.noCollide = d.open;
+  d.box.blocksShot = d.box.blocksSight = shut || (!d.segs && a < 0.06);
   d.mesh.rotation.y = d.baseRot + a * (Math.PI / 2);
+  if (d.segs && !d.broken) {
+    const r = d.mesh.rotation.y, cx = Math.cos(r), cz = -Math.sin(r), px = d.mesh.position.x, pz = d.mesh.position.z;
+    const n = d.segs.length, L = d.w - 0.04, seg = L / n;
+    const ex = Math.abs(cx) * seg / 2 + 0.035, ez = Math.abs(cz) * seg / 2 + 0.035;
+    d.segs.forEach((s, i) => {
+      const k = (i + 0.5) * seg, mx = px + cx * k, mz = pz + cz * k;
+      if (s.noCollide === shut && Math.abs(s.minX - (mx - ex)) < 1e-3 && Math.abs(s.minZ - (mz - ez)) < 1e-3) return;
+      d.hash.remove(s);
+      s.minX = mx - ex; s.maxX = mx + ex; s.minZ = mz - ez; s.maxZ = mz + ez;
+      s.noCollide = shut; s.blocksShot = !shut;
+      d.hash.insert(s);
+    });
+  }
   d.sync?.();
 }
 // All the way open or shut, at once (loading, set-up); see Game.swingDoor

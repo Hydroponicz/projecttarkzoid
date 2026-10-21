@@ -61,6 +61,7 @@ const deadEyeMat = new THREE.MeshStandardMaterial({ color: 0x2a2010, roughness: 
 const smooth = (t) => t * t * (3 - 2 * t);
 const eyeGeo = new THREE.BoxGeometry(0.05, 0.03, 0.02);
 const pickArr = (a) => a[Math.floor(Math.random() * a.length)];
+const gibGeo = new THREE.BoxGeometry(0.17, 0.17, 0.8); // a severed leg, along z (as props lie)
 
 const _ray = new THREE.Raycaster(), _hits = [];
 
@@ -110,7 +111,8 @@ class Crowd {
       put('torso', p.torso, p.torso.material.color);
       put('head', p.head, p.head.material.color);
       put('arm', p.armL, p.armL.material.color); put('arm', p.armR, p.armR.material.color);
-      put('leg', p.legL, p.legL.material.color); put('leg', p.legR, p.legR.material.color);
+      if (!p.legL.userData.gone) put('leg', p.legL, p.legL.material.color);
+      if (!p.legR.userData.gone) put('leg', p.legR, p.legR.material.color);
       put('eye', p.eyes[0]); put('eye', p.eyes[1]);
       if (p.helmet) { put('helmet', p.helmet); put('vest', p.vest); }
     }
@@ -507,17 +509,30 @@ export class Zombies {
       // knocked-down ragdoll and the get-up animation.
       lean: { x: 0, z: 0, vx: 0, vz: 0 }, headKick: { x: 0, v: 0 }, vx: 0, vz: 0, down: null, rise: 0, riseSide: 1,
       look: { kind: 'zombie', skin: skin.color.getHex(), top: cloth.color.getHex(), bottom: pants.color.getHex(), ...(t.helmet ? { helmet: 0x3e4a30, vest: 0x3a4430 } : {}) },
+      // How it moves: its stride, where it carries its arms, how much it
+      // lurches from side to side, and what it does standing still
+      gait: { stride: 0.45 + Math.random() * 0.3, arms: Math.random() < 0.35 ? 1.3 + Math.random() * 0.2 : 0.25 + Math.random() * 0.4, lurch: Math.random() * 0.12, drag: Math.random() < 0.15 ? (Math.random() < 0.5 ? 1 : -1) : 0, seed: Math.random() * 100 },
+      idleKind: pickArr(['sway', 'sway', 'hunch', 'twitch', 'scratch', 'look']),
+      // Legs: wounds (a limp), and gone altogether (it crawls)
+      legDmg: { L: 0, R: 0 }, legBurst: 0, lost: null, crawl: false, fall: 0,
+      suppress: 0, stumble: 0, dodge: null, funnel: null,
     };
+    for (const k of ['torso', 'head', 'armL', 'armR', 'legL', 'legR']) zb.parts[k].userData.base = zb.parts[k].position.clone();
     this.list.push(zb);
     return zb;
   }
 
   serialize() {
-    return this.list.map((z) => ({ x: +z.pos.x.toFixed(2), z: +z.pos.z.toFixed(2), y: z.pos.y > 0.01 ? +z.pos.y.toFixed(3) : undefined, type: z.type, hp: Math.round(z.hp), hvt: z.hvt }));
+    return this.list.map((z) => ({ x: +z.pos.x.toFixed(2), z: +z.pos.z.toFixed(2), y: z.pos.y > 0.01 ? +z.pos.y.toFixed(3) : undefined, type: z.type, hp: Math.round(z.hp), hvt: z.hvt, lost: z.lost || undefined, ld: z.legDmg.L + z.legDmg.R > 0 ? [Math.round(z.legDmg.L), Math.round(z.legDmg.R)] : undefined }));
   }
 
   restore(saved) {
-    for (const s of saved) { const z = this.spawn(s.x, s.z, s.type, s.y || 0); z.hp = s.hp; if (s.hvt) { z.hvt = s.hvt; z.maxHp = 900; z.mesh.scale.setScalar(1.18); } }
+    for (const s of saved) {
+      const z = this.spawn(s.x, s.z, s.type, s.y || 0); z.hp = s.hp;
+      if (s.hvt) { z.hvt = s.hvt; z.maxHp = 900; z.mesh.scale.setScalar(1.18); }
+      if (s.ld) { z.legDmg.L = s.ld[0]; z.legDmg.R = s.ld[1]; }
+      if (s.lost) for (const side of ['L', 'R']) if (s.lost[side]) this.sever(z, side, null, true);
+    }
   }
 
   populate(count, player) {
@@ -595,6 +610,7 @@ export class Zombies {
     zb.prey = null;
     zb.lastSeen = 6;
     zb.flail = 0.6;
+    if (hit && !head) this.legHit(zb, amount, hit);
     if (zb.hp <= 0) {
       this.kill(zb, hit, head);
       this.alertNear(zb.pos.x, zb.pos.z, 9, fromX, fromZ);
@@ -608,6 +624,82 @@ export class Zombies {
     return false;
   }
 
+  // A hit low down: wounds that leg (a limp), and a heavy round, a burst or
+  // a shotgun blast up close can take it off
+  legHit(zb, amount, hit) {
+    if (zb.crawl && zb.lost?.L && zb.lost?.R) return;
+    const y = hit.point.y - zb.pos.y;
+    if (zb.crawl || y > 0.85 * zb.def.scale) return;
+    const rx = Math.cos(zb.dir), rz = -Math.sin(zb.dir);
+    const side = (hit.point.x - zb.pos.x) * rx + (hit.point.z - zb.pos.z) * rz > 0 ? 'L' : 'R';
+    if (zb.lost?.[side]) return;
+    zb.legDmg[side] += amount;
+    const now = performance.now();
+    zb.legBurst = now - (zb.legBurstAt || 0) < 160 ? zb.legBurst + amount : amount;
+    zb.legBurstAt = now;
+    const heavy = zb.legBurst >= 65 ? Math.min(0.85, (zb.legBurst - 45) / 70) : 0;
+    if (Math.random() < heavy || zb.legDmg[side] > zb.maxHp * 1.1) this.sever(zb, side, hit.dir);
+  }
+
+  // A leg gone: it flies off, the stump bleeds, and the zombie goes down to crawl
+  sever(zb, side, dir, quiet = false) {
+    zb.lost ||= {};
+    if (zb.lost[side]) return;
+    zb.lost[side] = true;
+    const part = side === 'L' ? zb.parts.legL : zb.parts.legR;
+    part.userData.gone = true;
+    const g = this.game;
+    if (!quiet && g?.ragdolls) {
+      zb.mesh.updateMatrixWorld(true);
+      const hip = new THREE.Vector3(), foot = new THREE.Vector3(0, -0.8, 0);
+      part.getWorldPosition(hip); part.localToWorld(foot);
+      const gib = new THREE.Mesh(gibGeo, part.material); gib.castShadow = true;
+      const v = (dir ? dir.clone().setY(0).normalize().multiplyScalar(2 + Math.random() * 2) : new THREE.Vector3()).add(new THREE.Vector3((Math.random() - 0.5) * 2, 2 + Math.random() * 2, (Math.random() - 0.5) * 2));
+      g.ragdolls.dropProp(gib, hip, foot, v);
+      g.fx.blood(hip, dir || new THREE.Vector3(0, 1, 0), { power: 1.5, exit: true });
+      g.fx.pool(hip.x, hip.z, 0.7 + Math.random() * 0.4, zb.pos.y);
+      this.vocal(zb, 'hurt', 35, 1);
+    }
+    if (!zb.crawl) { zb.crawl = true; zb.fall = quiet ? 0 : 1; zb.rise = 0; zb.stumble = 0; }
+  }
+
+  // An explosion close by can take the legs off
+  blastLegs(zb, k, dir) {
+    if (zb.dead) return;
+    for (const side of ['L', 'R']) if (Math.random() < 0.6 * k) this.sever(zb, side, dir);
+  }
+
+  // A bullet cracking past close by: it flinches, may stumble, may lurch aside
+  nearMiss(origin, dir, dist, except) {
+    const hd = Math.hypot(dir.x, dir.z) || 1e-6;
+    for (const zb of this.list) {
+      if (zb === except || zb.down || zb.dead) continue;
+      const ox = zb.pos.x - origin.x, oz = zb.pos.z - origin.z;
+      if (Math.abs(ox) > dist + 2 || Math.abs(oz) > dist + 2) continue;
+      const t = (ox * dir.x + oz * dir.z) / (hd * hd);
+      if (t < 1 || t > dist) continue;
+      const cx = origin.x + dir.x * t - zb.pos.x, cz = origin.z + dir.z * t - zb.pos.z, d = Math.hypot(cx, cz);
+      const by = origin.y + dir.y * t - zb.pos.y;
+      if (d > 1.5 || by < -0.2 || by > 2.4) continue;
+      const k = 1 - d / 1.5, tough = zb.type === 'brute' ? 0.3 : 1;
+      zb.suppress = Math.min(2, zb.suppress + 0.6 * k * tough);
+      zb.headKick.v += (Math.random() - 0.5) * 4 * k * tough;
+      const away = (cx * Math.cos(zb.dir) - cz * Math.sin(zb.dir)) > 0 ? -1 : 1;
+      zb.lean.vz += away * 2 * k * tough;
+      if (zb.crawl) continue;
+      if (zb.suppress > 0.9 && Math.random() < 0.35 * tough) this.stumbleZ(zb);
+      else if (zb.state === 'chase' && !zb.dodge && Math.random() < 0.3 * tough) zb.dodge = { side: away, t: 0.35 + Math.random() * 0.25 };
+    }
+  }
+
+  stumbleZ(zb) {
+    if (zb.stumble > 0 || zb.crawl || zb.rise > 0) return;
+    zb.stumble = 0.8;
+    zb.lean.vx += 3 + Math.random() * 2;
+    zb.lean.vz += (Math.random() - 0.5) * 3;
+    zb.flail = 0.5;
+  }
+
   // Flinch: the body rocks away from the hit, the head snaps on headshots.
   // Leg hits and heavy blows can take a zombie off its feet.
   react(zb, hit, head) {
@@ -617,7 +709,7 @@ export class Zombies {
     zb.lean.vx += lz * f * 1.4;
     zb.lean.vz -= lx * f * 1.4 + (Math.random() - 0.5) * f * 0.6;
     if (head) zb.headKick.v += lz * f * 3 + (Math.random() - 0.5) * f;
-    if (zb.rise > 0) return;
+    if (zb.rise > 0 || zb.crawl) return;
     const legHit = hit.point.y < 0.85 * zb.def.scale;
     let chance = (legHit ? 0.3 : 0) + Math.max(0, (f - 3.5) * 0.12) + (hit.knock || 0);
     if (zb.type === 'brute') chance *= 0.3;
@@ -632,14 +724,14 @@ export class Zombies {
       { size: [0.05, 0.03, 0.02], off: [0.06, 0.03, 0.13], on: 'head', mat: extra.dead ? deadEyeMat : eyeMat });
     zb.mesh.updateMatrixWorld(true);
     return {
-      matrix: zb.mesh.matrixWorld, kind: 'zombie', scale: zb.def.scale, mats, look,
+      matrix: zb.mesh.matrixWorld, kind: 'zombie', scale: zb.def.scale, mats, look, lost: zb.lost,
       vel: new THREE.Vector3(zb.vx, 0, zb.vz), owner: zb, floor: zb.pos.y, ...extra,
     };
   }
 
   knockDown(zb, hit) {
     const rd = this.game?.ragdolls;
-    if (!rd) return;
+    if (!rd || zb.crawl) return;
     const r = rd.create(this.ragdollSpec(zb, { alive: true, tone: 0.7, toneDecay: 1.4 }));
     r.impulse(hit.point, hit.dir, hit.force * 1.3);
     if (hit.point.y < 0.9 * zb.def.scale) r.sweepLegs(hit.dir, 1.2 + hit.force * 0.5);
@@ -668,7 +760,7 @@ export class Zombies {
     // Lying along the body, then pivoting up on the feet.
     zb.dir = faceDown ? yaw : yaw + Math.PI;
     zb.riseSide = faceDown ? 1 : -1;
-    zb.rise = 1;
+    zb.rise = zb.crawl ? 0 : 1; // (no legs to get up on: straight to crawling)
     zb.mesh.visible = true;
     zb.vx = zb.vz = 0;
   }
@@ -820,6 +912,20 @@ export class Zombies {
       }
 
       if (zb.stagger > 0) { zb.stagger -= dt; speed *= 0.2; }
+      // Legs: crawling on its hands with none, a limp on a bad one; a
+      // stumble (near misses, bad legs, bad luck) nearly stops it
+      if (zb.crawl) speed = Math.min(speed, zb.state === 'chase' ? (zb.type === 'runner' ? 0.85 : 0.55) : 0.3) * (zb.fall > 0 ? 0 : 1);
+      else {
+        const bad = Math.max(zb.legDmg.L, zb.legDmg.R) / zb.maxHp;
+        if (bad > 0.3) speed *= 0.65;
+        if (speed > 0.5 && Math.random() < dt * (0.012 + (bad > 0.3 ? 0.08 : 0) + (zb.type === 'runner' ? 0.02 : 0))) this.stumbleZ(zb);
+      }
+      if (zb.stumble > 0) { zb.stumble -= dt; if (zb.stumble > 0.3) speed *= 0.3; }
+      zb.suppress = Math.max(0, zb.suppress - dt * 0.5);
+      // lurching aside from the shots
+      if (zb.dodge) { zb.dodge.t -= dt; const ox = mx; mx = mx * 0.5 - mz * zb.dodge.side * 1.2; mz = mz * 0.5 + ox * zb.dodge.side * 1.2; if (zb.dodge.t <= 0) zb.dodge = null; }
+      // lined up on a doorway it was grinding against the frame of
+      if (zb.funnel) { zb.funnel.t -= dt; const fx = zb.funnel.x - zb.pos.x, fz = zb.funnel.z - zb.pos.z, fl = Math.hypot(fx, fz); if (fl < 0.35 || zb.funnel.t <= 0) zb.funnel = null; else { mx = mx * 0.3 + (fx / fl) * 0.7; mz = mz * 0.3 + (fz / fl) * 0.7; } }
       // Stuck against something it can't bash: sidestep for a moment.
       if (zb.detour > 0 && speed > 0) { zb.detour -= dt; const ds = zb.detourSide; const ox = mx; mx = mx * 0.3 - mz * ds; mz = mz * 0.3 + ox * ds; }
       if (zb.rise > 0) { zb.rise -= dt / 1.4; speed = 0; }
@@ -840,7 +946,7 @@ export class Zombies {
 
       // Attack
       zb.attackCd -= dt;
-      const reach = 1.0 * zb.def.scale;
+      const reach = (zb.crawl ? 1.9 : 1.0) * zb.def.scale; // (a crawler grabs at you from the floor)
       // Only with nothing in between (no clawing through closed doors or walls).
       if (dist < reach + 0.1 && sameFloor && zb.state === 'chase' && !(zb.rise > 0) && hasLOS(hash, zb.pos.x, zb.pos.z, tx0, tz0, zy)) {
         speed = 0;
@@ -864,7 +970,8 @@ export class Zombies {
         const gx = zb.state === 'chase' ? tx0 : zb.target.x, gz = zb.state === 'chase' ? tz0 : zb.target.z;
         if (s && (s.kind === 'door' || s.kind === 'window') && this.across(s, zb.pos.x, zb.pos.z, gx, gz)) {
           if (s.kind === 'window' && s.state !== 'closed' && s.sill < 1.2 && !s.base) { this.startVault(zb, s); continue; }
-          if (zb.attackCd <= 0 && (s.kind === 'door' || s.state === 'closed')) {
+          if (s.kind === 'door' && (s.ang || 0) >= 0.03 && !s.broken) { game.swingDoor?.(s, 1, 0.9); }
+          else if (zb.attackCd <= 0 && (s.kind === 'door' || s.state === 'closed')) {
             zb.attackCd = 1.5;
             zb.dir = Math.atan2(s.x - zb.pos.x, s.z - zb.pos.z);
             game.damageStructure(s, zb.def.dmg[1] * (zb.type === 'brute' ? 3 : 1) * (s.kind === 'door' ? 1.5 : 1), zb.pos);
@@ -889,8 +996,11 @@ export class Zombies {
           const s = zb.stuck > 0.3 ? this.structureNear(zb) : null;
           const climbable = s?.kind === 'window' && s.state !== 'closed';
           if (climbable && s.sill < 1.2 && !s.base) this.startVault(zb, s);
+          else if (s?.kind === 'door' && (s.ang || 0) >= 0.03 && !s.broken) game.swingDoor?.(s, 1, 0.9); // (ajar: shoved open)
           else if (zb.stuck > 0.6 && zb.attackCd <= 0) {
+            const dw = !s && this.doorwayNear(zb);
             if (s && !climbable) { zb.attackCd = 1.5; game.damageStructure(s, zb.def.dmg[1] * (zb.type === 'brute' ? 3 : 1) * (s.kind === 'door' ? 1.5 : 1), zb.pos); }
+            else if (dw) { zb.funnel = { x: dw.x, z: dw.z, t: 1 }; zb.stuck = 0; }
             else if (!(zb.detour > 0)) { zb.detour = 0.5 + Math.random() * 0.5; zb.detourSide = Math.random() < 0.5 ? 1 : -1; zb.pathT = 0; zb.stuck = 0; }
           }
         } else zb.stuck = 0;
@@ -914,25 +1024,12 @@ export class Zombies {
       L.vx += (-70 * L.x - 10 * L.vx) * sdt; L.vz += (-70 * L.z - 10 * L.vz) * sdt;
       L.x += L.vx * sdt; L.z += L.vz * sdt;
       K.v += (-90 * K.x - 9 * K.v) * sdt; K.x += K.v * sdt;
-      zb.mesh.rotation.x = L.x + (zb.rise > 0 ? zb.riseSide * (Math.PI / 2) * smooth(Math.min(1, zb.rise)) : 0);
+      if (zb.fall > 0) zb.fall = Math.max(0, zb.fall - dt / 0.7);
+      const crawlK = zb.crawl ? 1 - smooth(zb.fall) : 0;
+      zb.mesh.rotation.x = L.x + (zb.rise > 0 ? zb.riseSide * (Math.PI / 2) * smooth(Math.min(1, zb.rise)) : 0) + crawlK * (Math.PI / 2 - 0.1);
       zb.mesh.rotation.z = L.z;
-      const swing = Math.sin(zb.phase) * 0.6;
-      p.legL.rotation.x = swing; p.legR.rotation.x = -swing;
-      const reachUp = zb.state === 'chase' ? -0.15 : 0.5;
-      p.armL.rotation.x = reachUp + Math.sin(zb.phase * 0.5) * 0.15;
-      p.armR.rotation.x = reachUp + Math.cos(zb.phase * 0.5) * 0.15;
-      if (zb.attackCd > 1.0) { p.armL.rotation.x = -0.6; p.armR.rotation.x = -0.6; }
-      p.torso.rotation.x = zb.state === 'chase' ? 0.18 : 0.08;
-      p.head.rotation.z = Math.sin(zb.phase * 0.3 + zb.groanTimer) * 0.25;
-      p.head.rotation.x = K.x;
-      if (zb.flail > 0) {
-        // Arms thrown out by the hit
-        zb.flail -= dt;
-        const k = Math.max(0, zb.flail / 0.6);
-        p.armL.rotation.x -= k * 0.9; p.armR.rotation.x -= k * 0.7;
-        p.armL.rotation.z = k * 0.6; p.armR.rotation.z = -k * 0.5;
-      } else { p.armL.rotation.z = 0; p.armR.rotation.z = 0; }
-      if (zb.rise > 0.3) { p.armL.rotation.x = p.armR.rotation.x = 1.2; p.legL.rotation.x = p.legR.rotation.x = 0; }
+      const moving = Math.hypot(zb.vx, zb.vz) > 0.15;
+      this.pose(zb, dt, moving, crawlK);
 
       // Groans
       zb.groanTimer -= dt;
@@ -942,6 +1039,86 @@ export class Zombies {
       }
     }
     this.nearest = nearest;
+  }
+
+  // The body's pose this frame: crawling, walking or running (its own gait,
+  // a limp), standing about (its own idle habit), and what's been done to it
+  pose(zb, dt, moving, crawlK) {
+    const p = zb.parts, G = zb.gait, K = zb.headKick, t = zb.phase, T = performance.now() / 1000 + G.seed;
+    for (const k of ['torso', 'head', 'armL', 'armR', 'legL', 'legR']) {
+      const part = p[k], b = part.userData.base;
+      part.position.set(b.x, b.y, b.z - 0.17 * crawlK); // (lying down, lifted off the floor)
+      part.rotation.set(0, 0, 0);
+    }
+    p.head.rotation.x = K.x;
+    if (crawlK > 0) {
+      // Dragging itself along on its hands; the head up, looking for you
+      const pull = moving ? Math.sin(t * 1.6) : Math.sin(T * 0.8) * 0.2;
+      p.armL.rotation.x = -Math.PI / 2 * crawlK + (1 - crawlK) * 0.5 + pull * 0.7;
+      p.armR.rotation.x = -Math.PI / 2 * crawlK + (1 - crawlK) * 0.5 - pull * 0.7;
+      p.armL.rotation.z = 0.3 * crawlK; p.armR.rotation.z = -0.3 * crawlK;
+      p.head.rotation.x = K.x - 0.9 * crawlK;
+      p.torso.rotation.z = pull * 0.08;
+      const drag = moving ? Math.sin(t * 1.6 + 1) * 0.15 : 0;
+      p.legL.rotation.x = drag; p.legR.rotation.x = -drag;
+      if (zb.attackCd > 1.0) { p.armL.rotation.x = p.armR.rotation.x = -Math.PI / 2 - 0.4; }
+      return;
+    }
+    const chase = zb.state === 'chase';
+    const bad = Math.max(zb.legDmg.L, zb.legDmg.R) / zb.maxHp > 0.3 ? (zb.legDmg.L > zb.legDmg.R ? 'L' : 'R') : null;
+    if (moving) {
+      // Walking (or running): its own stride and arms; a dragging foot; a limp
+      const st = G.stride * (chase ? 1.25 : 1), sw = Math.sin(t) * st;
+      p.legL.rotation.x = sw * (bad === 'L' ? 0.35 : 1) + (G.drag === 1 ? 0.15 : 0);
+      p.legR.rotation.x = -sw * (bad === 'R' ? 0.35 : 1) + (G.drag === -1 ? 0.15 : 0);
+      const arms = chase ? -0.15 : G.arms;
+      p.armL.rotation.x = arms + Math.sin(t * 0.5) * 0.15;
+      p.armR.rotation.x = arms + Math.cos(t * 0.5) * 0.15;
+      p.torso.rotation.x = chase ? 0.22 : 0.08 + (G.arms > 1 ? 0.12 : 0);
+      // lurching side to side with each step, worse on a bad leg
+      const roll = Math.sin(t) * (G.lurch + (bad ? 0.14 : 0)) * (bad === 'R' ? -1 : 1);
+      p.torso.rotation.z = roll; p.head.rotation.z = -roll * 0.6 + Math.sin(t * 0.3 + zb.groanTimer) * 0.15;
+    } else {
+      // Standing about: each has its habit
+      p.legL.rotation.x = p.legR.rotation.x = 0;
+      const hang = 1.35 + Math.sin(T * 0.9) * 0.08;
+      p.armL.rotation.x = chase ? -0.15 : hang; p.armR.rotation.x = chase ? -0.15 : hang + 0.05;
+      p.torso.rotation.x = 0.08;
+      switch (chase ? 'sway' : zb.idleKind) {
+        case 'sway': p.torso.rotation.z = Math.sin(T * 0.7) * 0.1; p.head.rotation.z = Math.sin(T * 0.5) * 0.3; break;
+        case 'hunch': p.torso.rotation.x = 0.5; p.head.rotation.x = K.x + 0.45; p.armL.rotation.x = p.armR.rotation.x = 1.5 + Math.sin(T) * 0.06; p.torso.rotation.z = Math.sin(T * 0.4) * 0.05; break;
+        case 'twitch': {
+          if (Math.random() < dt * 0.7) K.v += (Math.random() - 0.5) * 9;
+          if (Math.random() < dt * 0.3) zb.flail = 0.25;
+          p.head.rotation.z = Math.sin(T * 0.4) * 0.2; break;
+        }
+        case 'scratch': { const c = Math.max(0, Math.sin(T * 0.5)); p.armR.rotation.x = hang - c * 2.6; p.armR.rotation.z = -c * 0.4; p.head.rotation.z = c * 0.3; break; }
+        case 'look': p.head.rotation.y = Math.sin(T * 0.35) * 0.7; p.torso.rotation.y = Math.sin(T * 0.35) * 0.15; break;
+      }
+    }
+    if (zb.attackCd > 1.0) { p.armL.rotation.x = -0.6; p.armR.rotation.x = -0.6; }
+    // a stumble: pitched forward, arms out to catch itself
+    if (zb.stumble > 0.2) { const k = Math.min(1, zb.stumble / 0.5); p.torso.rotation.x += 0.35 * k; p.armL.rotation.x = p.armR.rotation.x = -0.7 * k + p.armL.rotation.x * (1 - k); }
+    if (zb.flail > 0) {
+      // Arms thrown out by the hit
+      zb.flail -= dt;
+      const k = Math.max(0, zb.flail / 0.6);
+      p.armL.rotation.x -= k * 0.9; p.armR.rotation.x -= k * 0.7;
+      p.armL.rotation.z = k * 0.6; p.armR.rotation.z = -k * 0.5;
+    }
+    if (zb.rise > 0.3) { p.armL.rotation.x = p.armR.rotation.x = 1.2; p.legL.rotation.x = p.legR.rotation.x = 0; }
+  }
+
+  // An open doorway close by (to line up on, rather than grind on its frame)
+  doorwayNear(zb) {
+    let best = null, bd = 2.2;
+    for (const b of this.world.hash.query(zb.pos.x - 2.2, zb.pos.z - 2.2, zb.pos.x + 2.2, zb.pos.z + 2.2, this._dw || (this._dw = []), zb.pos.y, zb.pos.y + 1.6)) {
+      const d = b.door && b.structure;
+      if (!d || !(d.broken || d.ang > 0.62) || Math.abs((d.base || 0) - zb.pos.y) > 1) continue;
+      const dd = Math.hypot(d.x - zb.pos.x, d.z - zb.pos.z);
+      if (dd < bd) { bd = dd; best = d; }
+    }
+    return best;
   }
 
   // Move on whatever floor it's on (stairs, storeys); refused where there's
@@ -1021,17 +1198,20 @@ export class Zombies {
     _ray.set(origin, dir); _ray.near = 0; _ray.far = maxDist;
     for (const zb of this.list) {
       if (zb.down) continue; // knocked-down bodies are hit through their ragdoll
-      const ox = zb.pos.x - origin.x, oz = zb.pos.z - origin.z;
+      // (a crawler's body lies out ahead of where its feet are)
+      const fwd = zb.crawl ? 0.9 * zb.def.scale : 0;
+      const bx = zb.pos.x + Math.sin(zb.dir) * fwd, bz = zb.pos.z + Math.cos(zb.dir) * fwd;
+      const ox = bx - origin.x, oz = bz - origin.z;
       const hd = Math.hypot(dir.x, dir.z) || 1e-6;
       // closest approach in XZ
       const tAlong = (ox * dir.x + oz * dir.z) / (hd * hd);
       if (tAlong < -1 || tAlong > maxDist + 1) continue;
-      const cx = origin.x + dir.x * tAlong - zb.pos.x, cz = origin.z + dir.z * tAlong - zb.pos.z;
-      if (Math.hypot(cx, cz) > 1.1 * zb.def.scale) continue;
+      const cx = origin.x + dir.x * tAlong - bx, cz = origin.z + dir.z * tAlong - bz;
+      if (Math.hypot(cx, cz) > (zb.crawl ? 1.3 : 1.1) * zb.def.scale) continue;
       zb.mesh.updateMatrixWorld(true);
       _hits.length = 0;
       _ray.intersectObject(zb.mesh, true, _hits);
-      const h = _hits[0];
+      const h = _hits.find((x) => !x.object.userData.gone);
       if (!h || (best && h.distance >= best.t)) continue;
       let head = false;
       for (let o = h.object; o && o !== zb.mesh; o = o.parent) if (o === zb.parts.head) head = true;

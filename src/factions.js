@@ -76,7 +76,7 @@ export class Factions {
     if (G.kind === 'gang') {
       // hardened: tougher, better shots, never unarmed for long
       s.skill = Math.max(s.skill, 0.85 + Math.random() * 0.35);
-      s.maxHp = Math.max(s.maxHp, 140); s.hp = Math.max(s.hp, 140);
+      s.maxHp = Math.max(s.maxHp, 180); s.hp = Math.max(s.hp, 180);
       if (!s.nades && Math.random() < 0.45) s.nades = 1;
       if (!s.weapon) { const key = pick(['pm', 'pm', 'mp133', 'sks', 'glock17']), def = ITEMS[key]; s.weapon = makeItem(key, { loaded: def.tube || ITEMS[def.magKey].cap }); s.reserve = (def.tube || ITEMS[def.magKey].cap) * 2; s.buildGun?.(); }
     }
@@ -96,6 +96,7 @@ export class Factions {
     if (!pool.length) return false;
     const b = pick(pool);
     G.b = b.index;
+    this.noSpawnAt(b);
     // cleared out first: no dead left in the place
     const Z = g.zombies;
     for (let i = Z.list.length - 1; i >= 0; i--) {
@@ -140,7 +141,7 @@ export class Factions {
       if (G.guard && !mem.some((s) => s.id === G.guard)) G.guard = null;
       // Gangs grow while they've guns to hand out
       G.recruitT += 2;
-      if (G.kind === 'gang' && G.base && mem.length < MAX_GANG && G.recruitT > 300 && Math.hypot(p.pos.x - G.base.x, p.pos.z - G.base.z) > 40) {
+      if (G.kind === 'gang' && G.base && mem.length < MAX_GANG && G.recruitT > 600 && Math.hypot(p.pos.x - G.base.x, p.pos.z - G.base.z) > 40) {
         const gun = G.stash?.grid.items.find((it) => GUN_RANK[it.key]);
         if (gun) {
           G.recruitT = 0;
@@ -390,8 +391,11 @@ export class Factions {
 
   serialize() { return this.groups.map((G) => ({ id: G.id, kind: G.kind, disp: G.disp, name: G.name, b: G.b, base: G.base, known: G.known || undefined, recruitT: Math.round(G.recruitT), joined: G.joined || undefined })); }
 
+  noSpawnAt(b) { this.game.zombies?.noSpawn.push({ x0: b.x0 - 10, x1: b.x1 + 10, z0: b.z0 - 10, z1: b.z1 + 10 }); }
+
   restore(saved) {
     this.groups = (saved || []).map((G) => ({ ...G, alert: null, target: null, guard: null }));
+    for (const G of this.groups) if (G.b != null) this.noSpawnAt(this.world.buildings[G.b]);
     for (const G of this.groups) G.stash = this.world.containers.find((c) => c.gid === G.id) || null;
   }
 }

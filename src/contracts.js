@@ -225,6 +225,7 @@ export class Mission {
     this.out = out.normalize();
     this.side = new THREE.Vector3(-this.out.z, 0, this.out.x);
     if (!this.st.setup) this.setup();
+    else for (const s of game.survivors?.list || []) if (s.vip && s.order === 'wait') game.zombies.noSpawn.push({ x0: s.pos.x - 15, x1: s.pos.x + 15, z0: s.pos.z - 15, z1: s.pos.z + 15 });
     this.checkT = 0; this.waveT = 0; this.callT = 0; this.retargetT = 0;
     this.el = $('mission'); this.banner = $('mission-banner');
     this.heli = null; this.sound = null;
@@ -305,7 +306,11 @@ export class Mission {
 
   spawnScientist(name, at) {
     const S = this.game.survivors, d = S.makeData({ x: at.x, z: at.z, disp: 'friendly' });
-    Object.assign(d, { name, vip: true, persona: 'nervous', trust: 60, order: 'wait', melee: 'knife', reserve: 16, weapon: makeItem('pm', { loaded: 8 }) });
+    Object.assign(d, { name, vip: true, persona: 'nervous', trust: 60, order: 'wait', melee: 'knife', reserve: 24, weapon: makeItem('pm', { loaded: 8 }), hp: 260, maxHp: 260 });
+    // they've barricaded themselves in: nothing dead left right round them
+    const Z = this.game.zombies;
+    for (let i = Z.list.length - 1; i >= 0; i--) { const zb = Z.list[i]; if (Math.hypot(zb.pos.x - at.x, zb.pos.z - at.z) < 18) { this.game.scene.remove(zb.mesh); Z.list.splice(i, 1); } }
+    Z.noSpawn.push({ x0: at.x - 15, x1: at.x + 15, z0: at.z - 15, z1: at.z + 15 });
     d.look.shirt = 0xe4e4dc; d.look.pants = 0x3a3e48; d.look.hat = null; // a lab coat
     return S.addNPC(d);
   }

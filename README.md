@@ -305,7 +305,7 @@ The gunsmith trader sells the NATO guns as your reputation grows.
   - Shaky hands can **fumble** the magazine: it knocks the edge of the well, comes back out and goes in on the second try.
   - All of this stays out of your sight picture when aiming. The steadiness there comes from the sway system.
 - **Guns skill.** Hip fire gets more accurate as your Guns skill rises. At 0 a hip-fired round can land anywhere in a wide cone; at 8, hip fire is as accurate as aiming down the sights, and moving costs you less accuracy. The skill rises as you hit things with firearms, faster for hip-fire hits and kills. Police start with +1 and veterans with +2.
-- **No ammo counter.** Press **T** to check your magazine, which gives a rough "About half" reading. **Z** switches fire mode on the AK.
+- **No ammo counter.** Press **T** to check your magazine, which gives a rough "About half" reading. Double-tap **T** (or **Shift+T**) to check the chamber, which tells you the round type loaded. **Z** switches fire mode on the AK.
 - **Aiming physics.**
   - **Mouse lag:** the gun lags behind your mouse, more loosely at a run.
   - **Breathing:** your breathing sways the gun in a figure-8. Sway grows when you're low on stamina, tired, or moving.
@@ -427,7 +427,7 @@ Zombies and survivors react physically to what hits them.
 | Shift while aiming | Hold breath |
 | J / K | Goals panel / skip the tutorial (with the panel open) |
 | R / double-tap R | Reload / quick reload (drops the mag) |
-| T / Z | Check magazine / switch fire mode |
+| T / Z | Check magazine (double-tap or Shift+T: chamber) / switch fire mode |
 | Q / E | Lean left / right |
 | G | Lower / raise your weapon (survivors and traders relax) |
 | 1, 2 | Switch between firearm and melee |
