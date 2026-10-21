@@ -140,7 +140,7 @@ export function worldTextures() {
 }
 
 // Wall patterns (per instance): which finish a wall gets.
-export const WALL = { brick: 0, siding: 1, concrete: 2, plaster: 3 };
+export const WALL = { brick: 0, siding: 1, concrete: 2, plaster: 3, panel: 4, logs: 5 };
 
 // Patch a material so it samples one of the four wall finishes in world
 // space, picked per instance by the `pattern` attribute.
@@ -173,10 +173,21 @@ export function wallMaterial() {
         if (vPattern < 0.5) det = texture2D(tBrick, wuv).rgb;
         else if (vPattern < 1.5) det = texture2D(tSiding, wuv).rgb;
         else if (vPattern < 2.5) det = texture2D(tConcrete, wuv / 2.0).rgb;
-        else det = texture2D(tPlaster, wuv).rgb;
+        else if (vPattern < 3.5) det = texture2D(tPlaster, wuv).rgb;
+        else if (vPattern < 4.5) {
+          // precast concrete panels: a dark seam between every panel and storey
+          det = texture2D(tConcrete, wuv / 2.0).rgb * 1.05;
+          float h = an.x > an.z ? vWPos.z : vWPos.x;
+          float fx = fract(h / 3.2), fy = fract(vWPos.y / 3.25);
+          if (min(fx, 1.0 - fx) * 3.2 < 0.03 || min(fy, 1.0 - fy) * 3.25 < 0.03) det *= 0.45;
+        } else {
+          // horizontal logs, each rounded, the grain running along them
+          float l = fract(vWPos.y / 0.24);
+          det = texture2D(tSiding, wuv * 0.5).rgb * (0.6 + 0.45 * sin(l * 3.14159));
+        }
         diffuseColor.rgb *= 0.35 + det * 0.85;`);
   };
-  mat.customProgramCacheKey = () => 'walls-v1';
+  mat.customProgramCacheKey = () => 'walls-v2';
   return mat;
 }
 

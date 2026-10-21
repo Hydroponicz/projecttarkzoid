@@ -10,7 +10,7 @@ import { mergeableMaterial } from './worldtex.js';
 const CELL = 40;
 const TOWN = 100;   // town lots end here (the outer town road runs along it)
 const DIRT = 6;     // dirt road width
-const FARM_NAMES = ['Miller', 'Hollow Creek', 'Kessler', 'Sunny Acres', 'Old Mill', 'Brandt', 'Pine Ridge', 'Whitfield', 'Cedar Hill', 'Novak'];
+const FARM_NAMES = ['Kolkhoz Rassvet', 'Sokolov Khutor', 'Kolkhoz Pobeda', 'Berezovka', 'Old Mill', 'Ivanov Khutor', 'Sosnovka', 'Kolkhoz Iskra', 'Krasnaya Gorka', 'Novak'];
 
 // Geometry with a flat vertex colour so many parts merge into one mesh.
 function colored(geo, hex) {
@@ -287,7 +287,7 @@ export function buildCountryside(ctx) {
 
   // --- farm ---
   function farm(c, idx) {
-    const name = `${FARM_NAMES[idx % FARM_NAMES.length]} Farm`;
+    const base = FARM_NAMES[idx % FARM_NAMES.length], name = /^(Kolkhoz|Sokolov|Ivanov)/.test(base) ? base : `${base} Farm`;
     const sx = rand() < 0.5 ? 1 : -1, sz = rand() < 0.5 ? 1 : -1, tr = rand() < 0.5;
     const P = (u, v) => { const [a, b] = tr ? [v, u] : [u, v]; return [c.cx + a * sx, c.cz + b * sz]; };
     const dims = (w, d) => (tr ? [d, w] : [w, d]);

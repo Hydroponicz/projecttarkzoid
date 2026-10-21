@@ -204,6 +204,7 @@ export class HUD {
       house: '#8a7a62', shop: '#6a7a8a', clinic: '#c8c8c0', warehouse: '#5a5a4a', pharmacy: '#6ac08a', hospital: '#e8e8e0',
       office: '#7a8aa8', skyscraper: '#9aaac8', police: '#4a6ab8', grocery: '#b8984a', hardware: '#a86a3a', gas: '#c85a3a', military: '#5a6a3a',
       farmhouse: '#c8bca0', barn: '#a83a2a', cabin: '#6a4a2a',
+      panel5: '#a8a49a', panel9: '#b8b8b4', stalinka: '#c8b088', factory: '#8a4a3a', boiler: '#7a4234', dacha: '#7a8a5a',
     };
     for (const b of game.world.buildings) {
       if (b.area) { ctx.strokeStyle = '#7a8a4a'; ctx.setLineDash([4, 3]); ctx.strokeRect(tx(b.x0), tx(b.z0), (b.x1 - b.x0) * S, (b.z1 - b.z0) * S); ctx.setLineDash([]); continue; }

@@ -11,10 +11,11 @@ import { buildCountryside, plantTrees } from './countryside.js';
 import { worldTextures, wallMaterial, WALL, worldUV, mergeableMaterial } from './worldtex.js';
 import { Levels, LH } from './levels.js';
 import { buildStoreys, STOREYS } from './storeys.js';
+import * as East from './eastern.js';
 
 export const HALF = 220;      // map half-size (town in the middle, countryside around it)
 // Bump when generation changes so old saves don't map loot onto new layouts.
-export const WORLD_VERSION = 5;
+export const WORLD_VERSION = 6;
 const BLOCK = 40;             // road grid spacing
 const ROAD = 8;
 const WALL_H = 3.0;
@@ -208,6 +209,16 @@ export function buildWorld(scene, seed) {
     return c;
   }
 
+  // A container with no model of its own (the till in a counter, a drawer)
+  function lootSpot(type, x, z, y) {
+    const ct = CONTAINER_TYPES[type], grid = makeGrid(ct.w, ct.h);
+    for (const it of rollLoot(type, Math.floor(ct.rolls[0] + rand() * (ct.rolls[1] + 1 - ct.rolls[0])), rand)) addItem(grid, it);
+    const c = { kind: 'container', type, name: ct.name, x, z, grid, y };
+    if (inClear(x - 0.2, z - 0.2, x + 0.2, z + 0.2)) c.retired = true;
+    containers.push(c);
+    return c;
+  }
+
   // --- buildings ---
   // Archetypes: look, signage, interior layout and which containers go where.
   // Loot follows a building's purpose (pills in pharmacies, paperwork in
@@ -216,27 +227,42 @@ export function buildWorld(scene, seed) {
   // on the side with the front door; corridor buildings only on the room sides.
   const STORE_WIN = { w: 1.3, gap: 3.4, sill: 0.9, top: 2.1, skip: 0.35, front: { w: 2.6, gap: 3.3, sill: 0.45, top: 2.25 } };
   const CORRIDOR_WIN = { w: 1.4, gap: 2.75, sill: 0.9, top: 2.1, sides: ['n', 's'], skip: 0.05 };
+  const PANEL_WIN = { w: 1.3, gap: 2.6, sill: 0.9, top: 2.2, sides: ['n', 's'], skip: 0.04 };
+  const FLAT_INT = [0xd8d0b8, 0xc8d0c0, 0xe0d8c8, 0xd0c0a8, 0xb8c8c8];
+  const FLAT_LOOT = ['wardrobe', 'kitchen', 'dresser', 'cabinet', 'nightstand'];
   const KINDS = {
     house: { roof: { type: 'gable', color: [0x4a3a32, 0x3a3a3c, 0x5a2a22, 0x2a3a4a] }, floor: 0x6b5a45, wall: [0xb8a68a, 0x9c8b77, 0xa7a29a, 0x8c7a6a], interior: [0xd8d0c0, 0xc8d0c8, 0xd8c8b8, 0xe0dcd0, 0xc0c8d0] },
-    shop: { floor: 0x55585a, wall: [0x7a8a9a, 0x8a7a6a], sign: { text: 'GENERAL STORE', bg: '#6a5a3a' }, windows: STORE_WIN, checkout: true, wallLoot: ['cabinet', 'foodshelf', 'fridge', 'crate', 'toolbox'] },
-    clinic: { floor: 0xc8c8c0, wall: [0xd8d8d0], sign: { text: 'CLINIC', bg: '#2a6a9a', cross: true }, wallLoot: ['medbox', 'medbox', 'medcab', 'pc', 'pillshelf'], zombies: { type: 'patient', n: 3 } },
+    shop: { floor: 0x55585a, wall: [0x7a8a9a, 0x8a7a6a], sign: { text: 'ПРОДУКТЫ 24', label: 'Corner Shop', bg: '#2a7a3a' }, windows: STORE_WIN, checkout: true, wallLoot: ['cabinet', 'foodshelf', 'fridge', 'crate', 'toolbox'] },
+    clinic: { floor: 0xc8c8c0, wall: [0xd8d8d0], sign: { text: 'ПОЛИКЛИНИКА', label: 'Clinic', bg: '#2a6a9a', cross: true }, wallLoot: ['medbox', 'medbox', 'medcab', 'pc', 'pillshelf'], zombies: { type: 'patient', n: 3 } },
     warehouse: { floor: 0x4a4a48, wall: [0x6a6a5a, 0x5a6050], windows: { w: 1.6, gap: 4.5, sill: 1.9, top: 2.6, skip: 0.3 }, open: true, wallLoot: ['crate', 'toolbox', 'cabinet', 'lumber', 'lumber', 'toolshelf', 'parts_shelf', 'toolbench'] },
-    pharmacy: { floor: 0xd8dcd8, wall: [0xe0e4e0, 0xcfd8d0], sign: { text: 'PHARMACY', bg: '#1f7a3a', cross: true }, windows: STORE_WIN, checkout: true, wallLoot: ['pillshelf', 'pillshelf', 'medcab', 'fridge'], aisles: { type: 'pillshelf', rows: 2 }, zombies: { n: 3 } },
-    hospital: { floor: 0xd0d4d0, wall: [0xe4e4dc], sign: { text: 'HOSPITAL', bg: '#a02020', cross: true }, corridor: true, windows: CORRIDOR_WIN, roomRoles: ['exam', 'exam', 'supply', 'generic'], roomLoot: ['medcab', 'surgical', 'medbox', 'pillshelf', 'medcab'], wardBeds: true, storeys: 3, zombies: { type: 'patient', n: 16 } },
+    pharmacy: { floor: 0xd8dcd8, wall: [0xe0e4e0, 0xcfd8d0], sign: { text: 'АПТЕКА', label: 'Pharmacy', bg: '#1f7a3a', cross: true }, sales: true, windows: STORE_WIN, checkout: true, wallLoot: ['pillshelf', 'pillshelf', 'medcab', 'fridge'], zombies: { n: 3 } },
+    hospital: { floor: 0xd0d4d0, wall: [0xe4e4dc], sign: { text: 'БОЛЬНИЦА', label: 'Hospital', bg: '#a02020', cross: true }, corridor: true, windows: CORRIDOR_WIN, roomRoles: ['exam', 'exam', 'supply', 'generic'], roomLoot: ['medcab', 'surgical', 'medbox', 'pillshelf', 'medcab'], wardBeds: true, storeys: 3, zombies: { type: 'patient', n: 16 } },
     office: { floor: 0x5a5e62, wall: [0x8a9098, 0x9a8a7a], sign: { company: true, bg: '#2a3a5a' }, windows: { w: 1.6, gap: 2.6, sill: 0.8, top: 2.3 }, desks: true, wallLoot: ['filing', 'filing', 'filing', 'pc', 'server', 'fridge'], storeys: 2, zombies: { n: 5 } },
     skyscraper: { floor: 0x4a4e52, wall: [0x6a7a8a, 0x5a6470], sign: { company: true, bg: '#14141e' }, corridor: true, windows: CORRIDOR_WIN, roomRoles: ['generic', 'generic', 'exec', 'server'], roomLoot: ['desk', 'desk', 'filing', 'pc', 'server', 'safe'], roomDesks: true, tower: true, zombies: { n: 9 } },
-    police: { floor: 0x5a5a60, wall: [0x7a8aa0], sign: { text: 'POLICE', bg: '#1a3a8a' }, corridor: true, cells: true, roomRoles: ['office', 'office', 'lockers', 'evidence', 'generic'], windows: { ...CORRIDOR_WIN, sill: 1.2, w: 1.0 }, roomLoot: ['policelocker', 'policelocker', 'evidence', 'desk', 'filing'], storeys: 2, zombies: { n: 5 } },
-    grocery: { floor: 0xb0aca0, wall: [0xa89878, 0x9a8a6a], sign: { text: 'GROCERY', bg: '#8a5a1a' }, windows: STORE_WIN, checkout: true, aisles: { type: 'foodshelf', rows: 3 }, wallLoot: ['fridge', 'fridge', 'fridge', 'foodshelf'], zombies: { n: 5 } },
-    hardware: { floor: 0x7a7468, wall: [0x9a6a3a, 0x8a7a5a], sign: { text: 'HARDWARE', bg: '#8a3a1a' }, windows: STORE_WIN, checkout: true, aisles: { type: 'toolshelf', rows: 2 }, wallLoot: ['lumber', 'lumber', 'toolbox', 'toolshelf'], zombies: { n: 3 } },
-    gas: { floor: 0x8a8a84, wall: [0xd8d0c0], sign: { text: 'FUEL & SNACKS', bg: '#b03a1a' }, windows: STORE_WIN, checkout: true, wallLoot: ['foodshelf', 'fridge', 'cabinet', 'foodshelf'] },
-    mechanic: { floor: 0x5a5a58, wall: [0x8a8478, 0x6a7a8a], sign: { text: 'AUTO REPAIR', bg: '#2a4a7a' }, garage: true, open: true, windows: { w: 1.4, gap: 3.4, sill: 1.1, top: 2.2, skip: 0.3 }, wallLoot: ['parts_shelf', 'toolbench', 'tire_rack', 'toolbox'] },
-    military: { floor: 0x5a5a4a, wall: [0x5a6a4a], sign: { text: 'COMMAND POST', bg: '#3a4a2a' }, windows: { w: 1.0, gap: 3.0, sill: 1.1, top: 1.9 }, wallLoot: ['milcrate', 'duffel', 'ammobox', 'milcrate', 'surgical'] },
+    police: { floor: 0x5a5a60, wall: [0x7a8aa0], sign: { text: 'ПОЛИЦИЯ', label: 'Police Station', bg: '#1a3a8a' }, corridor: true, cells: true, roomRoles: ['office', 'office', 'lockers', 'evidence', 'generic'], windows: { ...CORRIDOR_WIN, sill: 1.2, w: 1.0 }, roomLoot: ['policelocker', 'policelocker', 'evidence', 'desk', 'filing'], storeys: 2, zombies: { n: 5 } },
+    grocery: { floor: 0xb0aca0, wall: [0xa89878, 0x9a8a6a], sign: { text: 'ГАСТРОНОМ', label: 'Gastronom', bg: '#a82a1a' }, sales: true, windows: STORE_WIN, checkout: true, wallLoot: ['fridge', 'fridge', 'fridge', 'foodshelf'], zombies: { n: 5 } },
+    hardware: { floor: 0x7a7468, wall: [0x9a6a3a, 0x8a7a5a], sign: { text: 'ХОЗТОВАРЫ', label: 'Hardware Store', bg: '#8a3a1a' }, sales: true, windows: STORE_WIN, checkout: true, wallLoot: ['lumber', 'lumber', 'toolbox', 'toolshelf'], zombies: { n: 3 } },
+    gas: { floor: 0x8a8a84, wall: [0xd8d0c0], sign: { text: 'АЗС 24', label: 'Gas Station', bg: '#1a4aa8' }, windows: STORE_WIN, checkout: true, wallLoot: ['foodshelf', 'fridge', 'cabinet', 'foodshelf'] },
+    mechanic: { floor: 0x5a5a58, wall: [0x8a8478, 0x6a7a8a], sign: { text: 'АВТОСЕРВИС', label: 'Auto Repair', bg: '#2a4a7a' }, garage: true, open: true, windows: { w: 1.4, gap: 3.4, sill: 1.1, top: 2.2, skip: 0.3 }, wallLoot: ['parts_shelf', 'toolbench', 'tire_rack', 'toolbox'] },
+    military: { floor: 0x5a5a4a, wall: [0x5a6a4a], sign: { text: 'КОМЕНДАТУРА', label: 'Command Post', bg: '#3a4a2a' }, windows: { w: 1.0, gap: 3.0, sill: 1.1, top: 1.9 }, wallLoot: ['milcrate', 'duffel', 'ammobox', 'milcrate', 'surgical'] },
+    // Housing blocks (real floors in storeys.js): the five-storey
+    // Khrushchyovka, the nine-storey panel block, the Stalin-era block
+    panel5: { floor: 0x7a6a58, wall: [0xc8c4b8, 0xb8b8b0, 0xd0c8b4, 0xa8b0b0], interior: FLAT_INT, finish: 'panel', corridor: true, windows: PANEL_WIN, roomRoles: ['flat'], roomLoot: FLAT_LOOT, balconies: true, zombies: { n: 4 } },
+    panel9: { floor: 0x7a6a58, wall: [0xd8d4cc, 0xc0c4c8, 0xb8c0b8, 0xd8c8b8], interior: FLAT_INT, finish: 'panel', corridor: true, windows: PANEL_WIN, roomRoles: ['flat'], roomLoot: FLAT_LOOT, balconies: true, zombies: { n: 5 } },
+    stalinka: { floor: 0x6a5a48, wall: [0xd8c08a, 0xe0c8a0, 0xc8a87a, 0xd0b8a0], interior: FLAT_INT, finish: 'plaster', corridor: true, windows: { w: 1.2, gap: 2.5, sill: 0.8, top: 2.4, sides: ['n', 's'], skip: 0.03 }, roomRoles: ['flat'], roomLoot: FLAT_LOOT, balconies: true, zombies: { n: 4 } },
+    // Industry
+    factory: { floor: 0x5a5a54, wall: [0x8a5a44, 0x7a5040, 0x9a6a50], finish: 'brick', open: true, windows: { w: 2.2, gap: 3.6, sill: 1.5, top: 2.8, skip: 0.15 }, sign: { text: 'ЗАВОД «КРАСНЫЙ ОКТЯБРЬ»', label: 'Red October Plant', bg: '#8a1a1a' }, zombies: { n: 7 } },
+    boiler: { floor: 0x4a4a48, wall: [0x8a4a3a, 0x7a4234], finish: 'brick', open: true, windows: { w: 1.0, gap: 3.0, sill: 1.6, top: 2.6, skip: 0.3 }, sign: { text: 'КОТЕЛЬНАЯ', label: 'Boiler House', bg: '#4a4a48' }, zombies: { n: 2 } },
+    // A dacha: a little log or board house in a garden plot
+    dacha: { home: true, roof: { type: 'gable', color: [0x6a7a8a, 0x8a3a2a, 0x3a5a3a, 0x5a5a5a] }, floor: 0x6b5a45, wall: [0x6a8a5a, 0x5a7a9a, 0xa8784a, 0x8a5a3a, 0xc8b070], interior: [0xd8c8a8, 0xc8d0b8, 0xe0d8c0], finish: 'logs' },
     // Countryside
     farmhouse: { home: true, farm: true, roof: { type: 'gable', color: [0x4a3a32, 0x3a3a3c, 0x5a2a22] }, floor: 0x6b5a45, wall: [0xe8e2d4, 0xd8c8a0, 0xb8c4c8, 0xc8b89a], interior: [0xe0d8c0, 0xd8d0b8, 0xc8d0c0, 0xe8e0d0] },
     barn: { barnDoor: true, open: true, roof: { type: 'gambrel', color: [0x3a3a3c, 0x5a5048] }, floor: 0x5a4a34, wall: [0x8a2a1e, 0x7a2a20, 0x9a3424, 0x6a6058], windows: { w: 0.9, gap: 4.2, sill: 1.9, top: 2.6, skip: 0.35 } },
     cabin: { open: true, roof: { type: 'gable', color: [0x3a3a32, 0x2a3a2a] }, floor: 0x5a4a34, wall: [0x6a4a2a, 0x5a4026], windows: { w: 0.9, gap: 3.0, sill: 1.0, top: 1.9, skip: 0.3 } },
   };
-  const COMPANIES = ['VERTEX CAPITAL', 'NORDLINE LOGISTICS', 'HALVERSEN & KLINE', 'OKAFOR DYNAMICS', 'MERIDIAN INSURANCE', 'GREYSTONE PARTNERS', 'ARKWELL ENERGY', 'LUMEN BIOTECH'];
+  // Firms on the office blocks: the sign in Cyrillic, the map label in Latin
+  const COMPANIES = ['СЕВЕРТРАНС', 'ТЕХНОСТРОЙ-М', 'АГРОПРОМИНВЕСТ', 'НЕФТЕХИМ-ЮГ', 'ПОЛЮС КАПИТАЛ', 'ЗВЕЗДА ЛОГИСТИК', 'МЕРИДИАН СТРАХ', 'ЛУЧ БИОТЕХ'];
+  const LATIN = { 'СЕВЕРТРАНС': 'Severtrans', 'ТЕХНОСТРОЙ-М': 'Tekhnostroy-M', 'АГРОПРОМИНВЕСТ': 'Agropromivest', 'НЕФТЕХИМ-ЮГ': 'Neftekhim-Yug', 'ПОЛЮС КАПИТАЛ': 'Polyus Capital', 'ЗВЕЗДА ЛОГИСТИК': 'Zvezda Logistics', 'МЕРИДИАН СТРАХ': 'Meridian Insurance', 'ЛУЧ БИОТЕХ': 'Luch Biotech' };
   const companies = shuffle([...COMPANIES]); // each firm appears once
   const zombieSpawns = [];
   const landmarks = [];
@@ -254,8 +280,8 @@ export function buildWorld(scene, seed) {
       g.fillRect(34, 40, 52, 32); g.fillRect(44, 30, 32, 52);
       tx = 290;
     }
-    g.fillStyle = '#fff'; g.font = `bold ${text.length > 13 ? 38 : 48}px sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle';
-    g.fillText(text, tx, 58);
+    g.fillStyle = '#fff'; g.font = `bold ${text.length > 16 ? 34 : text.length > 13 ? 38 : 48}px sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.fillText(text, tx, 58, cross ? 400 : 480);
     const tex = new THREE.CanvasTexture(c);
     tex.colorSpace = THREE.SRGBColorSpace;
     const m = new THREE.Mesh(new THREE.PlaneGeometry(3.4, 0.75), new THREE.MeshStandardMaterial({ map: tex, emissiveMap: tex, emissive: 0xffffff, emissiveIntensity: 0.35, roughness: 0.6 }));
@@ -430,7 +456,7 @@ export function buildWorld(scene, seed) {
     };
     const span = (side) => (side < 2 ? [inner.x0, inner.x1] : [inner.z0, inner.z1]);
     const P = {
-      room, inner, occ,
+      room, inner, occ, wins,
       // Put a piece down (container or furniture) and claim its footprint.
       put(type, x, z, rot, opt = {}) {
         const [w, d, h] = dims(type);
@@ -517,30 +543,40 @@ export function buildWorld(scene, seed) {
   ];
 
   function furnishLiving(P, withKitchen) {
+    // Most flats here were furnished in the 70s: a wall unit, a carpet hung
+    // over the sofa, a tube telly on a stand
+    const soviet = rand() < 0.6, tvType = soviet ? 'crt_tv' : 'tv_stand';
     const sofa = P.wall('sofa');
     if (sofa) {
-      const tv = P.wall('tv_stand', { sides: [opposite(sofa.side)] });
+      const tv = P.wall(tvType, { sides: [opposite(sofa.side)] });
       const f = frontOf(sofa);
+      const kx = sofa.x - f.x * (FOOT.sofa[1] / 2), kz = sofa.z - f.z * (FOOT.sofa[1] / 2);
+      if (soviet && !P.wins.some((wn) => Math.hypot(wn.x - kx, wn.z - kz) < wn.w / 2 + 1.2)) fur.model('wall_carpet', kx, kz, sofa.rot, { w: Math.min(2.2, FOOT.sofa[0]) }, rand);
       P.open('rug', sofa.x + f.x * 1.25, sofa.z + f.z * 1.25, sofa.rot, { free: true });
       P.open('coffee_table', sofa.x + f.x * 1.05, sofa.z + f.z * 1.05, sofa.rot);
-      if (!tv) P.wall('tv_stand');
+      if (!tv) P.wall(tvType);
       if (rand() < 0.7) P.beside(sofa, rand() < 0.5 ? 'plant' : 'floor_lamp', rand() < 0.5 ? -1 : 1);
     }
-    else { P.wall('armchair'); P.wall('armchair'); P.wall('tv_stand'); }
+    else { P.wall('armchair'); P.wall('armchair'); P.wall(tvType); }
     if (rand() < 0.7) P.wall('armchair');
-    if (rand() < 0.75) P.wall('bookshelf');
+    if (soviet) P.wall('stenka') || P.wall('bookshelf');
+    else if (rand() < 0.75) P.wall('bookshelf');
     if (rand() < 0.5) P.wall('cabinet');
     if (withKitchen) furnishKitchen(P, true);
     else if (rand() < 0.5) P.wall('plant');
   }
 
   function furnishKitchen(P, small) {
-    const style = pick(KITCHEN_STYLES);
-    const run = ['fridge', 'kitchen', 'sink_counter', 'stove', 'kitchen'];
+    const style = pick(KITCHEN_STYLES), soviet = rand() < 0.6;
+    const run = ['fridge', 'kitchen', 'sink_counter', soviet ? 'gas_stove' : 'stove', 'kitchen'];
     const r = P.run(small ? run.slice(0, 4) : run, style) || P.run(run.slice(0, 3), style);
     if (!r) { P.wall('fridge'); P.wall('kitchen', style); }
     const [w, d] = P.size();
-    if (w > 3.2 && d > 3.2) {
+    if (soviet) {
+      // a small table with an oilcloth and stools, pushed up to the wall
+      const t = P.wall('kitchen_table');
+      if (t) { const f = frontOf(t); for (const o of [-0.3, 0.3]) P.open('tabouret', t.x + f.x * 0.55 + (f.z ? o : 0), t.z + f.z * 0.55 + (f.x ? o : 0), 0); }
+    } else if (w > 3.2 && d > 3.2) {
       const c = P.centre();
       const rot = w >= d ? 0 : Math.PI / 2;
       const t = P.open('dining_table', c.x, c.z, rot, { pad: 1.0 });
@@ -662,12 +698,43 @@ export function buildWorld(scene, seed) {
   // Shops, clinics, offices, warehouses, the command post: furnished by what
   // the business does. Lootable pieces are mixed in with decorative ones.
   const STORES = {
-    shop: { loot: 'foodshelf', deco: 'store_shelf', extra: ['drinkfridge', 'freezer'] },
-    grocery: { loot: 'foodshelf', deco: 'store_shelf', extra: ['drinkfridge', 'freezer', 'freezer'] },
-    hardware: { loot: 'toolshelf', deco: 'tool_rack', extra: ['lumber', 'lumber'] },
-    pharmacy: { loot: 'pillshelf', deco: 'pharma_shelf', extra: ['medcab'] },
-    gas: { loot: 'foodshelf', deco: 'store_shelf', extra: ['drinkfridge', 'drinkfridge', 'vending'] },
+    shop: { loot: 'foodshelf', deco: 'wallshelf', extra: ['drinkfridge', 'freezer'], theme: 'grocery', band: 0xa8c83a, coolers: 2, till: true },
+    grocery: { loot: 'foodshelf', deco: 'wallshelf', extra: ['drinkfridge', 'freezer', 'freezer'], theme: 'grocery', band: 0xd8402a, coolers: 3, till: true, bread: true },
+    hardware: { loot: 'toolshelf', deco: 'tool_rack', extra: ['lumber', 'lumber'], theme: 'tools', band: 0xd87a1a, till: true },
+    pharmacy: { loot: 'pillshelf', deco: 'pharma_shelf', extra: ['medcab'], theme: 'pharmacy', band: 0x2a9a4a, coolers: 0, till: true },
+    gas: { loot: 'foodshelf', deco: 'wallshelf', extra: ['drinkfridge', 'drinkfridge', 'vending'], theme: 'grocery', band: 0x2a6ad8, coolers: 2, till: true },
   };
+  // A shop's sales floor the way they look now: a lattice of light panels in
+  // the ceiling, a coloured band of tile round the walls, coolers along the
+  // back, aisles of packed gondolas, the till by the door with the cigarette
+  // wall behind it, an ice-cream chest, a promo stand, a stack of baskets
+  function salesFloor(P, st, doors) {
+    const c = P.centre(), [rw, rd] = P.size(), inner = P.inner;
+    fur.model('ceiling_led', c.x, c.z, 0, { w: rw, d: rd }, rand, WALL_H - 0.035);
+    fur.model('wall_band', c.x, c.z, 0, { w: rw + 0.02, d: rd + 0.02, c: st.band }, rand, 1.95);
+    if (st.till) {
+      // the register on the counter is the lootable bit
+      const k = P.wall('kassa');
+      if (k) lootSpot('register', k.x + Math.cos(k.rot) * 0.55, k.z - Math.sin(k.rot) * 0.55, 1.05);
+      if (st.theme !== 'tools') P.wall('cig_wall');
+    }
+    for (let i = 0; i < (st.coolers ?? 0); i++) P.wall('cooler');
+    if (st.theme === 'grocery') { P.wall('icecream'); P.wall('promo'); P.wall('baskets'); }
+    if (st.bread) P.wall('bread_rack');
+    // aisles of gondolas down the long side, 1.5 m apart
+    const alongX = rw >= rd;
+    const span = alongX ? [inner.z0 + 2.3, inner.z1 - 2.3] : [inner.x0 + 2.3, inner.x1 - 2.3];
+    const run = alongX ? [inner.x0 + 2.4, inner.x1 - 2.4] : [inner.z0 + 2.4, inner.z1 - 2.4];
+    for (let a = span[0]; a <= span[1]; a += 2.65) {
+      for (let b = run[0]; b <= run[1]; b += 2.5) {
+        // leave room to walk in at every door
+        if (doors.some((d) => Math.hypot(d.x - (alongX ? b : a), d.z - (alongX ? a : b)) < 3.4)) continue;
+        const gd = alongX ? P.open('gondola', b, a, 0, { exact: true, theme: st.theme }) : P.open('gondola', a, b, Math.PI / 2, { exact: true, theme: st.theme });
+        // about half the gondolas still have something worth taking
+        if (gd && rand() < 0.5) lootSpot(st.loot, gd.x, gd.z, 1.0);
+      }
+    }
+  }
   function furnishBusiness(kindName, kind, rooms, outerDoors, bDoors, wins, keepOut, w, d) {
     const dr = outerDoors[0];
     const front = (dr && rooms.find((r) => dr.x >= r.x0 - 0.3 && dr.x <= r.x1 + 0.3 && dr.z >= r.z0 - 0.3 && dr.z <= r.z1 + 0.3)) || rooms[0];
@@ -675,16 +742,9 @@ export function buildWorld(scene, seed) {
     const P = roomPlacer(front, bDoors, wins, keepOut);
     const st = STORES[kindName];
     if (st) {
+      salesFloor(P, st, bDoors);
       fill(P, st.extra, st.extra.length);
-      if (!kind.aisles) {
-        // A gondola row down the middle of the sales floor
-        const c = P.centre(), [rw] = P.size();
-        for (let x = c.x - rw / 2 + 2.4; x < c.x + rw / 2 - 2.4; x += 1.75) {
-          if (rand() < 0.15) continue;
-          P.open('store_shelf', x, c.z - 0.26, Math.PI, { exact: true }); P.open('store_shelf', x, c.z + 0.26, 0, { exact: true });
-        }
-      }
-      const n = fill(P, [st.loot, st.deco, st.deco], 14);
+      const n = fill(P, [st.loot, st.deco, st.loot, st.deco], 16, { theme: st.theme });
       void n;
       for (const r of back) {
         const Q = roomPlacer(r, bDoors, wins, keepOut);
@@ -723,6 +783,28 @@ export function buildWorld(scene, seed) {
         for (const sx of [-1, 1]) addBox(c.x + (ax ? 0 : sx * 1.45) - 0.12, c.z + (ax ? sx * 1.45 : 0) - 0.12, c.x + (ax ? 0 : sx * 1.45) + 0.12, c.z + (ax ? sx * 1.45 : 0) + 0.12, { blocksSight: false, h: 2.4 });
         car(c.x, c.z, rot + (rand() < 0.5 ? Math.PI : 0), null, { project: true });
       }
+      return;
+    }
+    if (kindName === 'factory') {
+      // The shop floor: a production line down the middle, machine tools
+      // either side, lockers and benches round the walls
+      fill(P, ['toolbench', 'parts_shelf', 'worklocker', 'worklocker', 'toolbox', 'garage_shelf', 'toolbench'], 10);
+      { const c = P.centre(), [rw, rd] = P.size(); fur.model('ceiling_led', c.x, c.z, 0, { w: rw, d: rd }, rand, WALL_H - 0.035); }
+      P.wall('lockers'); P.wall('compressor'); P.wall('drum'); P.wall('drum');
+      const c = P.centre(), [rw, rd] = P.size(), alongX = rw >= rd, L = (alongX ? rw : rd) / 2 - 3;
+      for (let t = -L + 2; t <= L - 2; t += 4.3) P.open('conveyor', c.x + (alongX ? t : 0), c.z + (alongX ? 0 : t), alongX ? 0 : Math.PI / 2, { exact: true });
+      for (const side of [-1, 1]) for (let t = -L + 1.5; t <= L - 1; t += 3.4) {
+        const off = side * Math.min(4, (alongX ? rd : rw) / 2 - 3);
+        P.open(pick(['lathe', 'press', 'machine', 'lathe']), c.x + (alongX ? t : off), c.z + (alongX ? off : t), alongX ? (side > 0 ? Math.PI : 0) : (side > 0 ? -Math.PI / 2 : Math.PI / 2));
+      }
+      for (let i = 0; i < 3; i++) P.open('pallet', c.x + rnd(-rw / 3, rw / 3), c.z + rnd(-rd / 3, rd / 3), rand() < 0.5 ? 0 : Math.PI / 2);
+      P.open('forklift', c.x + rnd(-3, 3), c.z + rnd(-3, 3), rand() < 0.5 ? 0 : Math.PI / 2);
+      return;
+    }
+    if (kindName === 'boiler') {
+      const c = P.centre(), [rw, rd] = P.size(), alongX = rw >= rd;
+      for (const s of [-1, 1]) P.open('boiler', c.x + (alongX ? s * 2.0 : 0), c.z + (alongX ? 0 : s * 2.0), alongX ? 0 : Math.PI / 2);
+      fill(P, ['toolbench', 'worklocker', 'toolbox', 'drum', 'garage_shelf'], 5);
       return;
     }
     if (kindName === 'warehouse') {
@@ -799,6 +881,10 @@ export function buildWorld(scene, seed) {
   }
 
   // Kitchen and bathroom tiles; carpet (plain) elsewhere
+  // A whitewashed ceiling over a room (homes: the roof above is dark)
+  function ceilingPlane(r) {
+    prop(r.x1 - r.x0 - WALL_T, 0.01, r.z1 - r.z0 - WALL_T, 0xe8e4dc, (r.x0 + r.x1) / 2, WALL_H + 0.001, (r.z0 + r.z1) / 2).material = fur.M(0xe8e4dc, 0.9, 0, 0x5a5854);
+  }
   function floorPatch(r, color, tiled = false) {
     const m = prop(r.x1 - r.x0 - WALL_T, 0.012, r.z1 - r.z0 - WALL_T, color, (r.x0 + r.x1) / 2, 0.066, (r.z0 + r.z1) / 2);
     if (tiled) m.material = mergeableMaterial('tiles', color, 3, 0.4);
@@ -855,7 +941,7 @@ export function buildWorld(scene, seed) {
       junc.e.push(zc - cw, zc + cw); junc.w.push(zc - cw, zc + cw);
     } else if (kind.home || kindName === 'house') {
       rooms = layoutHouse(b, ext, junc, bDoors, interiorColor);
-    } else if (w > 12 && !kind.aisles && !kind.desks && !kind.open) {
+    } else if (w > 12 && !kind.sales && !kind.desks && !kind.open) {
       // Interior partition with a doorway
       const px = rnd(x0 + 5, x1 - 5);
       const dc = rnd(z0 + 2, z1 - 2);
@@ -883,7 +969,7 @@ export function buildWorld(scene, seed) {
       }
     }
     // Build the outside walls (brick, clapboard or concrete by building type)
-    const finish = { house: drand() < 0.5 ? 'brick' : 'siding', farmhouse: 'siding', barn: 'siding', cabin: 'siding', shop: 'brick', grocery: 'brick', hardware: 'brick', pharmacy: drand() < 0.5 ? 'brick' : 'concrete', gas: 'concrete' }[kindName] || 'concrete';
+    const finish = { house: drand() < 0.5 ? 'brick' : 'siding', farmhouse: 'siding', barn: 'siding', cabin: 'siding', shop: 'brick', grocery: 'brick', hardware: 'brick', pharmacy: drand() < 0.5 ? 'brick' : 'concrete', gas: 'concrete' }[kindName] || kind.finish || 'concrete';
     curPattern = WALL[finish];
     const outerDoors = [];
     for (const [side, ax, a0, a1, fixed] of [['n', 'x', x0, x1, z0], ['s', 'x', x0, x1, z1], ['w', 'z', z0, z1, x0], ['e', 'z', z0, z1, x1]]) {
@@ -945,6 +1031,7 @@ export function buildWorld(scene, seed) {
     // --- furnishing ---
     if (kind.home || kindName === 'house') {
       for (const r of rooms) {
+        ceilingPlane(r);
         const P = roomPlacer(r, bDoors, wins);
         if (r.type === 'kitchen' || r.type === 'bathroom') floorPatch(r, r.type === 'kitchen' ? pick([0xb8b4a8, 0x8a8478, 0xc8c0b0]) : pick([0xd8dcd8, 0xa8b8c0, 0xe0d8d0]), true); // (layout sequence, as before)
         else if (r.type.startsWith('bedroom')) floorPatch(r, pick([0x6a5a4a, 0x5a4a5a, 0x7a6a5a, 0x4a5a6a]));
@@ -957,21 +1044,9 @@ export function buildWorld(scene, seed) {
         if (r.type === 'studio') furnishBedroom(P, true);
         if (kind.farm && r.type.includes('kitchen')) P.wall('pantry');
       }
-    } else if (kind.aisles) {
-      // Store aisles: rows of shelving through the middle of the floor.
-      const rows = kind.aisles.rows;
-      for (let r = 0; r < rows; r++) {
-        const z = z0 + ((r + 1) * d) / (rows + 1);
-        for (let x = x0 + 2.6; x < x1 - 2.6; x += 1.75) {
-          if (Math.abs(x - cx) < 1.1) continue; // cross-aisle
-          if (bDoors.some((dr) => Math.hypot(dr.x - x, dr.z - z) < 2.4)) continue;
-          addContainer(kind.aisles.type, x, z, r % 2 ? Math.PI : 0);
-        }
-        keepOut.push({ x: cx, z, r: w / 2 });
-      }
     }
     // Checkout counter with a register by the front door of shops
-    if (kind.checkout) {
+    if (kind.checkout && !STORES[kindName]?.till) {
       const dr = outerDoors[0];
       if (dr) {
         const nx = Math.abs(dr.x - x0) < 0.2 ? 1 : Math.abs(dr.x - x1) < 0.2 ? -1 : 0, nz = nx ? 0 : Math.abs(dr.z - z0) < 0.2 ? 1 : -1;
@@ -1065,8 +1140,8 @@ export function buildWorld(scene, seed) {
           if (dr.ax === 'x') aw.rotation.x = 0.35 * out[1]; else aw.rotation.z = -0.35 * out[0];
         }
       }
-      const labels = { shop: 'General Store', police: 'Police Station', grocery: 'Grocery Store', hardware: 'Hardware Store', gas: 'Gas Station', military: 'Command Post', mechanic: 'Auto Repair' };
-      landmarks.push({ x: cx, z: cz, name: kind.sign.company ? name : labels[kindName] || name[0] + name.slice(1).toLowerCase(), kind: kindName });
+      const labels = { shop: 'Corner Shop', police: 'Police Station', grocery: 'Grocery Store', hardware: 'Hardware Store', gas: 'Gas Station', military: 'Command Post', mechanic: 'Auto Repair' };
+      landmarks.push({ x: cx, z: cz, name: kind.sign.company ? LATIN[name] || name : kind.sign.label || labels[kindName] || name[0] + name.slice(1).toLowerCase(), kind: kindName });
     }
     if (kind.zombies) zombieSpawns.push({ x: cx, z: cz, r: Math.min(w, d) / 2 - 1, n: kind.zombies.n, type: kind.zombies.type || null });
     b.name = name;
@@ -1211,12 +1286,29 @@ export function buildWorld(scene, seed) {
     landmarks.push({ x: cx, z: cz, name: 'Checkpoint', kind: 'checkpoint' });
   }
 
+  // A stack of pallets
+  function P_pallets(x, z) { fur.model('pallet', x, z, rand() < 0.5 ? 0 : Math.PI / 2, {}, rand); addBox(x - 0.6, z - 0.6, x + 0.6, z + 0.6, { blocksSight: false, h: 0.9 }); }
+  // Gaps in a fence (inset `pad` from building b, or round `plot`) in line with b's outside doors
+  function gapsFor(b, pad, plot) {
+    const r = plot || { x0: b.x0 - pad, x1: b.x1 + pad, z0: b.z0 - pad, z1: b.z1 + pad };
+    return b.doors.filter((dr) => Math.abs(dr.x - b.x0) < 0.3 || Math.abs(dr.x - b.x1) < 0.3 || Math.abs(dr.z - b.z0) < 0.3 || Math.abs(dr.z - b.z1) < 0.3).map((dr) => {
+      if (Math.abs(dr.z - b.z0) < 0.3) return { x: dr.x, z: r.z0, w: 2.4 };
+      if (Math.abs(dr.z - b.z1) < 0.3) return { x: dr.x, z: r.z1, w: 2.4 };
+      if (Math.abs(dr.x - b.x0) < 0.3) return { x: r.x0, z: dr.z, w: 2.4 };
+      return { x: r.x1, z: dr.z, w: 2.4 };
+    });
+  }
+
   // ---------- districts ----------
-  // The centre block is downtown (skyscraper), the ring around it is the
-  // commercial/civic district, and the outer ring is residential with
-  // industry, a gas station and a military outpost in one corner.
+  // Downtown is the tower in the centre block. Round it, the civic ring:
+  // the hospital, the police, the administration, the big apartment blocks
+  // and the gastronom. Outside that, one edge of town is industry (the
+  // factory, the boiler house and its garages, a warehouse, the auto
+  // repair) and the rest is housing of every age: Khrushchyovkas, a private
+  // sector of houses, dachas, with a market, shops and a park between. The
+  // military holds one corner, away from the factories.
   const lotKinds = new Map();
-  const ring1 = shuffle(['hospital', 'office', 'office', 'police', 'pharmacy', 'grocery', rand() < 0.6 ? 'skyscraper' : 'office', 'shop']);
+  const ring1 = shuffle(['hospital', 'office', 'police', 'grocery', 'panel9', 'panel9', 'stalinka', 'stalinka']);
   const outer = [];
   const corners = [];
   for (let ix = 0; ix < 5; ix++) for (let iz = 0; iz < 5; iz++) {
@@ -1225,9 +1317,22 @@ export function buildWorld(scene, seed) {
     else if (ring === 1) lotKinds.set(`${ix},${iz}`, ring1.pop());
     else { outer.push(`${ix},${iz}`); if ((ix === 0 || ix === 4) && (iz === 0 || iz === 4)) corners.push(`${ix},${iz}`); }
   }
-  lotKinds.set(pick(corners), 'militaryBase');
-  const outerKinds = shuffle(['pharmacy', 'hardware', 'gas', 'warehouse', 'mechanic', 'mechanic', 'clinic', 'park', 'parking', 'shop']);
+  const mil = pick(corners);
+  lotKinds.set(mil, 'militaryBase');
+  // the industrial edge: one of the two edges that don't touch that corner
+  const [mx0, mz0] = mil.split(',').map(Number);
+  const edge = rand() < 0.5 ? { ax: 'x', k: 4 - mx0 } : { ax: 'z', k: 4 - mz0 };
+  const edgeLots = shuffle(outer.filter((k) => { const [ix, iz] = k.split(',').map(Number); return (edge.ax === 'x' ? ix : iz) === edge.k && !lotKinds.has(k); }))
+    .sort((p, q) => corners.includes(p) - corners.includes(q)); // the middle of the edge first
+  for (const k of ['factory', 'boilerYard', 'warehouse', 'mechanic']) { const l = edgeLots.shift(); if (l) lotKinds.set(l, k); }
+  const outerKinds = shuffle(['panel5', 'panel5', 'panel5', 'houses', 'houses', 'dachas', 'pharmacy', 'hardware', 'gas', 'clinic', 'market', 'park']);
   for (const k of shuffle(outer)) if (!lotKinds.has(k)) lotKinds.set(k, outerKinds.pop() || 'houses');
+
+  // what the yards and streets are made with (eastern.js)
+  const E = {
+    rand, rnd, pick, shuffle, THREE, group, fur, FOOT, WALL_H, prop, addBox, addContainer, lootSpot, inClear, mergeableMaterial, trees, zombieSpawns, car: (...a) => car(...a),
+    wall: (minX, minZ, maxX, maxZ, h, color, pattern) => walls.push({ minX, maxX, minZ, maxZ, y0: 0, y1: h, color, pattern: WALL[pattern] }),
+  };
 
   for (let ix = 0; ix < 5; ix++) {
     for (let iz = 0; iz < 5; iz++) {
@@ -1236,14 +1341,91 @@ export function buildWorld(scene, seed) {
       const lz0 = bz + ROAD / 2 + 2, lz1 = bz + BLOCK - ROAD / 2 - 2;
       const mx = (lx0 + lx1) / 2, mz = (lz0 + lz1) / 2;
       const kind = lotKinds.get(`${ix},${iz}`);
-      if (kind === 'park') { for (let i = 0; i < 6; i++) trees.push([rnd(lx0, lx1), rnd(lz0, lz1)]); continue; }
+      if (kind === 'park') {
+        for (let i = 0; i < 9; i++) trees.push([rnd(lx0, lx1), rnd(lz0, lz1)]);
+        for (let i = 0; i < 4; i++) { const a = (i / 4) * Math.PI * 2; const x = mx + Math.cos(a) * 5, z = mz + Math.sin(a) * 5; fur.model('lavochka', x, z, -a - Math.PI / 2, {}, rand); addBox(x - 0.5, z - 0.5, x + 0.5, z + 0.5, { blocksSight: false, blocksShot: false, h: 0.6 }); }
+        // a war memorial: a plinth and a star
+        prop(2.2, 1.2, 2.2, 0x8a8a84, mx, 0.6, mz, 0, true); prop(0.5, 2.6, 0.5, 0x6a6a64, mx, 2.5, mz, 0, true);
+        prop(0.9, 0.9, 0.12, 0xb8302a, mx, 4.2, mz).rotation.z = Math.PI / 4;
+        landmarks.push({ x: mx, z: mz, name: 'Victory Park', kind: 'park' });
+        continue;
+      }
       if (kind === 'parking') { for (let i = 0; i < 4; i++) car(rnd(lx0 + 3, lx1 - 3), rnd(lz0 + 3, lz1 - 3), rand() < 0.5 ? 0 : Math.PI / 2); continue; }
       if (kind === 'militaryBase') { militaryCompound(lx0, lx1, lz0, lz1); continue; }
       if (kind === 'houses') {
-        if (rand() < 0.6) {
-          building((lx0 + mx) / 2, mz + rnd(-3, 3), rnd(9, 12), rnd(9, 14), 'house');
-          building((mx + lx1) / 2, mz + rnd(-3, 3), rnd(9, 12), rnd(9, 14), 'house');
-        } else building(mx + rnd(-2, 2), mz + rnd(-2, 2), rnd(13, 18), rnd(10, 15), 'house');
+        // the private sector: houses behind fences
+        const two = rand() < 0.6;
+        const hs = two ? [building((lx0 + mx) / 2, mz + rnd(-3, 3), rnd(9, 12), rnd(9, 14), 'house'), building((mx + lx1) / 2, mz + rnd(-3, 3), rnd(9, 12), rnd(9, 14), 'house')]
+          : [building(mx + rnd(-2, 2), mz + rnd(-2, 2), rnd(13, 18), rnd(10, 15), 'house')];
+        for (const h of hs) {
+          const r = { x0: Math.max(lx0, h.x0 - 1.5), x1: Math.min(lx1, h.x1 + 1.5), z0: Math.max(lz0, h.z0 - 1.5), z1: Math.min(lz1, h.z1 + 1.5) };
+          East.fence(E, r, rand() < 0.5 ? 'profile' : 'picket', gapsFor(h, 0, r));
+        }
+        continue;
+      }
+      if (kind === 'dachas') {
+        // garden plots: a little house each, a greenhouse, a well, a fence
+        for (const [sx, sz] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) {
+          if (rand() < 0.15) continue;
+          const px = mx + sx * 7, pz = mz + sz * 7;
+          // the house toward the street corner of the plot, the garden behind
+          const h = building(px + sx * 1.8, pz + sz * 1.8, rnd(6.5, 7.5), rnd(6.5, 7.5), 'dacha');
+          const plot = { x0: px - 6.6, x1: px + 6.6, z0: pz - 6.6, z1: pz + 6.6 };
+          East.fence(E, plot, 'picket', gapsFor(h, 0, plot));
+          const gx = px - sx * 4.6, gz = pz - sz * 1.2;
+          if (!inClear(gx - 1.6, gz - 1.1, gx + 1.6, gz + 1.1) && rand() < 0.75) { fur.model('greenhouse', gx, gz, 0, {}, rand); addBox(gx - 1.5, gz - 1.0, gx + 1.5, gz + 1.0, { blocksSight: false, blocksShot: false, h: 2 }); }
+          if (rand() < 0.5) { const wx = px - sx * 3.8, wz = pz - sz * 5.2; fur.model('well', wx, wz, 0, {}, rand); addBox(wx - 0.45, wz - 0.45, wx + 0.45, wz + 0.45, { blocksSight: false, h: 0.7 }); }
+        }
+        landmarks.push({ x: mx, z: mz, name: 'Dachas', kind: 'dacha' });
+        continue;
+      }
+      if (kind === 'panel5' || kind === 'panel9' || kind === 'stalinka') {
+        // the block along one side of the lot, its courtyard on the other
+        const [bw, bd] = kind === 'panel5' ? [rnd(25, 27), rnd(10.5, 11.5)] : kind === 'panel9' ? [rnd(23, 25), rnd(12.5, 13.5)] : [rnd(23, 25), rnd(13, 14)];
+        const side = rand() < 0.5 ? -1 : 1;
+        const by = mz + side * (14 - bd / 2 - 0.5);
+        const b = building(mx, by, bw, bd, kind);
+        const yard = side < 0 ? { x0: lx0 + 0.5, x1: lx1 - 0.5, z0: b.z1 + 2.4, z1: lz1 - 0.5 } : { x0: lx0 + 0.5, x1: lx1 - 0.5, z0: lz0 + 0.5, z1: b.z0 - 2.4 };
+        // panel5 lots get a row of lock-ups on the far side of the yard
+        if (kind === 'panel5' && rand() < 0.6) {
+          const n = 6, gx0 = mx - n * 1.6, gz = side < 0 ? lz1 - 0.3 : lz0 + 0.3;
+          East.garageRow(E, gx0, gz, n, side < 0 ? -1 : 1);
+          if (side < 0) yard.z1 -= 6.6; else yard.z0 += 6.6;
+        }
+        if (yard.z1 - yard.z0 > 5) East.courtyard(E, yard);
+        if (kind === 'stalinka' && rand() < 0.7) East.kiosk(E, lx1 - 2, side < 0 ? lz1 - 2 : lz0 + 2, side < 0 ? 0 : Math.PI);
+        car(lx0 + 4, by - side * (bd / 2 + 1.2), Math.PI / 2);
+        continue;
+      }
+      if (kind === 'factory') {
+        const b = building(mx, mz - 1.5, rnd(23, 25), rnd(17, 19), 'factory');
+        East.factoryRoof(E, b);
+        const sx = rand() < 0.5 ? lx0 + 2.2 : lx1 - 2.2;
+        East.smokestack(E, sx, b.z1 + 2.4, rnd(26, 32), 1.4);
+        East.fence(E, { x0: lx0, x1: lx1, z0: lz0, z1: lz1 }, 'slab', [{ x: mx, z: lz1, w: 6 }, { x: mx, z: lz0, w: 6 }, { x: lx0, z: mz, w: 6 }, { x: lx1, z: mz, w: 6 }]);
+        car(mx + 6, lz1 - 2.6, Math.PI / 2, 'military');
+        for (let i = 0; i < 3; i++) P_pallets(mx - 8 + i * 1.5, lz1 - 2.2);
+        continue;
+      }
+      if (kind === 'boilerYard') {
+        // the boiler house and its chimney, the mains heading off into town,
+        // and the lock-up garages behind
+        const side = rand() < 0.5 ? -1 : 1;
+        const b = building(mx - 6, mz - side * 6, rnd(10, 12), rnd(8, 9), 'boiler');
+        East.smokestack(E, b.x1 + 2.2, (b.z0 + b.z1) / 2, rnd(18, 22), 0.9);
+        East.heatPipe(E, b.x1 + 3.8, (b.z0 + b.z1) / 2 + 2, lx1 - 0.5, (b.z0 + b.z1) / 2 + 2);
+        const n = 8, gz = side < 0 ? lz0 + 0.3 : lz1 - 0.3;
+        East.garageRow(E, mx - n * 1.6, gz, n, side < 0 ? 1 : -1);
+        for (let i = 0; i < 2; i++) addContainer('dumpster', lx0 + 2 + i * 2.2, mz + side * 2, 0);
+        continue;
+      }
+      if (kind === 'market') {
+        // a corner shop, a row of kiosks, cars parked up
+        building(mx - 5, mz - 6, rnd(11, 13), rnd(9, 11), 'shop');
+        for (let i = 0; i < 4; i++) East.kiosk(E, lx0 + 3 + i * 3.4, mz + 6, 0);
+        for (let i = 0; i < 3; i++) car(lx0 + 4 + i * 5, lz1 - 2.5, Math.PI / 2);
+        addContainer('dumpster', lx1 - 2, mz + 6, Math.PI / 2);
+        landmarks.push({ x: mx, z: mz + 6, name: 'Market', kind: 'market' });
         continue;
       }
       if (kind === 'hospital') { building(mx, mz, rnd(25, 27), rnd(22, 25), 'hospital'); car(lx0 + 2, lz1 - 1, 0); continue; }
@@ -1276,6 +1458,18 @@ export function buildWorld(scene, seed) {
       const big = kind === 'warehouse' || kind === 'grocery' || kind === 'hardware';
       building(mx + rnd(-2, 2), mz + rnd(-2, 2), big ? rnd(20, 25) : rnd(13, 20), big ? rnd(16, 21) : rnd(10, 16), kind);
     }
+  }
+
+  // Street lamps, and bus shelters at the kerb where there's room
+  East.streetLights(E, BLOCK, ROAD);
+  for (let i = 0, made = 0; i < 30 && made < 6; i++) {
+    const road = pick(roads.filter((r) => Math.abs(r.k) < 100)), seg = Math.floor(rand() * 5), side = rand() < 0.5 ? -1 : 1;
+    const along = -100 + seg * BLOCK + 20 + rnd(-6, 6), off = road.k + side * (ROAD / 2 + 3.0);
+    const [x, z] = road.axis === 'x' ? [off, along] : [along, off];
+    if (buildings.some((b) => x > b.x0 - 3 && x < b.x1 + 3 && z > b.z0 - 3 && z < b.z1 + 3)) continue;
+    // its open front faces the road
+    const rot = road.axis === 'x' ? (side > 0 ? -Math.PI / 2 : Math.PI / 2) : (side > 0 ? Math.PI : 0);
+    East.busStop(E, x, z, rot); made++;
   }
 
   // Military checkpoints on the streets (not at intersections)
@@ -1401,6 +1595,7 @@ export function buildWorld(scene, seed) {
     rand, rnd, pick, shuffle, WALL_H, WALL_T, DOOR, KINDS, group, fur, walls, allBoxes, containers, doors, windows, beds, zombieSpawns,
     addBox, addWall, wallWithOpenings, addDoor, addContainer, addBed, placeAlong, roomPlacer, fill, prop, sign, facade, mergeableMaterial,
     setPattern: (n) => { curPattern = WALL[n]; }, pattern: (n) => WALL[n],
+    floorPatch, ceilingPlane, furnishLiving, furnishKitchen, furnishBedroom,
   };
   for (const b of multi) {
     RNG = mulberry32((seed ^ Math.imul(b.index + 1, 0x9e3779b1)) >>> 0);
@@ -1602,11 +1797,13 @@ function mergeStatic(group, zoneOf) {
     const zone = zoneOf(_mp.x, _mp.y, _mp.z, o.geometry.boundingSphere.radius * o.matrixWorld.getMaxScaleOnAxis());
     const key = zone.key + (o.castShadow ? '|' : '|ns|') + (texMerge ? 'tex|' + m.uuid : plain ? ['vc', rough, metal, m.side].join('|') : [m.type, m.color.getHex(), m.roughness, m.metalness, m.emissive.getHex(), m.side].join('|'));
     let geo = o.geometry.index ? o.geometry.toNonIndexed() : o.geometry.clone();
-    for (const name of Object.keys(geo.attributes)) if (!['position', 'normal', 'uv'].includes(name)) geo.deleteAttribute(name);
+    // (pre-coloured geometry, like a shelf's packed stock, keeps its colours)
+    const own = m.vertexColors && geo.attributes.color;
+    for (const name of Object.keys(geo.attributes)) if (!['position', 'normal', 'uv', ...(own ? ['color'] : [])].includes(name)) geo.deleteAttribute(name);
     if (!geo.attributes.uv || !geo.attributes.normal) return;
     geo.applyMatrix4(o.matrixWorld);
     if (texMerge) worldUV(geo, m.userData.mergeUV);
-    else if (plain) {
+    else if (plain && !own) {
       const n = geo.attributes.position.count, col = new Float32Array(n * 3);
       for (let i = 0; i < n; i++) { col[i * 3] = m.color.r; col[i * 3 + 1] = m.color.g; col[i * 3 + 2] = m.color.b; }
       geo.setAttribute('color', new THREE.BufferAttribute(col, 3));

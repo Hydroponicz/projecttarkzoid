@@ -358,6 +358,10 @@ export const LOOT_TABLES = {
   bathroom: [['painkillers', 4], ['bandage', 4], ['vitamins', 3], ['antibiotics', 1], ['ai2', 1], ['morphine', 0.15]],
   register: [['chain', 0.6], ['roler', 0.2], ['flashdrive', 0.3], ['paper', 2], ['office', 1]],
   drinkfridge: [['soda', 6], ['water', 6], ['coffee', 2]],
+  kiosk: [['chips', 5], ['crackers', 4], ['soda', 5], ['water', 4], ['coffee', 2], ['battery', 0.6], ['tape', 0.6], ['painkillers', 0.8], ['chain', 0.3], ['flashdrive', 0.2]],
+  dumpster: [['scrap', 4], ['bolts', 2], ['wires', 2], ['paper', 2], ['tape', 1], ['battery', 0.5], ['chips', 0.8], ['hoodie', 0.4], ['bp_scav', 0.25], ['knife', 0.3], ['ammo_9x18', 0.3]],
+  worklocker: [['work_jacket', 2], ['hoodie', 1], ['tape', 2], ['wrench', 1], ['crackers', 1.5], ['coffee', 1.5], ['chain', 0.3], ['painkillers', 1], ['bandage', 1], ['ammo_9x18', 0.4], ['pm', 0.1]],
+  garage_shelf: [['tire', 1], ['battery', 1], ['spark_plugs', 2], ['gas_can', 1.5], ['wrench', 1], ['jack', 0.8], ['bolts', 2], ['scrap', 2], ['preserves', 1.5], ['potato', 1], ['ammo_12g', 0.6], ['mp133', 0.08], ['engine_parts', 0.6]],
   medbox: [['bandage', 5], ['ai2', 5], ['salewa', 2], ['painkillers', 3], ['antiviral', 0.8], ['ledx', 0.25]],
   pc: [['gpu', 0.8], ['wires', 4], ['battery', 0.5], ['chain', 0.8]],
   trunk: [['jack', 1.5], ['tire', 1], ['gas_can', 1.5], ['bolts', 2], ['tape', 3], ['water', 2], ['ammo_12g', 2], ['bp_tri', 0.3], ['armor_6b13', 0.15], ['crowbar', 1], ['wrench', 0.8]],
@@ -420,4 +424,9 @@ export const CONTAINER_TYPES = {
   pantry: { name: 'Pantry Shelf', w: 4, h: 4, rolls: [1, 4], color: 0x7a5a3a, size: [1.0, 1.8, 0.4] },
   hay: { name: 'Hay Pile', w: 4, h: 3, rolls: [0, 2], color: 0xc8a850, size: [1.4, 0.7, 1.0] },
   hunting: { name: 'Hunting Locker', w: 4, h: 5, rolls: [1, 3], color: 0x4a5a3a, size: [0.7, 1.8, 0.5] },
+  // Eastern town: street kiosks, bins, factory lockers, lock-up garages
+  kiosk: { name: 'Kiosk Counter', w: 5, h: 3, rolls: [2, 5], color: 0x2a6a3a, size: [0, 0, 0] },
+  dumpster: { name: 'Dumpster', w: 6, h: 4, rolls: [0, 4], color: 0x2a5a3a, size: [1.8, 1.25, 1.1] },
+  worklocker: { name: 'Worker Locker', w: 4, h: 5, rolls: [0, 3], color: 0x5a6a7a, size: [0.6, 1.8, 0.5] },
+  garage_shelf: { name: 'Garage Shelving', w: 5, h: 4, rolls: [1, 4], color: 0x5a5a5a, size: [1.6, 1.8, 0.5] },
 };

@@ -1069,6 +1069,9 @@ export class Survivors {
       police: "the police station. Lockers full of sidearms, if you can get in", grocery: 'a grocery store with food left on the shelves',
       hardware: 'a hardware store — tools, nails, planks', gas: 'a gas station with snacks in the kiosk',
       compound: "a military outpost. Soldiers turned, but their gear's still there", military: 'the army command post',
+      panel5: 'a five-storey block of flats — most people never got out of theirs', panel9: 'one of the nine-storey blocks. The lift still runs, they say',
+      stalinka: 'an old Stalin-era block, big flats, nice things in them', factory: 'the factory. Workers left their lockers full',
+      boiler: 'the boiler house, with the garages behind it — people kept all sorts in those lock-ups', dacha: 'the dachas — preserves in every cellar',
     }[b.kind] || 'a house that looked untouched';
     if (s.trust < 10 && Math.random() < 0.5) return "Why would I tell you anything?";
     if (Math.random() < 0.4) { const t = this.game.traders?.rumor(); if (t) return t; }

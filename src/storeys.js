@@ -15,6 +15,10 @@ export const STOREYS = {
   police: { levels: 2, perLevel: 3 },
   hospital: { levels: 3, lift: true, perLevel: 5 },
   skyscraper: { levels: [9, 13], lift: true, perLevel: 2 }, // real floors all the way up
+  // Housing: a flat off each side of the landing corridor on every floor
+  panel5: { levels: 5, perLevel: 2 },             // Khrushchyovka
+  panel9: { levels: 9, lift: true, perLevel: 2 }, // the nine-storey panel block
+  stalinka: { levels: 4, perLevel: 2 },           // the grand 50s block
 };
 // Stairwell: open strip at the near end, the flights, the far landing
 const NEAR = 1.4, RUN = 3.0, LAND = 1.4;
@@ -122,6 +126,7 @@ export function buildStoreys(c, b) {
     if (lobby) ext.s.push({ c: (x0 + core.x0) / 2, w: DOOR, type: 'door' });
     windowsAlong(ext, junc, ['n', 's']);
     const outer = exterior(ext, bDoors, ground);
+    if (kind.balconies && !ground) balconies();
     // Furnishing
     const wins = b.windows;
     if (lobby) furnishLobby(bDoors, wins);
@@ -206,7 +211,7 @@ export function buildStoreys(c, b) {
   }
 
   function exterior(ext, bDoors, ground) {
-    c.setPattern('concrete');
+    c.setPattern(kind.finish || 'concrete');
     const outer = [];
     for (const [side, ax, a0, a1, fixed] of [['n', 'x', x0, x1, z0], ['s', 'x', x0, x1, z1], ['w', 'z', z0, z1, x0], ['e', 'z', z0, z1, x1]]) {
       const made = c.wallWithOpenings(ax, a0, a1, fixed, ext[side], color);
@@ -250,8 +255,9 @@ export function buildStoreys(c, b) {
       P.wall('bed_single', { sides: [0] }); P.wall('toilet', { sides: [0, 2, 3] });
       return;
     }
-    const P = c.roomPlacer(r, bDoors, wins, keepOut);
     const role = pick(kind.roomRoles || ['generic']);
+    if (role === 'flat') { flat(r, bDoors, wins); return; }
+    const P = c.roomPlacer(r, bDoors, wins, keepOut);
     if (kind.roomDesks && rand() < 0.5) {
       for (let z = r.z0 + 1.8; z < r.z1 - 1.6; z += 2.8) for (let x = r.x0 + 1.9; x < r.x1 - 1.6; x += 2.4) {
         if (bDoors.some((dr) => Math.hypot(dr.x - x, dr.z - z) < 2.2) || keepOut.some((k) => Math.hypot(k.x - x, k.z - z) < k.r)) continue;
@@ -270,6 +276,52 @@ export function buildStoreys(c, b) {
       const n = 1 + Math.floor(rand() * 2.5);
       for (let i = 0; i < n; i++) c.placeAlong(r, pick(kind.roomLoot || kind.wallLoot), bDoors, keepOut, wins);
       if (rand() < 0.5) P.wall('plant');
+    }
+  }
+
+  // A flat: the room off the corridor split into a living room / bedroom
+  // and a narrow kitchen, through a doorway in the partition
+  function flat(r, bDoors, wins) {
+    const W = r.x1 - r.x0, out = r.side === 'n' ? r.z0 : r.z1;
+    const door = bDoors.find((dr) => dr.x > r.x0 && dr.x < r.x1 && Math.abs(dr.z - (r.side === 'n' ? r.z1 : r.z0)) < 0.3);
+    const clear = (px) => !(door && Math.abs(door.x - px) < (door.w ?? 1.4) / 2 + 0.4)
+      && !wins.some((wn) => Math.abs(wn.z - out) < 0.3 && Math.abs(wn.x - px) < wn.w / 2 + 0.25)
+      && px > r.x0 + 2.8 && px < r.x1 - 1.9;
+    const tries = [r.x1 - 2.2, r.x1 - 2.5, r.x0 + 2.4, r.x0 + 2.8, r.x1 - 2.8, r.x0 + 3.2];
+    const px = W > 5 ? tries.find(clear) : undefined;
+    c.floorPatch(r, pick([0x6a4a34, 0x7a5a3a, 0x5a4030, 0x8a6a48]));
+    c.ceilingPlane(r);
+    if (px === undefined) { const P = c.roomPlacer(r, bDoors, wins, keepOut); c.furnishLiving(P, true); c.furnishBedroom(P, true); return; }
+    const kitchenRight = px > (r.x0 + r.x1) / 2;
+    const gap = { x: px, z: (r.z0 + r.z1) / 2 + (r.side === 'n' ? -0.6 : 0.6), w: 0.9, ax: 'z' };
+    c.wallWithOpenings('z', r.z0, r.z1, px, [{ c: gap.z, w: 0.9, type: 'gap' }], inner);
+    const doors2 = [...bDoors, gap];
+    const main = kitchenRight ? { ...r, x1: px } : { ...r, x0: px };
+    const kit = kitchenRight ? { ...r, x0: px } : { ...r, x1: px };
+    const P = c.roomPlacer(main, doors2, wins, keepOut);
+    c.furnishLiving(P, false);
+    c.furnishBedroom(P, rand() < 0.6);
+    c.furnishKitchen(c.roomPlacer(kit, doors2, wins, keepOut), true);
+  }
+
+  // Balconies under the windows of the long sides: a slab, a parapet of
+  // panel or railing, some glazed in, washing lines and junk on others
+  function balconies() {
+    for (const wn of b.windows) {
+      if (wn.base !== undefined || wn.ax !== 'x' || rand() < 0.35) continue;
+      const s = Math.abs(wn.z - z0) < 0.3 ? -1 : 1, bw = wn.w + 1.0, bd = 1.0, zf = wn.z + s * (T / 2 + bd / 2);
+      c.prop(bw, 0.14, bd, 0x8a8884, wn.x, 0.07, zf);
+      const glazed = rand() < 0.3, wall = glazed ? 0x9a9690 : pick([0xb8b4a8, 0x9aa0a8, 0xc8b8a0, 0x7a8a7a]);
+      c.prop(bw, 1.0, 0.06, wall, wn.x, 0.64, zf + s * bd / 2);
+      for (const sx of [-1, 1]) c.prop(0.06, 1.0, bd, wall, wn.x + sx * bw / 2, 0.64, zf);
+      if (glazed) {
+        c.prop(bw, 1.1, 0.04, 0x8aa0b0, wn.x, 1.7, zf + s * bd / 2).material = c.fur.M(0x8aa0b0, 0.1, 0.3);
+        c.prop(bw + 0.1, 0.06, bd + 0.06, 0x7a7670, wn.x, 2.3, zf);
+      } else if (rand() < 0.5) {
+        // washing on a line, a box or a bike
+        c.prop(bw - 0.2, 0.01, 0.01, 0xdddddd, wn.x, 1.6, zf);
+        for (let i = 0; i < 3; i++) c.prop(0.3, 0.45, 0.01, pick([0xd8d8e0, 0x3a5a8a, 0xa83a3a, 0xe0d0a0]), wn.x - bw / 2 + 0.4 + i * 0.4 + rnd(-0.05, 0.05), 1.35, zf);
+      } else if (rand() < 0.5) c.prop(0.5, 0.4, 0.4, 0x8a6a4a, wn.x + rnd(-0.4, 0.4), 0.34, zf);
     }
   }
 

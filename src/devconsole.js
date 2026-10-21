@@ -715,7 +715,7 @@ export class DevConsole {
     else if (parts[0] === 'kit') pool = Object.keys(KITS);
     else if (parts[0] === 'skill') pool = Object.keys(STATS);
     else if (parts[0] === 'flag') pool = Object.keys(FLAGS);
-    else if (parts[0] === 'tp') pool = ['safehouse', 'spawn', 'hospital', 'pharmacy', 'police', 'office', 'skyscraper', 'grocery', 'hardware', 'gas', 'military', 'checkpoint', 'clinic'];
+    else if (parts[0] === 'tp') pool = ['safehouse', 'spawn', 'hospital', 'pharmacy', 'police', 'office', 'skyscraper', 'grocery', 'hardware', 'gas', 'military', 'checkpoint', 'clinic', 'panel5', 'panel9', 'stalinka', 'factory', 'boiler', 'market', 'park', 'dacha'];
     else return;
     const hits = pool.filter((k) => k.toLowerCase().startsWith(last));
     if (hits.length === 1) { parts[parts.length - 1] = hits[0]; this.cmd.value = parts.join(' ') + ' '; }
@@ -765,6 +765,9 @@ export class DevConsole {
         // tp hospital / pharmacy / police / military / checkpoint / office...
         const lm = (g.world.landmarks || []).filter((l) => l.kind.startsWith(a[0]) || l.name.toLowerCase().includes(a[0].toLowerCase()));
         if (lm.length) { const l = lm[Math.floor(Math.random() * lm.length)]; this.log(`→ ${esc(l.name)}`); return this.teleport(l.x + 3, l.z + 3); }
+        // buildings without a sign (the apartment blocks): stand by the door
+        const bs = g.world.buildings.filter((b) => b.kind.startsWith(a[0]) && b.doors.length);
+        if (bs.length) { const b = bs[Math.floor(Math.random() * bs.length)], d = b.doors[0]; this.log(`→ ${esc(b.kind)}`); return this.teleport(d.x + Math.sign(d.x - (b.x0 + b.x1) / 2) * 1.5, d.z + Math.sign(d.z - (b.z0 + b.z1) / 2) * 1.5); }
         if (a.length < 2) throw new Error('Usage: tp <x> <z>');
         this.teleport(+a[0], +a[1]);
       } },

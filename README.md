@@ -21,7 +21,7 @@ npm run build    # static build in dist/
    5. **Long Haul**: day 14, 250 kills, 15 jobs.
 
    Each chapter pays out gear. **J** opens the goals panel; **K** (while it's open) skips the tutorial.
-3. **Wake up in a random house** in a persistent, procedurally generated town. Loot doesn't respawn. The world is saved automatically (every 30 seconds, when you sleep, and when you close the tab).
+3. **Fly in.** A new survivor is choppered in: on the creation screen you pick the one gun you bring (AK-74N, M4A1, SKS, MP5, MP-133, a PM, or nothing). A Mi-8 comes in low over the fields and the rooftops, flares and sets down on the edge of town, and you jump out of the door as it lifts away. Space, Esc or Enter skips it. The town is persistent and procedurally generated. Loot doesn't respawn. The world is saved automatically (every 30 seconds, when you sleep, and when you close the tab).
 3. **Make a home.** Claim the building you're standing in as your safehouse with **V**. Outdoors, **V** claims a 20×20 m camp instead. Zombies never respawn near your safehouse.
 4. **Build.** Press **B** to build walls, barricades, doors, storage crates, beds, campfires and rain barrels out of planks and nails, or dig garden plots with a shovel. You need a hammer. Planks come from lumber piles in warehouses, or you can chop trees with an axe and saw the logs into planks. Hammering is loud and draws zombies.
 5. **Survive the nights.** One in-game minute passes per real second, so a full day takes 24 minutes. At night zombies move faster, and more of them spawn as the days go by. Sleep in a bed to recover fatigue and health. Sleeping outside your safehouse may wake you to company.
@@ -29,16 +29,18 @@ npm run build    # static build in dist/
 
 ## The town
 
-Every world is generated from a seed, laid out in districts, with loot that fits where you find it:
+The town is a post-Soviet one: panel blocks and courtyards, lock-up garages, a factory with its stack, dachas on the edge. Every world is generated from a seed and laid out in districts, at every density from the nine-storey blocks to garden plots, with loot that fits where you find it:
 
 | Where | What's there |
 | --- | --- |
 | **Downtown** (centre) | A **skyscraper**: corporate offices with desks, filing cabinets, server racks and executive safes. Expect intel folders, flash drives, laptops and hard drives. |
-| **Civic & commercial ring** | The **hospital** (three floors; wards with beds and corridors of rooms holding medicine cabinets and surgical carts, full of infected patients), **office blocks** (open-plan desk floors), a second tower, the **police station** (police lockers with sidearms, ammo and armor; evidence lockers; patrol cars), a **pharmacy** (aisles of pill shelves), a **grocery store** and shops. |
-| **Outskirts** | Houses, a **hardware store** (tools, nails, lumber), a **gas station** (snacks and drinks), warehouses, a clinic, parks and parking lots. |
-| **Military** | A fenced **military outpost** in one corner (command post, tents, watchtowers, a helipad and a truck) and **checkpoints** on the streets (barriers, sandbags, a guard booth and a military truck). This is the only place to find AK-74s, AK mags, PSO scopes, 6B13 armor, 6B47 helmets, military rucksacks, MREs and military batteries. Guarded by armored soldier zombies: aim for the head. |
+| **Civic ring** | The **hospital** (БОЛЬНИЦА: three floors of wards, exam rooms and supply rooms, full of infected patients), the **police station** (ПОЛИЦИЯ: lockers with sidearms, ammo and armor; evidence lockers; patrol cars), an **office block**, the **gastronom** (ГАСТРОНОМ, the big supermarket) and the big housing: two **nine-storey panel blocks** with lifts and two **Stalinkas**, the grand ochre blocks of the 50s. |
+| **Housing** | **Khrushchyovkas** (five-storey panel blocks), each with its courtyard: a playground (swings, a slide, a climbing frame, a sandbox), benches, bins, washing lines and often a row of lock-up garages. The **private sector**: houses behind board and corrugated fences. **Dachas**: little log and board houses in garden plots with greenhouses and wells. |
+| **Industry** | One edge of town. The **Red October plant**: a brick hall with saw-tooth roof lights, a production line, lathes and presses, worker lockers and a tall striped stack, behind a concrete fence. The **boiler house** (КОТЕЛЬНАЯ) with its chimney and the heating mains on stilts, and a long row of **lock-up garages** (some open: shelving, tools, a car someone was fixing). A **warehouse** and the **auto repair** shop. |
+| **Shops and the street** | **ПРОДУКТЫ 24** corner shops, a **pharmacy** (АПТЕКА), a **hardware store** (ХОЗТОВАРЫ), a **gas station** (АЗС 24), a clinic (ПОЛИКЛИНИКА), a **market** with a row of street kiosks, and **Victory Park** with its memorial. Street lamps along every road, bus shelters, kiosks and dumpsters you can search. |
+| **Military** | A fenced **military outpost** in the corner away from the factories (command post, tents, watchtowers, a helipad and a truck) and **checkpoints** on the streets (barriers, sandbags, a guard booth and a military truck). This is the only place to find AK-74s, AK mags, PSO scopes, 6B13 armor, 6B47 helmets, military rucksacks, MREs and military batteries. Guarded by armored soldier zombies: aim for the head. |
 
-Buildings carry signs (pharmacy cross, HOSPITAL, POLICE, company names), and the map (**M**) labels every landmark.
+Buildings carry their signs in Cyrillic (АПТЕКА with its green cross, БОЛЬНИЦА, ПОЛИЦИЯ, firm names on the offices); the map (**M**) labels every landmark in English.
 
 **Interiors.** Buildings are laid out and furnished for what they are.
 - **Houses** are split into real rooms joined by interior doors:
@@ -47,8 +49,10 @@ Buildings carry signs (pharmacy cross, HOSPITAL, POLICE, company names), and the
   - Bedrooms with a bed, nightstands, a wardrobe, a dresser and sometimes a desk.
   - A small tiled bathroom (tub, toilet, sink with a mirrored cabinet) next to a laundry room.
 
-  Kitchens and bathrooms have tiled floors and bedrooms are carpeted. Loot follows the furniture: food in kitchen cupboards, pills in the bathroom cabinet, backpacks in wardrobes, valuables in nightstands.
-- **Shops** have shelving along the walls and down the middle, a checkout with a cash register by the door, drinks fridges and freezers, and a stocked back storeroom.
+  Kitchens and bathrooms have tiled floors and bedrooms are carpeted. Loot follows the furniture: food in kitchen cupboards, pills in the bathroom cabinet, backpacks in wardrobes, valuables in nightstands. Most homes were furnished in the 70s: a dark veneer wall unit (stenka), a patterned carpet hung over the sofa, a tube television, a gas stove and a little kitchen table with an oilcloth and stools.
+- **Flats.** Every floor of the apartment blocks has flats off the stairwell corridor: a living room that is also the bedroom, through a doorway to a narrow kitchen. Balconies hang off the long sides, some glazed in, some with washing or junk on them.
+- **Shops** are stocked like real ones: aisles of gondola shelving packed with products (crisps, noodles, bottles, cans, cereal, juice, jars, pasta; pills in the pharmacy, tools in the hardware store), price strips and tags on every shelf, aisle headers, cartons of overstock on top. A lattice of light panels in the ceiling, a band of coloured tile round the walls, upright drinks coolers along the back, an ice-cream chest, a promo stand, baskets, a bread rack, and the till by the door with the cigarette wall behind it. About half the gondolas have something worth taking, and so does the till.
+- **The factory** has its production line down the middle, machine tools either side, lockers, benches and a forklift; **the boiler house** has its two boilers.
 - **Clinics** have a waiting room (reception, rows of chairs, a water cooler) and exam rooms.
 - **Offices** are desk floors with monitors and chairs, filing cabinets, plants and vending machines.
 - **Police stations** have offices, a locker room, an evidence room and a holding cell behind bars.
@@ -276,6 +280,9 @@ The gunsmith trader sells the NATO guns as your reputation grows.
   - Red dot and holographic sights project their reticle at infinity, like real reflex sights.
   - The **PSO-1 4×** and **Hunting 6×** are true picture-in-picture scopes: a magnified view renders onto the lens, with the PSO's chevron and rangefinder reticle and an eye-box shadow when the gun sways. The scope view follows the exact path of the bullet, so the reticle is true: shots land within the rifle's spread.
   - The **ACOG 4×** (M4A1, M14, M249) is a picture-in-picture scope with a red chevron and bullet-drop ladder.
+  - The **Pulsar thermal 3×** is a picture-in-picture thermal scope: the world in the lens goes grey and cold, and anything warm (zombies, survivors) glows white hot, even in the dark. Rare: military crates or the gunsmith.
+  - **Lasers** go on the tactical rail: the **PEQ-15** (rifles, the MP5, shotguns) and the **Klesch-2** (also pistols). A red dot shows on whatever you're pointing at, the beam shows in the dark, and your hip fire tightens up a lot.
+  - **What fits what.** Hover an attachment, or right-click it, to see which guns it goes on; the guns you're carrying that take it light up in your inventory. Right-click → **Attach to** lists every gun you carry that it fits.
   - Suppressors cut gunshot noise by about 80%, which matters with zombies around. The rifle can fits the AK, SKS, M4A1 and M14; the pistol can fits the Glock, M1911 and MP5.
   - Also a muzzle brake and a vertical foregrip.
 - **Lean** with **Q** / **E**.
@@ -383,8 +390,25 @@ Zombies and survivors react physically to what hits them.
 | M | Map (your safehouse is outlined in yellow) |
 | B | Build mode: 1–8 select a piece (7 = rain barrel, 8 = garden plot), R rotate, LMB build, X dismantle |
 | N | Raise / lower the laser designator (if you carry one): hold LMB to lase, wheel to zoom |
+| 3–6 | Hotbar: use what's in the slot, or bring up a grenade (LMB throw, RMB lob) |
 | V | Claim a safehouse |
 | Esc | Pause. The game goes fullscreen when you spawn; hold Esc or use the pause menu to leave fullscreen. |
+
+## Grenades and the hotbar
+
+- **The hotbar.** Four slots on keys **3–6**, shown bottom centre. Drag something from a pocket, your vest or your jacket onto a slot in the inventory's Hotbar section (or right-click it → **Put on hotbar**). Not from a backpack: you can't get into that in a hurry. Pressing the key uses it: bandages and medkits are applied, food is eaten, a grenade comes up in your hand. Right-click a slot to clear it.
+- **Grenades.** The **F-1** (the "limonka", a big fragmentation radius), the **RGD-5** and the **M67**. With one in hand, left click throws it overarm, right click lobs it underhand; **1** or **2** puts it away. It's armed when it leaves your hand, bounces off walls and floors, and goes off when its fuse runs out: a fireball, smoke and dirt, a scorch mark, and a blast that falls off with distance. A wall between you and it shields you completely; something low (a car, a counter) takes half. Windows shatter, doors splinter, bodies are thrown and everything for streets around comes to see.
+- **Finding them.** Military crates and soldiers, and the gunsmith. `kit Grenadier` gives you a vest full.
+
+## FPV drones
+
+An **FPV drone** with something hung under it scouts and kills from a distance.
+
+- **Arming it.** Drag a grenade, a block of **C4** or a **PG-7V** RPG warhead onto the drone in the inventory (right-click → **Remove** takes it off again). Right-click → **Fly**, or put it on the hotbar.
+- **Flying.** You see through its camera, with the OSD and the static of a real feed: **WASD** to fly, the mouse to turn and tilt, **Space**/**C** (or **E**/**Q**) to climb and drop, **Shift** for speed. Your body stays where you stood; if anything hurts it, you snap back.
+- **Payloads.** A grenade drops on the left mouse button (with a short fuse, so it bursts on landing). C4 or an RPG warhead makes it a kamikaze: it goes off when it hits something, or when you click.
+- **Coming back.** Right-click sets it down where it is, to be picked up again. The battery lasts about six minutes; past 300 m the signal breaks up and it drops out of the sky.
+- **Finding them.** Military crates and the gunsmith. `kit Drones` gives you two with payloads.
 
 ## Close air support
 
@@ -438,7 +462,8 @@ The command line has Tab completion and ↑/↓ history. Type `help` for the ful
 ```
 give ak74            give mag_ak30 3      kit Rifleman        kit Marksman
 give m4a1            give mag_stanag 3    kit Operator        kit Gunner
-give designator      give radio_pack      kit JTAC
+give designator      give radio_pack      kit JTAC            kit Grenadier
+give scope_thermal   give laser_peq       kit Drones          tp factory
 give scope_pso       give supp_rifle      kit Builder         spawn brute 3
 survivor hostile 2   survivors            trust 40            spawn walker 5
 tp hospital          tp military          tp checkpoint       tp pharmacy
@@ -454,10 +479,10 @@ god / noclip / invis / freeze / freebuild                    js player.skill
 
 ## Tall buildings
 
-Offices and police stations have two real floors, the hospital three, and the downtown skyscraper 9 to 13, all the way up to its roof. Every floor has its own rooms, doors, windows, furniture, loot and zombies.
+Offices and police stations have two real floors, the hospital three, the Stalinkas four, the Khrushchyovkas five, the panel blocks nine, and the downtown skyscraper 9 to 13, all the way up to its roof. Every floor has its own rooms, doors, windows, furniture, loot and zombies.
 
 - **Stairs.** A switchback stairwell sits at the end of the corridor. A flight climbs to a half landing, then a second flight turns back up to the next floor. Walk up and down them like anywhere else.
-- **Elevators.** The hospital and skyscraper also have an elevator beside the stairs. Press **F** at the call button by its doors on any floor to call it. Inside, press **F** at the panel and pick a floor with the number keys (**0** is the tenth) or click it. The doors stay open a few seconds, then close, and the car carries you (and anything standing in it) up or down.
+- **Elevators.** The hospital, the nine-storey blocks and the skyscraper also have an elevator beside the stairs. Press **F** at the call button by its doors on any floor to call it. Inside, press **F** at the panel and pick a floor with the number keys (**0** is the tenth) or click it. The doors stay open a few seconds, then close, and the car carries you (and anything standing in it) up or down.
 - **Zombies use the stairs.** They hear gunfire and footsteps through the floors (muffled), find their way to the stairwell and climb or descend floor by floor to reach you. They see and attack only on their own floor. Floors and ceilings stop bullets, and you can't jump out of an upstairs window.
 - Survivors stay on the ground floor, and you can only build on the ground.
 - **Bodies on the stairs.** Ragdolls, dropped guns and blood land on the flights and landings (and slide down them), not on an invisible floor.
@@ -474,7 +499,7 @@ The world is drawn with level of detail, the way open-world games do it:
 
 ## The look of the town
 
-Buildings and streets are textured with generated maps: brick, wood siding, concrete panels, and plaster inside. Each wall gets a finish that fits the building. Houses are brick or siding, farm buildings are siding, shops are brick, and everything else is concrete. Wall textures are projected in world space, so every brick is the same size whatever the wall's shape. Floors are planks, with tiles in kitchens and bathrooms and concrete slab in commercial buildings. Roads are asphalt with sidewalks and curbs; dirt tracks are dirt. Houses have gable roofs. Flat roofs have parapets, AC units and vent pipes, and shops have awnings.
+Buildings and streets are textured with generated maps: brick, wood siding, concrete, precast panels with their seams, logs, and plaster inside. Each wall gets a finish that fits the building. Houses are brick or siding, dachas are logs, the panel blocks are panels, the Stalinkas are plaster, the factory and boiler house are brick, farm buildings are siding, shops are brick, and everything else is concrete. Wall textures are projected in world space, so every brick is the same size whatever the wall's shape. Floors are planks, with tiles in kitchens and bathrooms and concrete slab in commercial buildings. Roads are asphalt with sidewalks and curbs; dirt tracks are dirt. Houses have gable roofs. Flat roofs have parapets, AC units and vent pipes, and shops have awnings.
 
 ## Code layout
 
@@ -508,6 +533,11 @@ Buildings and streets are textured with generated maps: brick, wood siding, conc
 | `src/collision.js` | 2D spatial hash, circle-vs-box movement, raycasts |
 | `src/items.js` | Item definitions, loot tables, container types |
 | `src/inventory.js` / `src/invui.js` | Grid inventory logic and drag-and-drop UI |
+| `src/eastern.js` | The post-Soviet street: courtyards and playgrounds, lock-up garage rows, smokestacks, heating mains, kiosks, fences, street lamps, bus shelters, the factory roof |
+| `src/explosives.js` | Explosions: fireball, smoke and debris, the flash and boom, damage with distance and cover, windows, doors and bodies |
+| `src/throwables.js` | Grenades (holding, throwing, bouncing, fuses) and the hotbar |
+| `src/drones.js` | FPV drones: flying, the camera feed and OSD, payloads, drops and kamikaze strikes, battery and range |
+| `src/intro.js` | The helicopter insertion: the Mi-8, the landing zone, the shots and subtitles |
 | `src/airstrike.js` | Close air support: the laser designator view, painting targets, the A-10 and its gun runs |
 | `src/soundui.js` | The Sound panel: a volume slider (and a test button) for every sound |
 | `src/paperdoll.js` | The 3D figure of your character in the inventory |
