@@ -15,7 +15,8 @@
     <div id="clock"></div>
     <div id="weather"></div>
     <div id="info"></div>
-    <div id="tracker"><div id="guide"></div><div id="questlog"></div></div>
+    <div id="tracker"><div id="mission"></div><div id="guide"></div><div id="questlog"></div></div>
+    <div id="mission-banner"></div>
     <div id="crosshair"></div>
     <div id="hitmarker"></div>
     <div id="vignette"></div>
@@ -50,7 +51,7 @@
 
   <!-- Inventory overlay -->
   <div id="invwrap">
-    <div id="invhead"><span id="invtitle">Inventory</span><span class="hint">Drag to move · R rotates while dragging · Shift+click quick-move · Right-click for actions<br>Close: Esc · Tab · F · start walking (WASD) · click outside</span><button id="btn-inv-close">✕ Close</button></div>
+    <div id="invhead"><span id="invtitle">Inventory</span><span class="hint">Drag to move · R rotates while dragging · Shift+click quick-move · Right-click for actions<br>Close: Esc · Tab · F · start walking (WASD) · click outside</span><button id="btn-inv-stashall" style="display:none">Move carried loot to stash</button><button id="btn-inv-close">✕ Close</button></div>
     <div id="inv"></div>
   </div>
 
@@ -63,32 +64,17 @@
       <button id="btn-sound">Sound</button>
       <button id="btn-gfx">Graphics</button>
       <button id="btn-guide">Survival guide (F2)</button>
-      <button id="btn-save-quit">Save &amp; quit to menu</button>
+      <button id="btn-save-quit">Save &amp; quit to base</button>
     </div>
   </div>
 
-  <!-- Title menu -->
-  <div id="menu" class="screen">
-    <div class="panel title-panel">
-      <h1>TARKZOID</h1>
-      <p class="dim">This is how you died.</p>
-      <div id="menu-save"></div>
-      <div class="menu-buttons">
-        <button id="btn-continue" class="go">CONTINUE</button>
-        <button id="btn-newchar" class="go">NEW CHARACTER</button>
-        <button id="btn-newworld" class="danger small">Start a fresh world</button>
-        <button id="btn-sound-menu" class="small">Sound settings</button>
-        <button id="btn-gfx-menu" class="small">Graphics settings</button>
-        <button id="btn-guide-menu" class="small">Survival guide</button>
-      </div>
-      <div id="graveyard"></div>
-    </div>
-  </div>
+  <!-- The base (the main menu): built by hub.js -->
+  <div id="menu" class="screen hub"></div>
 
   <!-- Character creation -->
   <div id="create" class="screen">
     <header>
-      <h1>NEW SURVIVOR</h1>
+      <h1>NEW OPERATIVE</h1>
       <div class="spacer"></div>
       <button id="btn-create-back" class="small">Back</button>
     </header>
@@ -104,11 +90,11 @@
         <div id="cc-stats"></div>
         <h3 id="cc-when-head">Insertion <small class="dim">— when the helicopter puts you down</small> <button id="cc-reroll" class="small">Other options</button></h3>
         <div id="cc-when"></div>
-        <h3>Insertion loadout <small class="dim">— the gun you bring in on the helicopter</small></h3>
+        <h3>Starting weapon <small class="dim">— issued on recruitment</small></h3>
         <div id="cc-guns"></div>
         <h3>Starting kit</h3>
         <div id="cc-kit" class="dim"></div>
-        <button id="cc-start" class="go">SPAWN ▶</button>
+        <button id="cc-start" class="go">RECRUIT ▶</button>
       </section>
     </div>
     <footer>
@@ -124,8 +110,8 @@
       <h1 class="red" id="death-title">YOU DIED</h1>
       <p id="death-reason"></p>
       <div id="death-stats"></div>
-      <p class="dim">Your corpse and everything you carried stays in the world. Your base is still standing.</p>
-      <button id="btn-death-next" class="go">NEW CHARACTER</button>
+      <p class="dim">Everything they carried is lost. Your stash, your standing with the handlers and your contracts are still at the base.</p>
+      <button id="btn-death-next" class="go">BACK TO BASE</button>
     </div>
   </div>
 

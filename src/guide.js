@@ -9,6 +9,7 @@ const K = (k) => `<kbd>${k}</kbd>`;
 
 export const SECTIONS = [
   ['start', 'Getting started'],
+  ['base', 'The base and contracts'],
   ['survive', 'Staying alive'],
   ['threats', 'Zombies and people'],
   ['combat', 'Weapons and combat'],
@@ -22,8 +23,14 @@ export const SECTIONS = [
 export const ARTICLES = [
   // ---------------------------------------------------------------- start
   { id: 'how', sec: 'start', title: 'How to play', html: `
-<p class="lead">You are one survivor in a dead post-Soviet town. The world is persistent: what you take stays taken, what you build stays built, and when you die your body (and everything on it) stays where it fell. The next survivor you make lands in the same world.</p>
-<h4>What to do, in order</h4>
+<p class="lead">You run operatives out of a forward base into a dead post-Soviet town. Take a contract from one of the handlers, fly in, do the job, and be at the landing zone when the helicopter comes back for you. Whatever you carry out is yours. Whoever doesn't make it out is gone, with everything on them.</p>
+<h4>The loop</h4>
+<ol>
+<li><b>At the base:</b> recruit an operative, take a contract from a handler, kit up from your stash, then <b>Enter the Zone</b>.</li>
+<li><b>In the zone:</b> do the contract, loot, survive. The contract tells you when the helicopter is coming back.</li>
+<li><b>Extraction:</b> two hours before the helicopter, the dead come for you in waves. Hold the landing zone, get aboard, and you're out.</li>
+</ol>
+<h4>In the zone, what to do</h4>
 <ol>
 <li><b>Get off the landing zone.</b> The helicopter is loud: every zombie for streets around heads for where it set down. Move away, and keep moving.</li>
 <li><b>Scavenge.</b> Walk into buildings and search what's in them (${K('F')} on a cupboard, shelf, fridge or body). Loot follows the building: food in kitchens and shops, pills in pharmacies, tools in hardware stores and garages, guns at police and military sites.</li>
@@ -31,6 +38,7 @@ export const ARTICLES = [
 <li><b>Find a home.</b> Pick a building with few ways in and claim it as your safehouse with ${K('V')}. Zombies never respawn near it.</li>
 <li><b>Fortify and stock it.</b> With a hammer, planks and nails, build mode (${K('B')}) puts up walls, barricades, doors, beds, crates and campfires.</li>
 <li><b>Trade and take jobs.</b> Traders have set up posts around town. Barter with them, finish their quests, earn their loyalty for better deals.</li>
+<li><b>Watch the clock.</b> Top right: your contract, its objectives, and when and where the helicopter comes back. Be there.</li>
 <li><b>Survive the nights.</b> A day is 24 real minutes. At night the dead are faster and see less, and more of them turn up as the days go by. Sleep in a bed to recover.</li>
 </ol>
 <h4>Rules worth knowing early</h4>
@@ -41,6 +49,45 @@ export const ARTICLES = [
 <li>Loot doesn't respawn. Spread out to find more.</li>
 <li>The game saves every 30 seconds, when you sleep, and when you close the tab.</li>
 </ul>` },
+  // ---------------------------------------------------------------- base
+  { id: 'base', sec: 'base', title: 'The base', html: `
+<p class="lead">The main menu is the base: a forward operating base outside the town, with the helicopter on the pad. The tabs along the top:</p>
+<ul>
+<li><b>Operative:</b> who you're sending in: profession, skills, extractions, kills. Recruit a new one here when you have none.</li>
+<li><b>Stash:</b> your container at the base. Drag kit between your operative and the stash. What's on your operative goes into the zone with them; what's in the stash is safe. <b>Move carried loot to stash</b> empties your pockets, vest and backpack into it in one go.</li>
+<li><b>Handlers:</b> the four people you work for. Each offers contracts and barters (from your stash).</li>
+<li><b>Enter the Zone</b> (the middle tab): pick a contract (or a free run), an insertion window, check your loadout, deploy. While deployed it reads <b>Return to the Zone</b>.</li>
+<li><b>Memorial:</b> the operatives you've lost.</li>
+</ul>
+<p>Extracted operatives are patched up at the base: wounds, hunger and infection are all dealt with before the next deployment. Skills carry over.</p>` },
+  { id: 'contracts', sec: 'base', title: 'Handlers and contracts', html: `
+<p>Four handlers, each with their own kind of work:</p>
+<ul>
+<li><b>Colonel Belov, Command:</b> eliminate turned officers (bring back their tag), cull the dead, survey the tall buildings.</li>
+<li><b>Dr. Irina Sokolova, Institute:</b> bring her scientists out alive; recover samples and research.</li>
+<li><b>Quartermaster Hale, Logistics:</b> bring back supplies; recover the flight recorder; survey industrial sites.</li>
+<li><b>The Broker:</b> valuables, drives, and people who know things.</li>
+</ul>
+<p>Each keeps three contracts on the board. You can hold three at a time and take one in per deployment. A contract says how long you'll be in: <i>"Helicopter back: Day 14, 06:00"</i>. That's your extraction, done or not.</p>
+<p>Objectives:</p>
+<ul>
+<li><b>Escort:</b> find the scientist (they're hiding in a marked building), talk to them, and they follow you. Keep them alive and near you when you board.</li>
+<li><b>Retrieve:</b> the item is in a cupboard in a marked building. Have it on you when you board.</li>
+<li><b>Eliminate:</b> a turned officer, tougher than the others, with his unit around him. Kill him, search the body for his tag, and bring it out.</li>
+<li><b>Survey:</b> get inside each marked building (any floor).</li>
+<li><b>Cull:</b> kill that many of the dead.</li>
+<li><b>Supply:</b> have the items on you when you board. They're handed over.</li>
+</ul>
+<p>The contract pays only if every objective is done when you board: reputation with the handler and items delivered to your stash. Failing costs a little reputation. Reputation raises your loyalty level with the handler, which unlocks better barter offers and better contract rewards. The handlers restock and post new contracts after each deployment.</p>` },
+  { id: 'extraction', sec: 'base', title: 'Extraction and the final stand', html: `
+<p>The helicopter comes back to the landing zone it dropped you at (marked <b>H</b> on the map, ${K('M')}; the tracker top right gives its distance and direction).</p>
+<ul>
+<li><b>The day before</b> and <b>six hours out</b>, the radio reminds you.</li>
+<li><b>Two hours out</b>, the horde: waves of the dead come out of the streets toward wherever you are, more and faster the closer the helicopter gets. Dig in at the LZ: find cover, keep ammo and meds handy, watch every direction.</li>
+<li><b>On time</b>, the helicopter comes in low and lands. Walk to its open side door and press ${K('F')}: <i>Board the helicopter</i>.</li>
+<li>It waits <b>a minute and a half</b> on the ground, then lifts off. Anyone not aboard is <b>missing in action</b>: the operative and their gear are lost.</li>
+</ul>
+<p>Sleep can't carry you past the two-hour warning: you wake for it. Save and quit at any time; <b>Return to the Zone</b> picks up where you left off.</p>` },
   { id: 'firstday', sec: 'start', title: 'Your first day (the tutorial)', html: `
 <p>A new survivor gets a ten-step "First day" checklist, top right. Each step pays a small reward:</p>
 <ol><li>Move about and look around.</li><li>Search something.</li><li>Open your inventory (${K('Tab')}).</li><li>Eat or drink.</li><li>Arm yourself.</li><li>Kill a zombie.</li><li>Claim a safehouse (${K('V')}).</li><li>Find a trader.</li><li>Make a deal.</li><li>Fortify: build something.</li></ol>
@@ -132,8 +179,8 @@ export const ARTICLES = [
 <li>Store things in crates and containers. They stay where you put them.</li>
 </ul>` },
   { id: 'death', sec: 'survive', title: 'Death', html: `
-<p>Death is permanent. Your body stays in the world with everything you carried, and your base keeps standing. Make a new survivor and they land in the same world: go back for your gear if you dare.</p>
-<p>Fallen characters are listed in the graveyard on the title screen.</p>` },
+<p>Death is permanent. An operative who dies in the zone, or is left behind when the helicopter lifts off (missing in action), is gone with everything they carried, and their contract fails. The base keeps your stash, your standing with the handlers and your other contracts: recruit another operative and go again.</p>
+<p>Fallen operatives are listed on the memorial at the base.</p>` },
 
   // ---------------------------------------------------------------- threats
   { id: 'zombies', sec: 'threats', title: 'Zombies', html: `

@@ -201,6 +201,12 @@ export const ITEMS = {
   q_ledger: { name: "Smuggler's Ledger", short: 'Ledger', type: 'quest', w: 1, h: 1, color: '#7a2a2a', value: 0 },
   q_radio: { name: 'Field Radio', short: 'Radio', type: 'quest', w: 2, h: 2, color: '#3a4a2a', value: 0 },
   q_keys: { name: 'Ring of Keys', short: 'Keys', type: 'quest', w: 1, h: 1, color: '#c8a050', value: 0 },
+  // Contract items (see contracts.js)
+  q_samples: { name: 'Sample Transport Case', short: 'Samples', type: 'quest', w: 2, h: 1, color: '#e8e0c8', value: 0 },
+  q_notes: { name: "Professor's Notebook", short: 'Notes', type: 'quest', w: 1, h: 1, color: '#3a5a7a', value: 0 },
+  q_blackbox: { name: 'Flight Recorder', short: 'Recorder', type: 'quest', w: 2, h: 2, color: '#e86a2a', value: 0 },
+  q_drive: { name: 'Encrypted Drive', short: 'Drive', type: 'quest', w: 1, h: 1, color: '#2a2a3a', value: 0 },
+  q_hvt: { name: "Officer's Dog Tag", short: 'Tag', type: 'quest', w: 1, h: 1, color: '#d8c87a', value: 0 },
 };
 
 // Weights in kg (per round / per unit for stackables). Carried weight slows

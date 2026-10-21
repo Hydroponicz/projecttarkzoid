@@ -12,7 +12,7 @@ import { mulberry32, setDoor } from './world.js';
 import { hasLOS } from './collision.js';
 import { sfx } from './audio.js';
 
-const LL_REP = [0, 10, 25]; // reputation needed for loyalty levels 1-3
+export const LL_REP = [0, 10, 25]; // reputation needed for loyalty levels 1-3
 const DAY = 1440;
 const $ = (id) => document.getElementById(id);
 const FIRST = ['Rosa', 'Viktor', 'Mags', 'Dmitri', 'Hollis', 'June', 'Abe', 'Nadia', 'Cole', 'Ines', 'Big Lou', 'Petra', 'Sol', 'Marta'];
@@ -22,7 +22,7 @@ const FIRST = ['Rosa', 'Viktor', 'Mags', 'Dmitri', 'Hollis', 'June', 'Abe', 'Nad
 // Offers: give (items you hand over) → get; ll = loyalty level required;
 // stock = how many times a day. Quests unlock in order.
 // ---------------------------------------------------------------------------
-const ARCH = {
+export const ARCH = {
   gunsmith: {
     title: 'Gunsmith', post: "{name}'s Gunworks", sign: '#5a2a1a', gun: 'ak74', shirt: 0x3a3a30, hat: 0x2a2a2a,
     bio: ['I fixed rifles for hunters before all this. Now I fix them for anyone who can pay in parts.', "Bring me bolts, tape and wire and I'll keep your gun alive."],

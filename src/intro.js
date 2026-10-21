@@ -11,7 +11,7 @@ const LANDED = 17.5, JUMP = 19.6, END = 21.2;
 
 // A Mi-8 "Hip": a long cabin with an open side door (and an interior you can
 // see from inside), the glazed nose, engines on top, tail boom and rotors
-function buildMi8() {
+export function buildMi8() {
   const g = new THREE.Group();
   const olive = new THREE.MeshStandardMaterial({ color: 0x4f5a3c, roughness: 0.8, metalness: 0.15 });
   const dark = new THREE.MeshStandardMaterial({ color: 0x2a2e24, roughness: 0.9 });
@@ -102,7 +102,7 @@ export class Intro {
     this.el = document.createElement('div');
     this.el.id = 'intro';
     this.el.innerHTML = `<div class="bar t"></div><div class="bar b"></div>
-      <div class="title"><h1>TARKZOID</h1><p>${game.profile.name.toUpperCase()} · ${(game.profile.professionName || '').toUpperCase()}</p><p>INSERTION · LZ ${Math.round(lz.x)}/${Math.round(lz.z)} · DAY ${game.day}</p></div>
+      <div class="title"><h1>TARKZOID</h1><p>${game.profile.name.toUpperCase()} · ${(game.profile.professionName || '').toUpperCase()}</p><p>INSERTION · LZ ${Math.round(lz.x)}/${Math.round(lz.z)} · DAY ${game.day}</p>${game.save?.raid?.contract ? `<p>CONTRACT · ${game.save.raid.contract.title.toUpperCase()}</p>` : ''}</div>
       <div class="sub"></div><div class="skip">Space / Esc to skip</div>`;
     this.el.style.display = 'block';
     document.body.appendChild(this.el);

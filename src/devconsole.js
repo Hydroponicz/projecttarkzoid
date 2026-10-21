@@ -408,23 +408,24 @@ export class DevConsole {
       writeSave(sv2);
       g.save = sv2;
       this.log(`New seed ${sv2.seed}`);
-      if (sv2.character) g.loadWorld(); else g.showMenu();
+      if (sv2.character && sv2.raid) g.loadWorld(); else g.showMenu();
     }, 'danger');
     this.button(r2, 'Wipe save', () => {
       if (!confirm('Delete the save?')) return;
       if (g.state === 'play') g.teardown();
-      deleteSave(); g.save = null; g.showMenu(); this.log('Save wiped');
+      g.wipeProfile(); g.showMenu(); this.log('Save wiped');
     }, 'danger');
   }
 
   importSave(text) {
     try {
       const data = JSON.parse(text);
-      if (typeof data.seed !== 'number') throw new Error('Not a Tarkzoid save (missing seed)');
+      if (typeof data.seed !== 'number' && !data.hub) throw new Error('Not a Tarkzoid save');
       const g = this.game;
       if (g.state === 'play') g.teardown();
       writeSave(data);
       g.save = data;
+      g.migrateProfile();
       g.showMenu();
       this.log('Save imported — continue from the menu');
       this.render();

@@ -3,6 +3,8 @@
 import * as THREE from 'three';
 import { moveCircle, hasLOS, atHeight } from './collision.js';
 import { LH } from './levels.js';
+import { makeItem } from './items.js';
+import { addItem } from './inventory.js';
 
 // Binary min-heap of grid indices keyed by f-score (for A*).
 class Heap {
@@ -511,11 +513,11 @@ export class Zombies {
   }
 
   serialize() {
-    return this.list.map((z) => ({ x: +z.pos.x.toFixed(2), z: +z.pos.z.toFixed(2), y: z.pos.y > 0.01 ? +z.pos.y.toFixed(3) : undefined, type: z.type, hp: Math.round(z.hp) }));
+    return this.list.map((z) => ({ x: +z.pos.x.toFixed(2), z: +z.pos.z.toFixed(2), y: z.pos.y > 0.01 ? +z.pos.y.toFixed(3) : undefined, type: z.type, hp: Math.round(z.hp), hvt: z.hvt }));
   }
 
   restore(saved) {
-    for (const s of saved) { const z = this.spawn(s.x, s.z, s.type, s.y || 0); z.hp = s.hp; }
+    for (const s of saved) { const z = this.spawn(s.x, s.z, s.type, s.y || 0); z.hp = s.hp; if (s.hvt) { z.hvt = s.hvt; z.maxHp = 900; z.mesh.scale.setScalar(1.18); } }
   }
 
   populate(count, player) {
@@ -682,6 +684,8 @@ export class Zombies {
     c.color = zb.look.top;
     c.look = zb.look;
     if (!zb.def.loot && Math.random() < 0.65) c.grid.items.length = 0; // most zombies carry nothing
+    if (zb.hvt) { c.name = zb.hvt; const tag = makeItem('q_hvt'); if (!addItem(c.grid, tag)) { c.grid.h += 1; addItem(c.grid, tag); } }
+    game?.mission?.onZombieKilled(zb);
     this.list.splice(this.list.indexOf(zb), 1);
     if (!game?.ragdolls) return;
     // The body keeps its momentum, takes the killing blow, and crumples:

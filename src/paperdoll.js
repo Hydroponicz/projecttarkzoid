@@ -54,7 +54,7 @@ const GARMENTS = {
 };
 const PACKS = { bp_scav: [0.34, 0.4, 0.16], bp_tri: [0.38, 0.5, 0.2], bp_mil: [0.44, 0.62, 0.26], radio_pack: [0.34, 0.44, 0.2] };
 
-function buildFigure(profile) {
+export function buildFigure(profile) {
   const look = playerLook(profile), eq = profile.equip;
   const fig = new THREE.Group();
   const top = eq.clothing ? hex(ITEMS[eq.clothing.key].color) : look.shirt;

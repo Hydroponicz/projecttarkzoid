@@ -32,6 +32,8 @@ import { DevConsole } from './devconsole.js';
 import { Survivors } from './survivors.js';
 import { Farming } from './farming.js';
 import { Weather, SEASON_DAYS } from './weather.js';
+import { Hub } from './hub.js';
+import { Mission, newHub, refillContracts, extractTime, giveStash, stashItem, dayClock } from './contracts.js';
 
 const $ = (id) => document.getElementById(id);
 const SCREENS = ['menu', 'create', 'death'];
@@ -96,11 +98,13 @@ class Game {
     this.builder = new Builder(this);
     this.buildables = BUILDABLES;
     this.buildCost = buildCostText;
-    this.creation = setupCreation((ch) => this.spawnCharacter(ch), () => !this.save?.world);
+    this.creation = setupCreation((ch) => this.recruit(ch), () => false);
     this.dev = new DevConsole(this);
     this.state = 'menu';
     this.invOpen = false;
     this.save = loadSave();
+    this.migrateProfile();
+    this.hub = new Hub(this);
     this.chopHits = new Map();
     this.shaking = new Set(); // doors being beaten
 
@@ -124,28 +128,20 @@ class Game {
     $('pause').addEventListener('click', (e) => { if (e.target.tagName !== 'BUTTON') this.input.lock(); });
     $('btn-save-quit').onclick = () => this.quitToMenu();
     this.soundPanel = setupSoundPanel();
-    $('btn-sound').onclick = $('btn-sound-menu').onclick = () => this.soundPanel.open();
+    $('btn-sound').onclick = () => this.soundPanel.open();
     this.gfxPanel = setupGfxPanel(this);
     this.guide = setupGuide(this); // F2
-    $('btn-guide').onclick = $('btn-guide-menu').onclick = () => this.guide.open();
-    $('btn-gfx').onclick = $('btn-gfx-menu').onclick = () => this.gfxPanel.open();
+    $('btn-guide').onclick = () => this.guide.open();
+    $('btn-gfx').onclick = () => this.gfxPanel.open();
     $('btn-fullscreen').onclick = () => { if (document.fullscreenElement) this.exitFullscreen(); else this.enterFullscreen(); };
     $('btn-inv-close').onclick = () => this.closeInventory();
     // Clicking the dim background (not a panel) closes the inventory.
     $('invwrap').addEventListener('pointerdown', (e) => {
       if (e.button === 0 && (e.target.id === 'invwrap' || e.target.id === 'inv' || e.target.classList.contains('inv-col'))) this.closeInventory();
     });
-    $('btn-continue').onclick = () => this.loadWorld();
-    $('btn-newchar').onclick = () => this.showScreen('create');
     $('btn-create-back').onclick = () => this.showMenu();
-    $('btn-death-next').onclick = () => { this.creation.reset(); this.showScreen('create'); };
-    $('btn-newworld').onclick = () => {
-      if (this.save && !confirm('Start a fresh world? Your current world, base and character are deleted.')) return;
-      deleteSave();
-      this.save = null;
-      this.creation.reset();
-      this.showScreen('create');
-    };
+    $('btn-death-next').onclick = () => this.showMenu();
+    $('btn-inv-stashall').onclick = () => this.stashAll();
     addEventListener('beforeunload', (e) => {
       this.saveGame();
       // Ctrl+W (or a stray close) while playing asks first; where the
@@ -254,39 +250,141 @@ class Game {
 
   showMenu() {
     this.showScreen('menu');
-    const s = this.save;
-    const alive = s?.character;
-    $('btn-continue').style.display = alive ? 'block' : 'none';
-    $('btn-newchar').style.display = alive ? 'none' : 'block';
-    $('btn-newchar').textContent = s ? 'NEW CHARACTER (same world)' : 'NEW GAME';
-    $('btn-newworld').style.display = s ? 'block' : 'none';
-    if (s) {
-      const day = Math.floor(s.time / 1440) + 1;
-      $('menu-save').innerHTML = alive
-        ? `${alive.name} — ${alive.professionName}<br><span class="dim">World day ${day}${s.safehouse ? ' · safehouse claimed' : ''}</span>`
-        : `<span class="dim">World day ${day} · no living survivor</span>`;
-    } else $('menu-save').textContent = '';
-    $('graveyard').innerHTML = (s?.graveyard || []).length
-      ? '<b>Graveyard</b><br>' + s.graveyard.slice().reverse().map((g) => `✝ ${g.name} (${g.profession}) — survived ${g.days} day${g.days === 1 ? '' : 's'}, ${g.kills} kills. ${g.reason}.`).join('<br>')
-      : '';
+    this.hub.open();
   }
 
-  // ---------- world lifecycle ----------
-  spawnCharacter(ch) {
-    if (!this.save) this.save = { seed: Math.floor(Math.random() * 2 ** 31), worldVersion: WORLD_VERSION, time: START_TIME, safehouse: null, world: null, graveyard: [] };
-    // A fresh world starts when and in the season you chose to go in
-    // (automated test runs keep the time they set up)
-    if (ch.insert && !this.save.world && (!navigator.webdriver || localStorage.getItem('tarkzoid-insert'))) {
-      this.save.time = ch.insert.minute;
-      this.save.startOffset = ch.insert.season * SEASON_DAYS + ch.insert.day - 1;
-    }
+  // ---------- the base: profile, operative, deployments ----------
+  // The save holds the base (stash, handlers, contracts), the operative and
+  // the memorial; while deployed, also the zone's world and the raid (its
+  // contract, when the helicopter comes back, the mission's state).
+  migrateProfile() {
+    let s = this.save;
+    if (!s) { this.save = s = { hub: newHub(), graveyard: [], character: null, raid: null }; writeSave(s); return; }
+    if (s.hub) return;
+    s.hub = newHub();
+    s.graveyard ||= [];
+    // A save from before the base: an operative already in the world carries
+    // on there as a free run, with the helicopter coming in three days
+    if (s.character?.player && s.world) s.raid = { contract: null, extractAt: (Math.floor(s.time / 1440) + 3) * 1440 + 12 * 60, state: {}, lz: null, start: s.time };
+    else { s.world = null; s.raid = null; if (s.character) s.character.player = null; }
+    writeSave(s);
+  }
+
+  persist() { if (this.save) writeSave(this.save); }
+
+  wipeProfile() {
+    deleteSave();
+    this.save = null;
+    this.migrateProfile();
+    this.hub.result = null;
+    this.hub.open();
+  }
+
+  // A new operative: to the base, ready to deploy
+  recruit(ch) {
     delete ch.insert;
-    ch.spawnTime = this.save.time;
+    ch.raids = 0; ch.zoneDays = 0;
     this.save.character = ch;
-    writeSave(this.save);
+    this.persist();
+    this.hub.tab = 'deploy';
+    this.showMenu();
+  }
+
+  // Off to the zone: a new town, the insertion you picked, the contract's clock
+  deploy(contract, ins, freeDays) {
+    const s = this.save, hub = s.hub, ch = s.character;
+    if (!ch || s.raid) return;
+    if (contract) hub.contracts.splice(hub.contracts.indexOf(contract), 1);
+    s.seed = Math.floor(Math.random() * 2 ** 31);
+    s.worldVersion = WORLD_VERSION;
+    s.world = null; s.safehouse = null; delete s.layout;
+    // (automated test runs keep a fixed start unless asked)
+    if (ins && (!navigator.webdriver || localStorage.getItem('tarkzoid-insert'))) { s.time = ins.minute; s.startOffset = ins.season * SEASON_DAYS + ins.day - 1; }
+    else { s.time = START_TIME; delete s.startOffset; }
+    const days = contract ? contract.days : freeDays, hour = contract ? contract.hour : 12;
+    s.raid = { contract: contract || null, extractAt: extractTime(days, hour), state: {}, lz: null, start: s.time };
+    ch.player = null;
+    ch.spawnTime = s.time;
+    writeSave(s);
     this.loadWorld();
   }
 
+  // The raid is over (extracted, killed, left behind): settle the contract,
+  // back to the base. The zone's world is gone with it.
+  settleRaid(kind, info = {}) {
+    const s = this.save, hub = s.hub, raid = s.raid, ch = this.profile, p = this.player;
+    const c = raid?.contract || null;
+    const days = Math.max(0, Math.floor((this.time - (raid?.start ?? ch.spawnTime ?? this.time)) / 1440));
+    const r = { kind, name: ch.name, days, kills: p.kills - (raid?.state?.kills0 ?? ch.kills ?? 0), contract: c, ok: false, lines: info.lines, rewards: [], rep: 0 };
+    if (kind === 'extracted') {
+      ch.kills = p.kills; ch.raids = (ch.raids || 0) + 1; ch.zoneDays = (ch.zoneDays || 0) + days;
+      ch.player = null; // patched up at the base
+      // contract items and the zone traders' quest items stay behind
+      const grids = [ch.pockets, ch.equip.backpack?.grid, ...(ch.equip.rig?.grids || []), ...(ch.equip.clothing?.grids || [])].filter(Boolean);
+      for (const g of grids) g.items = g.items.filter((it) => ITEMS[it.key].type !== 'quest');
+      if (c && info.ok) {
+        r.ok = true; r.rewards = c.reward.items; r.rep = c.reward.rep;
+        hub.rep[c.handler] = +((hub.rep[c.handler] || 0) + c.reward.rep).toFixed(1);
+        for (const [k, n] of c.reward.items) giveStash(hub, k, n);
+      }
+    } else {
+      s.character = null;
+      if (kind === 'mia') s.graveyard.push({ name: ch.name, profession: ch.professionName, days, kills: p.kills, reason: 'Missing in action: the helicopter left without them' });
+    }
+    if (c && !r.ok) hub.rep[c.handler] = Math.max(0, +((hub.rep[c.handler] || 0) - 1).toFixed(1));
+    if (c) hub.history.push({ title: c.title, ok: r.ok, kind });
+    hub.raids = (hub.raids || 0) + 1;
+    hub.stock = {}; // the handlers restock
+    refillContracts(hub);
+    s.raid = null; s.world = null; s.safehouse = null; delete s.layout;
+    writeSave(s);
+    this.hub.showResult(r);
+  }
+
+  // Called by the mission: aboard the helicopter, or left behind
+  endRaid(kind, info) {
+    if (this.state !== 'play') return;
+    this.settleRaid(kind, info);
+    // (the world comes down once this frame is over)
+    this.deathTeardown = true;
+    this.hub.tab = 'deploy';
+    this.showMenu();
+  }
+
+  // The stash: the operative's kit on the left, the base's container on the right
+  openStash() {
+    const ch = this.save.character, hub = this.save.hub;
+    if (!ch) return;
+    this.profile = ch;
+    this.invOpen = true;
+    this.openContainer = null;
+    $('invwrap').style.display = 'block';
+    $('btn-inv-stashall').style.display = '';
+    $('invtitle').textContent = `Stash · ${ch.name}`;
+    this.doll ||= new PaperDoll();
+    this.doll.update(ch);
+    this.inv.open(() => this.playerSections(), () => [{ kind: 'grid', title: 'Stash', grid: hub.stash }], {
+      doll: this.doll,
+      onChange: () => { this.doll.update(ch); },
+      combine: (a, b, ctx) => combineItems(a, b, { ...ctx, game: this }),
+      loading: () => this.loader?.target,
+      onDrop: (it) => stashItem(hub, it),
+      onUse: () => false,
+      actions: () => [],
+    });
+  }
+
+  // Everything carried (not worn) into the stash
+  stashAll() {
+    const ch = this.save?.character, hub = this.save?.hub;
+    if (!ch || this.state !== 'menu') return;
+    const grids = [ch.pockets, ch.equip.backpack?.grid, ...(ch.equip.rig?.grids || []), ...(ch.equip.clothing?.grids || [])].filter(Boolean);
+    for (const g of grids) { for (const it of g.items) stashItem(hub, it); g.items = []; }
+    this.inv.render();
+    this.persist();
+  }
+
+  // ---------- world lifecycle ----------
   loadWorld() {
     initAudio();
     this.enterFullscreen();
@@ -365,8 +463,11 @@ class Game {
     const flyIn = !ch.player && !this.worldRegenerated && (!navigator.webdriver || localStorage.getItem('tarkzoid-intro'));
     let lz = null;
     if (flyIn) { lz = findLZ(this.world, w?.zombies || []); this.player.pos.set(lz.x, 0, lz.z); }
+    if (!ch.player) this.player.kills = ch.kills || 0;
     else if (this.worldRegenerated) this.placeNewCharacter(false);
     else if (!ch.player) this.placeNewCharacter(!!w);
+    // the helicopter comes back to where it put you down
+    if (s.raid && !s.raid.lz) s.raid.lz = lz || findLZ(this.world, w?.zombies || []);
     if (w) this.zombies.restore(w.zombies);
     else this.zombies.populate(150, this.player.pos);
     this.survivors = new Survivors(this);
@@ -378,6 +479,7 @@ class Game {
     this.vehicles = new Vehicles(this, w?.vehicles || null);
     if (ch.player?.vehicle != null && this.vehicles.list[ch.player.vehicle]) this.vehicles.enter(this.vehicles.list[ch.player.vehicle]);
     this.farming = new Farming(this, w?.farming || null);
+    this.mission = s.raid ? new Mission(this, s.raid) : null;
 
     this.updateLighting();
     this.autosave = AUTOSAVE;
@@ -386,7 +488,8 @@ class Game {
     this.state = 'play';
     $('loading').style.display = 'none';
     this.hud.show(true);
-    this.hud.message(ch.player ? `Welcome back, ${ch.name}.` : `${ch.name}. Day ${this.day}. Find supplies, find shelter. Press V inside a building to claim it.`, 6);
+    const c = s.raid?.contract;
+    this.hud.message(ch.player ? `Welcome back, ${ch.name}.` : c ? `${ch.name}. Contract: ${c.title}. The helicopter is back at this LZ on ${dayClock(s.raid.extractAt)}. Be here.` : `${ch.name}. Free run. The helicopter is back at this LZ on ${dayClock(s.raid.extractAt)}. Be here.`, 9);
     if (this.worldRegenerated) { this.worldRegenerated = false; this.hud.message('The town has been rebuilt by a game update. Your gear is safe; your old base and loot are gone.', 8); }
     this.input.lock();
     this.updatePause();
@@ -526,7 +629,8 @@ class Game {
     this.world?.dispose();
     this.fx.clear();
     for (const c of [...this.camera.children]) this.camera.remove(c);
-    this.world = this.zombies = null;
+    this.mission?.dispose(); this.mission = null;
+    this.world = this.zombies = this.player = null;
     $('pause').style.display = 'none';
   }
 
@@ -541,24 +645,13 @@ class Game {
     // (never under a cinematic: it would hide the death screen)
     if (this.intro) { this.intro.dispose(); this.intro = null; }
     document.body.classList.remove('cinematic');
-    const ch = this.profile;
-    const p = this.player;
-    // Leave a corpse with everything the character carried.
-    const grid = makeGrid(10, 10);
-    for (const k in ch.equip) if (ch.equip[k]) addItem(grid, ch.equip[k]) || (grid.h += 4, addItem(grid, ch.equip[k]));
-    for (const it of ch.pockets.items) addItem(grid, it);
-    const corpse = this.addExtraContainer({ type: 'body', name: `${ch.name}'s corpse`, x: p.pos.x, z: p.pos.z, base: p.floorY > 0.01 ? p.floorY : undefined, grid, color: 0x2a3020, look: this.corpseLook() });
-    corpse.grid = grid;
+    const ch = this.profile, p = this.player;
     const days = Math.floor((this.time - ch.spawnTime) / 1440);
     this.save.graveyard = this.save.graveyard || [];
     this.save.graveyard.push({ name: ch.name, profession: ch.professionName, days, kills: p.kills, reason });
-    // Companions don't follow the next character around.
-    for (const s of this.survivors.list) if (s.order) s.order = null;
-    // Save the world without a living character.
-    this.profile.player = p.serialize();
-    this.saveGame();
-    this.save.character = null;
-    writeSave(this.save);
+    // The operative and everything they carried are lost; the base keeps
+    // the stash, the handlers and the contracts
+    this.settleRaid('kia');
     // (the world comes down once this frame is over: whatever is mid-way
     // through its turn, the zombie that landed the blow, the bleed that
     // finished you, still has a world to finish it in)
@@ -614,7 +707,7 @@ class Game {
     const p = this.profile;
     const s = [
       { kind: 'equip', title: `${p.name} — Equipment`, equip: p.equip, doll: true },
-      { kind: 'hotbar', title: 'Hotbar (keys 3–6) — drag grenades, meds or food from your pockets or vest here' },
+      ...(this.thr ? [{ kind: 'hotbar', title: 'Hotbar (keys 3–6) — drag grenades, meds or food from your pockets or vest here' }] : []),
       { kind: 'grid', title: 'Pockets', grid: p.pockets },
     ];
     // Pockets of what you're wearing: vest / rig first, then the jacket
@@ -638,6 +731,7 @@ class Game {
     const title = () => { $('invtitle').textContent = `${container ? container.name : 'Inventory'} — carrying ${this.player.carryWeight().toFixed(1)} kg`; };
     title();
     $('invwrap').style.display = 'block';
+    $('btn-inv-stashall').style.display = 'none';
     this.doll ||= new PaperDoll();
     this.doll.update(this.profile);
     this.inv.open(() => this.playerSections(), right, {
@@ -706,6 +800,7 @@ class Game {
     this.inv.cancelDrag();
     this.inv.closeMenu();
     $('invwrap').style.display = 'none';
+    if (this.state === 'menu') { this.hub.onStashClosed(); this.persist(); }
     this.resume();
   }
 
@@ -717,6 +812,7 @@ class Game {
   }
 
   dropItem(it) {
+    if (!this.world) { stashItem(this.save.hub, it); return; } // (at the base: into the stash)
     const pp = this.player.pos;
     const fy = this.player.floorY;
     let c = this.world.containers.find((k) => k.type === 'drop' && Math.hypot(k.x - pp.x, k.z - pp.z) < 1.5 && Math.abs((k.base || 0) - fy) < 1);
@@ -773,6 +869,7 @@ class Game {
     for (const s of this.builder.structures) if (s.grid || s.door || s.type === 'bed' || s.type === 'rain_barrel') out.push(s);
     for (const s of this.survivors.list) if (!s.dead && s.disp !== 'hostile') out.push(s);
     out.push(...this.world.levels.interactables()); // elevators
+    if (this.mission) out.push(...this.mission.interactables()); // the helicopter
     return out;
   }
 
@@ -827,6 +924,8 @@ class Game {
     } else if (t.kind === 'liftcar') {
       const l = t.lift, name = (L) => (L === 0 ? 'Ground floor' : `Floor ${L + 1}`);
       this.survivors.openMenu('Elevator', `${name(l.level)}. Which floor?`, Array.from({ length: l.top + 1 }, (_, L) => [name(L) + (L === l.level ? ' (here)' : ''), () => callLift(l, L)]));
+    } else if (t.kind === 'heli') {
+      this.mission.board();
     } else if (t.kind === 'vehicle') {
       this.vehicles.openPanel(t.v);
     } else if (t.kind === 'pump') {
@@ -866,7 +965,13 @@ class Game {
     if (this.zombies.list.some((z) => z.state === 'chase' || Math.hypot(z.pos.x - p.pos.x, z.pos.z - p.pos.z) < 12)) {
       return this.hud.message("You can't sleep with zombies nearby.");
     }
-    const hours = Math.min(9, Math.ceil(p.fatigue / 14));
+    let hours = Math.min(9, Math.ceil(p.fatigue / 14));
+    // never through the helicopter: you wake for the two-hour warning
+    if (this.mission) {
+      const lim = this.mission.sleepLimit();
+      if (lim < 1) return this.hud.message("No time to sleep: the helicopter's coming.");
+      hours = Math.min(hours, lim);
+    }
     const fade = $('sleepfade');
     fade.style.opacity = 1;
     this.sleeping = true;
@@ -1035,6 +1140,7 @@ class Game {
     if (this.state === 'play') this.update(dt, t / 1000);
     this.dev.update(dt);
     this.input.endFrame();
+    if (this.state === 'menu') { this.tickLoader(dt); this.hub.frame(dt); }
     if (this.state === 'play') {
       this.player?.gun.renderScope(this.renderer, this.scene);
       this.renderer.render(this.scene, this.camera);
@@ -1171,6 +1277,8 @@ class Game {
     this.vehicles.update(dt);
     this.world.levels.update(dt, this); // elevators
     this.farming.update(dt);
+    this.mission?.update(dt);
+    if (this.state !== 'play') return;
     for (const d of this.shaking) {
       d.shake -= dt;
       const base = d.baseRot + (d.open ? Math.PI / 2 : 0);

@@ -268,6 +268,21 @@ export class HUD {
         ctx.fillStyle = '#ffb0a0'; ctx.strokeText(m.name, x, y + 17); ctx.fillText(m.name, x, y + 17);
       }
     }
+    // The contract: the LZ (where the helicopter comes back) and objectives
+    for (const m of game.mission?.mapMarkers() || []) {
+      const x = tx(m.x), y = tx(m.z);
+      ctx.lineWidth = 3; ctx.strokeStyle = '#000';
+      if (m.kind === 'lz') {
+        ctx.fillStyle = '#5ac05a';
+        ctx.beginPath(); ctx.arc(x, y, 9, 0, 7); ctx.stroke(); ctx.fill();
+        ctx.fillStyle = '#082008'; ctx.font = 'bold 11px monospace'; ctx.fillText('H', x, y + 4);
+        ctx.font = 'bold 10px monospace'; ctx.fillStyle = '#b8f0b0'; ctx.strokeText('EXTRACTION', x, y + 21); ctx.fillText('EXTRACTION', x, y + 21);
+      } else {
+        ctx.fillStyle = '#4ab0f0';
+        ctx.beginPath(); ctx.moveTo(x, y - 8); ctx.lineTo(x + 7, y + 5); ctx.lineTo(x - 7, y + 5); ctx.closePath(); ctx.stroke(); ctx.fill();
+        ctx.fillStyle = '#c8e8ff'; ctx.strokeText(m.name, x, y + 18); ctx.fillText(m.name, x, y + 18);
+      }
+    }
     ctx.textAlign = 'left';
     const sh = game.safehouse;
     if (sh) { ctx.strokeStyle = '#e5c84a'; ctx.lineWidth = 2; ctx.strokeRect(tx(sh.x0), tx(sh.z0), (sh.x1 - sh.x0) * S, (sh.z1 - sh.z0) * S); }

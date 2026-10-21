@@ -58,6 +58,8 @@ const PERSONAS = {
 const BANDIT_LINES = ["Drop the bag and walk away!", "Your gear's mine now!", "Should've stayed indoors!", "Light 'em up!"];
 const HURT_LINES = ["Agh!", "I'm hit!", "Damn it!"];
 const BETRAYED_LINES = ["You son of a—!", "Traitor!", "So that's how it is!"];
+const VIP_GREET = ['You came! Please tell me you came for me.', 'Are you from the base? Thank God. I thought they had forgotten me.', 'Is it over? No... no, it isn\'t, is it.'];
+const VIP_FOLLOW = ['Right behind you. I can shoot, a little.', 'Okay. Okay. Just get me to that helicopter.', 'I have the data in my head. Keep me alive and it was all worth it.'];
 const FLEE_LINES = ["I'm out!", "Not worth dying for!", "Fall back!"];
 const SHIRTS = [0x3a4a5a, 0x5a3a2a, 0x2f4a2f, 0x6a5a3a, 0x4a3a5a, 0x2a2a2a, 0x7a2a2a];
 const PANTS = [0x2a3a4a, 0x3a3a2a, 0x222222, 0x4a3a2a];
@@ -84,6 +86,7 @@ class Survivor {
     this.inv = d.inv;         // backpack grid (looted on death / traded)
     this.look = d.look;
     this.order = d.order || null; // 'follow' | 'wait' | null
+    this.vip = d.vip || false; // a contract's scientist: to be brought out alive
     this.skill = d.skill ?? 0.5 + Math.random() * 0.5;
     this.pos = new THREE.Vector3(d.x, 0, d.z);
     this.dir = d.dir ?? Math.random() * Math.PI * 2;
@@ -260,6 +263,7 @@ class Survivor {
   die(source, hit) {
     this.dead = true;
     const game = this.mgr.game;
+    game.mission?.onSurvivorDied(this);
     // The body goes limp (or buckles, if not shot in the head) and keeps
     // whatever momentum it had; the gun falls out of their hands.
     const head = hit && hit.point.y > 1.5;
@@ -642,7 +646,7 @@ class Survivor {
     return {
       id: this.id, name: this.name, persona: this.persona, disp: this.disp, trust: Math.round(this.trust), met: this.met,
       hp: Math.round(this.hp), x: +this.pos.x.toFixed(2), z: +this.pos.z.toFixed(2), dir: this.dir,
-      weapon: this.weapon, melee: this.melee, reserve: this.reserve, inv: this.inv, look: this.look, order: this.order, skill: this.skill,
+      weapon: this.weapon, melee: this.melee, reserve: this.reserve, inv: this.inv, look: this.look, order: this.order, skill: this.skill, vip: this.vip || undefined,
     };
   }
 }
@@ -982,7 +986,7 @@ export class Survivors {
     this.menuOpen = false;
     g.dialogOpen = true;
     g.input.unlock();
-    this.renderDialog(s, s.disp === 'friendly' ? s.line('greet') : s.line('warn'));
+    this.renderDialog(s, s.vip ? pick(VIP_GREET) : s.disp === 'friendly' ? s.line('greet') : s.line('warn'));
     document.getElementById('dialog').style.display = 'flex';
     g.updatePause();
   }
@@ -1002,6 +1006,14 @@ export class Survivors {
     const el = document.getElementById('dialog');
     const opts = [];
     const add = (label, fn) => opts.push([label, fn]);
+    if (s.vip) {
+      // The contract's scientist: no trust to earn, they want out
+      if (s.order !== 'follow') add("Come with me. There's a helicopter coming.", () => { s.order = 'follow'; s.trust = Math.max(s.trust, 60); this.game.hud.message(`${s.name} is following you. Keep them alive until the helicopter.`, 6); this.renderDialog(s, pick(VIP_FOLLOW)); });
+      else add('Wait here. I\'ll come back for you.', () => { s.order = 'wait'; this.renderDialog(s, "Don't... don't be long."); });
+      add('Who are you?', () => this.renderDialog(s, `${s.name}. I ran the field lab. We were supposed to be out on the second day.`));
+      add('Goodbye.', () => this.closeDialog());
+      return this.dialogMenu(s, el, opts, text, '<span class="friendly">Contract</span>');
+    }
     add('Who are you?', () => this.renderDialog(s, s.line('bio')));
     add('Heard anything useful?', () => this.renderDialog(s, this.rumor(s)));
     add('Want to trade?', () => { this.closeDialog(); this.game.openTrade(s); });
@@ -1020,7 +1032,11 @@ export class Survivors {
     }
     add('Goodbye.', () => this.closeDialog());
     const trust = s.trust >= 50 ? 'trusts you' : s.trust >= 20 ? 'friendly' : s.trust >= 0 ? 'cautious' : 'distrustful';
-    el.innerHTML = `<div class="dlg-panel"><div class="dlg-name">${s.name} <span class="${s.disp}">${DISP_LABEL[s.disp]}</span> <span class="dim">· ${trust} (${Math.round(s.trust)})</span></div>
+    this.dialogMenu(s, el, opts, text, `<span class="${s.disp}">${DISP_LABEL[s.disp]}</span> <span class="dim">· ${trust} (${Math.round(s.trust)})</span>`);
+  }
+
+  dialogMenu(s, el, opts, text, tag) {
+    el.innerHTML = `<div class="dlg-panel"><div class="dlg-name">${s.name} ${tag}</div>
       <div class="dlg-text">"${text}"</div><div class="dlg-opts"></div><div class="hint">1–${opts.length} to choose · Esc to leave</div></div>`;
     const box = el.querySelector('.dlg-opts');
     opts.forEach(([label, fn], i) => { const b = document.createElement('button'); b.textContent = `${i + 1}. ${label}`; b.onclick = fn; box.appendChild(b); });

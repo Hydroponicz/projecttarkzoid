@@ -1,6 +1,6 @@
 # Tarkzoid
 
-A first-person zombie survival sandbox in the browser. It has Project Zomboid's persistent world, base building and permadeath, combined with Escape from Tarkov's grid inventory, body-part health and gunplay. Built with [three.js](https://threejs.org/) and Vite. It has no asset files: the geometry is generated in code and the sound is synthesized with WebAudio (real recordings can be dropped in, see [Sound](#sound)).
+A first-person zombie survival game in the browser. It has Project Zomboid's survival, base building and permadeath, combined with Escape from Tarkov's raid-and-extract loop, stash, grid inventory, body-part health and gunplay. Built with [three.js](https://threejs.org/) and Vite. It has no asset files: the geometry is generated in code and the sound is synthesized with WebAudio (real recordings can be dropped in, see [Sound](#sound)).
 
 ## Run it
 
@@ -12,9 +12,11 @@ npm run build    # static build in dist/
 
 ## How it plays
 
-**The survival guide.** Press **F2** any time (or use the button on the pause screen or title menu) for the in-game guide: a searchable wiki of every mechanic, with a summary of how to play and what to do first. Type to search; results are ranked and the words are highlighted. The game is paused while it's open.
+**The loop.** You run operatives out of a forward base. Take a contract from a handler, kit up from your stash, fly into a freshly generated town, do the job, and be at the landing zone when the helicopter comes back. Make it out and you keep everything you carried. Die, or miss the helicopter, and the operative is gone with all their gear (see [The base and contracts](#the-base-and-contracts)).
 
-1. **Create a survivor.** Pick a name and a profession: Unemployed, Police Officer, Fire Officer, Carpenter, Nurse, Burglar, Farmer or Veteran. Each comes with skill bonuses and a starting kit. Then spend points on Strength, Fitness, Agility, Dexterity, Aiming, Guns, Carpentry, Stealth, First Aid and Farming.
+**The survival guide.** Press **F2** any time (or use the Guide tab at the base, or the button on the pause screen) for the in-game guide: a searchable wiki of every mechanic, with a summary of how to play and what to do first. Type to search; results are ranked and the words are highlighted. The game is paused while it's open.
+
+1. **Recruit an operative** (at the base, Operative tab). Pick a name and a profession: Unemployed, Police Officer, Fire Officer, Carpenter, Nurse, Burglar, Farmer or Veteran. Each comes with skill bonuses and a starting kit. Then spend points on Strength, Fitness, Agility, Dexterity, Aiming, Guns, Carpentry, Stealth, First Aid and Farming.
 2. **Follow the guide.** A new character starts a ten-step "First day" tutorial, shown top right. It covers moving, scavenging, the inventory, eating, arming yourself, a first kill, claiming a safehouse, finding a trader, making a deal and fortifying. Each step gives a small reward. After that, five chapters of goals lead the way:
    1. **Dig In**: build, sleep, stock your safehouse, survive to day 3, harvest a crop you grew.
    2. **Trade Routes**: find every trader, finish jobs, reach loyalty 2.
@@ -23,11 +25,41 @@ npm run build    # static build in dist/
    5. **Long Haul**: day 14, 250 kills, 15 jobs.
 
    Each chapter pays out gear. **J** opens the goals panel; **K** (while it's open) skips the tutorial.
-3. **Fly in.** A new survivor is choppered in: on the creation screen you pick the one gun you bring (AK-74N, M4A1, SKS, MP5, MP-133, a PM, or nothing) and, for a new world, when you go in: three choices, each a different season with a random day and time of day (dawn, morning, afternoon, dusk, night or the dead of night), and you can roll three others. A Mi-8 comes in low over the fields and the rooftops, flares and sets down on the edge of town, and you jump out of the door as it lifts away. Space, Esc or Enter skips it. While you're in the air nothing on the ground can hurt you or see you. The first time you step off, the **survival guide** opens (and the game pauses). The town is persistent and procedurally generated. Loot doesn't respawn. The world is saved automatically (every 30 seconds, when you sleep, and when you close the tab).
+3. **Fly in.** On the creation screen you pick the gun the operative is issued (AK-74N, M4A1, SKS, MP5, MP-133, a PM, or nothing). Under **Enter the Zone** you pick the contract and when you go in: three insertion windows, each a different season with a random day and time of day (dawn, morning, afternoon, dusk, night or the dead of night), and you can roll three others. A Mi-8 comes in low over the fields and the rooftops, flares and sets down on the edge of town, and you jump out of the door as it lifts away. Space, Esc or Enter skips it. While you're in the air nothing on the ground can hurt you or see you. The first time you step off, the **survival guide** opens (and the game pauses). Each deployment is a new procedurally generated town. Loot doesn't respawn. The deployment is saved automatically (every 30 seconds, when you sleep, and when you close the tab).
 3. **Make a home.** Claim the building you're standing in as your safehouse with **V**. Outdoors, **V** claims a 20×20 m camp instead. Zombies never respawn near your safehouse.
 4. **Build.** Press **B** to build walls, barricades, doors, storage crates, beds, campfires and rain barrels out of planks and nails, or dig garden plots with a shovel. You need a hammer. Planks come from lumber piles in warehouses, or you can chop trees with an axe and saw the logs into planks. Hammering is loud and draws zombies.
 5. **Survive the nights.** One in-game minute passes per real second, so a full day takes 24 minutes. At night zombies move faster, and more of them spawn as the days go by. Sleep in a bed to recover fatigue and health. Sleeping outside your safehouse may wake you to company.
-6. **Death is permanent.** Your corpse stays in the world with all your gear, and your base keeps standing. The next survivor you create spawns into the same world. Fallen characters are listed in the graveyard on the title screen.
+6. **Extract.** Be at the landing zone when the helicopter comes back; two hours before, the dead come for you in waves.
+7. **Death is permanent.** An operative who dies (or is left behind) is lost with everything on them. The base keeps your stash, reputation and contracts. Fallen operatives are listed on the memorial.
+
+## The base and contracts
+
+The main menu is the base: a 3D forward operating base at dusk outside the town, with the Mi-8 on the helipad, the handlers at their tents, your stash in a shipping container, and the town's towers on the horizon. The camera moves to each part of the base as you change tabs. The tabs along the top:
+
+- **Operative:** your mercenary: profession, skills, extractions, kills, days in the zone. Recruit a new one when you have none.
+- **Stash:** a container at the base. Drag kit between the operative (equipment, pockets, vest, backpack, with the 3D paper doll) and the stash; **Move carried loot to stash** empties everything carried in one go. A new profile starts with some meds, food, ammo, a spare magazine and a grenade.
+- **Handlers:** four people you work for, each with contracts and barter (paid from the stash, restocked after each deployment). Reputation raises your loyalty level with each, which unlocks better offers and better contract pay.
+  - **Colonel Belov (Command):** eliminate turned officers, cull the dead, survey the tall buildings.
+  - **Dr. Irina Sokolova (Institute):** bring her scientists out alive, recover samples and research.
+  - **Quartermaster Hale (Logistics):** bring back supplies, recover a flight recorder, survey industrial sites.
+  - **The Broker:** drives, valuables, and people who know things.
+- **Enter the Zone** (centre): pick one of your accepted contracts (or a free run of 1, 3 or 7 days), an insertion window, check your loadout (warnings for no gun, little ammo or no meds), and deploy. While you're deployed it becomes **Return to the Zone**.
+- **Memorial**, **Guide** and **Settings** (graphics, sound, fullscreen, wiping the profile).
+
+**Contracts.** Each handler keeps three on the board; you can hold three and take one per deployment. Each says how long you're in and when the helicopter returns, e.g. *"Helicopter back: Day 14, 06:00"*. Objectives:
+
+- **Escort:** a scientist hiding in a marked building (in a lab coat, with a pistol). Talk to them and they follow you; they must be alive and with you when you board.
+- **Retrieve:** a sample case, a professor's notebook, a flight recorder or an encrypted drive, in a cupboard in a marked building (any floor). Have it on you when you board.
+- **Eliminate:** a turned officer (900 HP, bigger, his unit of soldier zombies around him) at a military or police site. Search the body for his tag and bring it out.
+- **Survey:** get inside each marked building.
+- **Cull:** kill a number of the dead.
+- **Supply:** bring out a number of an item (water, food, planks, batteries, GPUs, intel...).
+
+Objectives and the countdown to the helicopter are tracked top right, and targets are marked on the map. The contract pays (reputation and items into the stash) only if everything is done when you board; failing costs a little reputation. Contract items and the zone traders' quest items stay behind.
+
+**Extraction.** The helicopter comes back to the LZ it dropped you at (an **H** on the map). The radio calls it the day before and six hours out. **Two hours out the horde comes:** waves of 10 to 28 of the dead, more runners as time runs down, from one or two directions at a time, out of the streets toward wherever you are, plus a loud call that draws the rest of town; a red banner counts down. On time the Mi-8 flies in, flares and lands (rotor wash and green smoke on the LZ). Walk to the open side door and press **F** to board. It waits a minute and a half on the ground, then lifts off; anyone not aboard is **missing in action**. Sleeping can't take you past the two-hour warning. Extracted operatives are patched up at the base; their skills carry over.
+
+Saves from before the base keep going: an operative already in the world carries on there as a free run, with the helicopter coming back in three days.
 
 ## The town
 
@@ -526,7 +558,9 @@ Buildings and streets are textured with generated maps: brick, wood siding, conc
 
 | File | Purpose |
 | --- | --- |
-| `src/main.js` | Game state machine (menu → creation → play → death), save/load, day/night, interactions, sleep, safehouse |
+| `src/main.js` | Game state machine (base → creation → deployment → extraction or death), save/load, deploying and settling raids, the stash, day/night, interactions, sleep, safehouse |
+| `src/hub.js` | The base (main menu): the 3D forward operating base and its camera, the tabs (operative, stash, handlers, enter the zone, memorial, guide, settings), barter and contract boards, the raid result |
+| `src/contracts.js` | Handlers, contract generation, the base's state (stash, reputation, contracts), and the Mission: placing targets, objectives, the radio, the horde finale and the extraction helicopter |
 | `src/character.js` | Professions, skills and the character creation screen |
 | `src/build.js` | Carpentry: placing, saving and dismantling structures |
 | `src/world.js` | Seeded procedural town: districts, building archetypes (including farmhouses, barns and cabins with pitched roofs), house room layouts, furnishing by room and business, doors and windows, military sites, cars; merges static scenery (vertex colours) into level-of-detail batches by chunk, building and storey, and culls them; keeps garage openings clear |
