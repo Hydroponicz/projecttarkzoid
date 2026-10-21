@@ -185,9 +185,6 @@ export class Vehicles {
     this.panel = null;  // vehicle whose parts screen is open
     this.cullT = 0;
     this.noiseT = 0;
-    this.headlight = new THREE.SpotLight(0xfff0d0, 0, 45, 0.55, 0.5, 1.2);
-    this.headlight.castShadow = false;
-    this.scene.add(this.headlight, this.headlight.target);
   }
 
   spawnExtra(spec, state) {
@@ -234,7 +231,7 @@ export class Vehicles {
     v.animTo.door = 1; v.doorT = 0.7; // door open, out you get, then it's shut
     sfx.door();
     v.setColliders(true);
-    this.headlight.intensity = 0;
+    p.headlights(null);
     // Out the driver's side if there's room, else the other side
     for (const lx of [v.def.W / 2 + 0.6, -(v.def.W / 2 + 0.6)]) {
       const at = v.toWorld(lx, 0.3);
@@ -373,12 +370,11 @@ export class Vehicles {
     if (v.steeringWheel) v.steeringWheel.rotation.z = -v.steer * 3;
     const lightsOn = v.lights && P.headlights > 0 && P.battery > 0;
     for (const l of v.lightMeshes) l.visible = lightsOn;
-    this.headlight.intensity = lightsOn ? 60 * (P.headlights / 100) : 0;
+    // (the headlights are the flashlight's spotlight, moved to the nose)
     if (lightsOn) {
       const a = v.toWorld(0, D.L / 2), b = v.toWorld(0, D.L / 2 + 20);
-      this.headlight.position.set(a.x, 0.9, a.z);
-      this.headlight.target.position.set(b.x, 0, b.z);
-    }
+      g.player.headlights(new THREE.Vector3(a.x, 0.9, a.z), new THREE.Vector3(b.x, 0, b.z), 60 * (P.headlights / 100));
+    } else g.player.headlights(null);
     const seat = v.toWorld(v.type === 'military' ? 0.5 : 0.38, v.type === 'military' ? D.L / 2 - 1.3 : v.type === 'pickup' ? 0.35 : -0.25);
     p.pos.set(seat.x, 0, seat.z);
     p.yaw = v.rot + Math.PI + p.lookYaw;
@@ -666,7 +662,6 @@ export class Vehicles {
     if (this.active) { this.game.player.vehicle = null; this.active = null; }
     this.engine?.set(0, 0);
     for (const v of this.list) v.dispose();
-    this.scene.remove(this.headlight, this.headlight.target);
     $('dash').style.display = 'none';
   }
 }

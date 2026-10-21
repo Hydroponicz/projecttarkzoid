@@ -14,7 +14,8 @@ import { AirSupport } from './airstrike.js';
 import { Throwables } from './throwables.js';
 import { Drones } from './drones.js';
 import { Intro, findLZ } from './intro.js';
-import { updateExplosions } from './explosives.js';
+import { DynLights, VM_FILL, INTERIOR_LAYER } from './dynlights.js';
+import { loadGfx, applyGfx, setupGfxPanel } from './gfx.js';
 import { Traders } from './traders.js';
 import { Progress } from './progress.js';
 import { Vehicles } from './vehicles.js';
@@ -42,8 +43,11 @@ class Game {
   constructor() {
     this.canvas = $('game');
     // Stencil is needed for reflex-sight reticles.
-    this.renderer = new THREE.WebGLRenderer({ canvas: this.canvas, antialias: true, stencil: true, powerPreference: 'high-performance' });
-    this.renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+    const gfx = loadGfx();
+    this.renderer = new THREE.WebGLRenderer({ canvas: this.canvas, antialias: gfx.aa, stencil: true, powerPreference: 'high-performance' });
+    // (checking each shader's log makes the driver finish compiling it then
+    // and there; without it they compile in parallel)
+    this.renderer.debug.checkShaderErrors = import.meta.env.DEV;
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -52,6 +56,7 @@ class Game {
     this.scene.background = NIGHT.clone();
     this.scene.fog = new THREE.FogExp2(NIGHT.getHex(), 0.026);
     this.camera = new THREE.PerspectiveCamera(75, 1, 0.03, 300);
+    this.camera.layers.enable(INTERIOR_LAYER); // (furniture: seen, but kept out of the sun's shadows)
     this.scene.add(this.camera);
 
     this.hemi = new THREE.HemisphereLight(0x7a8aaa, 0x2a2a1a, 1.1);
@@ -62,6 +67,8 @@ class Game {
     this.sun.shadow.normalBias = 0.02; // no acne on big flat ground pieces
     Object.assign(this.sun.shadow.camera, { left: -40, right: 40, top: 40, bottom: -40, near: 1, far: 120 });
     this.scene.add(this.sun, this.sun.target);
+    this.lights = new DynLights(this.scene);
+    applyGfx(this, gfx);
 
     this.input = new Input(this.canvas);
     this.hud = new HUD();
@@ -99,6 +106,8 @@ class Game {
     $('btn-save-quit').onclick = () => this.quitToMenu();
     this.soundPanel = setupSoundPanel();
     $('btn-sound').onclick = $('btn-sound-menu').onclick = () => this.soundPanel.open();
+    this.gfxPanel = setupGfxPanel(this);
+    $('btn-gfx').onclick = $('btn-gfx-menu').onclick = () => this.gfxPanel.open();
     $('btn-fullscreen').onclick = () => { if (document.fullscreenElement) this.exitFullscreen(); else this.enterFullscreen(); };
     $('btn-inv-close').onclick = () => this.closeInventory();
     // Clicking the dim background (not a panel) closes the inventory.
@@ -124,6 +133,7 @@ class Game {
     requestAnimationFrame((t) => this.loop(t));
   }
 
+  onResize() { this.resize(); }
   resize() {
     this.renderer.setSize(innerWidth, innerHeight, false);
     this.camera.aspect = innerWidth / innerHeight;
@@ -148,15 +158,17 @@ class Game {
     this.scene.background.copy(NIGHT).lerp(DAY, d);
     if (W && !this.dev.fullbright) W.applySky(this.scene.background, d);
     this.scene.fog.color.copy(this.scene.background);
-    this.scene.fog.density = this.dev.noFog ? 0 : 0.026 - 0.014 * d + (W && !this.dev.fullbright ? W.fogAdd : 0);
+    // (a shorter view distance brings the fog in to hide where drawing stops)
+    this.scene.fog.density = this.dev.noFog ? 0 : (0.026 - 0.014 * d + (W && !this.dev.fullbright ? W.fogAdd : 0)) / (this.gfx?.view || 1);
     // Nothing past the point where fog is ~opaque gets drawn
-    const far = this.dev.noFog ? 300 : Math.min(300, Math.round(2.0 / this.scene.fog.density));
+    const far = this.dev.noFog ? 300 : Math.min(300 * (this.gfx?.view || 1), Math.round(2.0 / this.scene.fog.density));
     if (far !== this.camera.far) { this.camera.far = far; this.camera.updateProjectionMatrix(); }
     // Countryside chunks a little short of that (the fog is near-opaque there)
     if (this.world && this.camera) this.world.cull(this.camera.position.x, this.camera.position.z, Math.min(far, this.dev.noFog ? 300 : Math.round(1.6 / this.scene.fog.density)), this.player?.floorY || 0);
     const cloud = W && !this.dev.fullbright ? W.sunMul : 1, flash = W ? W.flashLight : 0;
     this.hemi.intensity = (1.1 + 1.3 * d) * (0.75 + 0.25 * cloud) + flash;
     this.sun.intensity = (0.9 + 1.6 * d) * cloud;
+    VM_FILL.value = 0.03 + 0.09 * (1 - d); // (your hands and gun never go black)
     this.sun.color.setHex(0x9aaad8).lerp(new THREE.Color(0xfff0d8), d);
   }
 
@@ -874,8 +886,7 @@ class Game {
 
   // Beaten doors darken and splinter as they lose hit points.
   doorTint(d) {
-    const panel = d.mesh.children[0];
-    if (panel?.material) panel.material.color.setHex(d.w < 1.6 ? 0x9a7048 : 0x7a4e2c).lerp(new THREE.Color(0x1e140c), 1 - Math.max(0, d.hp) / d.maxHp);
+    d.tint?.(new THREE.Color(d.w < 1.6 ? 0x9a7048 : 0x7a4e2c).lerp(new THREE.Color(0x1e140c), 1 - Math.max(0, d.hp) / d.maxHp));
   }
 
   // Glass gone: shards, noise, and the window can be climbed through.
@@ -903,7 +914,7 @@ class Game {
       sfx.doorBreak(Math.max(0.2, 1 - this.player.pos.distanceTo(new THREE.Vector3(d.x, 0, d.z)) / 40));
       const dir = from ? new THREE.Vector3(d.x - from.x, 0, d.z - from.z).normalize() : new THREE.Vector3();
       const along = d.ax === 'x' ? new THREE.Vector3(1, 0, 0) : new THREE.Vector3(0, 0, 1);
-      const mat = d.mesh.children[0]?.material || new THREE.MeshStandardMaterial({ color: 0x5a3a22 });
+      const mat = new THREE.MeshStandardMaterial({ color: 0x5a3a22, roughness: 0.8 });
       for (let i = 0; i < 4; i++) {
         const y = 0.3 + i * 0.5, off = (Math.random() - 0.5) * 0.6;
         const a = new THREE.Vector3(d.x, y, d.z).addScaledVector(along, off - 0.4), b = new THREE.Vector3(d.x, y + (Math.random() - 0.5) * 0.3, d.z).addScaledVector(along, off + 0.4);
@@ -919,12 +930,16 @@ class Game {
     d.box.decalParent = null;
     if (d.leaf) { d.leaf.noCollide = true; d.leaf.blocksShot = false; d.leaf.decalParent = null; }
     this.world.group.remove(d.mesh);
+    d.sync?.();
     if (!silent) this.zombies.updateNavRegion(d.box.minX, d.box.minZ, d.box.maxX, d.box.maxZ);
   }
 
   // ---------- main loop ----------
   loop(t) {
     const dt = Math.min(0.05, (t - this.last) / 1000);
+    // frame rate, averaged over half a second (shown in the graphics panel)
+    this.fpsN = (this.fpsN || 0) + 1; this.fpsT = (this.fpsT || 0) + (t - this.last) / 1000;
+    if (this.fpsT > 0.5) { this.fps = Math.round(this.fpsN / this.fpsT); this.fpsN = 0; this.fpsT = 0; }
     this.last = t;
     if (this.state === 'play') this.update(dt, t / 1000);
     this.dev.update(dt);
@@ -1043,7 +1058,6 @@ class Game {
     this.air.update(dt);
     this.thr.update(dt);
     this.drone.update(dt);
-    updateExplosions(dt);
     this.shake = Math.max(0, (this.shake || 0) - dt * 2.2);
     setAudioEnv(this.world.buildingAt(this.player.pos.x, this.player.pos.z) ? 'in' : 'out');
     if (this.state !== 'play') return;
@@ -1064,14 +1078,20 @@ class Game {
       d.shake -= dt;
       const base = d.baseRot + (d.open ? Math.PI / 2 : 0);
       d.mesh.rotation.y = base + (d.shake > 0 ? Math.sin(d.shake * 70) * 0.025 * (d.shake / 0.3) : 0);
+      d.sync?.();
       if (d.shake <= 0) this.shaking.delete(d);
     }
     this.fx.update(dt);
     this.builder.flicker(now);
+    this.lights.update(dt, this.player.pos, this.builder.fires());
 
     const pp = this.player.pos;
     this.sun.position.set(pp.x + 30, 60, pp.z + 20);
     this.sun.target.position.set(pp.x, 0, pp.z);
+    // The sun's shadow map: redrawn every frame or every other (settings)
+    this.sun.shadow.autoUpdate = false;
+    this.sunTick = (this.sunTick || 0) + 1;
+    if (this.sunTick % (this.gfx?.shadowEvery || 1) === 0) this.sun.shadow.needsUpdate = true;
     this.lookTarget = this.invOpen || this.builder.active || this.player.vehicle ? null : this.findLookTarget();
 
     this.beat = (this.beat || 0) - dt;

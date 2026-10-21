@@ -184,10 +184,8 @@ export class Builder {
       box(0.5, 0.08, 0.08, darkWood, 0, 0.1, 0).rotation.y = 0.6;
       box(0.5, 0.08, 0.08, darkWood, 0, 0.14, 0).rotation.y = -0.6;
       const flame = box(0.2, 0.3, 0.2, new THREE.MeshBasicMaterial({ color: 0xff8833 }), 0, 0.3, 0);
-      const light = new THREE.PointLight(0xff8a3a, 12, 14, 1.6);
-      light.position.set(0, 0.8, 0);
-      g.add(light);
-      s.flame = flame; s.light = light;
+      // (lit by the shared fire light when it's the nearest: see dynlights.js)
+      s.flame = flame; s.fire = true;
     }
     g.position.set(x, 0, z);
     g.rotation.y = rot ? Math.PI / 2 : 0;
@@ -262,13 +260,10 @@ export class Builder {
     return best;
   }
 
-  flicker(t) {
-    for (const s of this.structures) {
-      if (!s.light) continue;
-      s.light.intensity = 10 + Math.sin(t * 13 + s.x) * 2 + Math.random() * 2;
-      s.flame.scale.y = 0.8 + Math.random() * 0.5;
-    }
+  flicker() {
+    for (const s of this.structures) if (s.fire) s.flame.scale.y = 0.8 + Math.random() * 0.5;
   }
+  fires() { return this.structures.filter((s) => s.fire); }
 
   serialize() {
     return this.structures.map((s) => ({ type: s.type, x: s.x, z: s.z, rot: s.rot, hp: Math.round(s.hp), maxHp: s.maxHp, open: s.open || undefined, grid: s.grid, water: s.water != null ? +s.water.toFixed(1) : undefined }));

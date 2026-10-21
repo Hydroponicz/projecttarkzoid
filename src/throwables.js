@@ -7,6 +7,7 @@
 // when it leaves your hand, bounces off what it hits, and goes off when its
 // fuse runs out.
 import * as THREE from 'three';
+import { vmFill } from './dynlights.js';
 import { ITEMS } from './items.js';
 import { removeItem } from './inventory.js';
 import { sfx } from './audio.js';
@@ -134,6 +135,7 @@ export class Throwables {
     vm.userData.hip = new THREE.Vector3(0.2, -0.2, -0.42);
     vm.position.copy(vm.userData.hip);
     vm.traverse((o) => o.layers.set(VM_LAYER));
+    vmFill(vm);
     p.camera.add(vm);
     this.held = { it, key: it.key, vm, gr, t: 0, throwT: 0 };
     p.gun.setVisible(false);

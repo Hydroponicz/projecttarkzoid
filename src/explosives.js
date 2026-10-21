@@ -9,7 +9,6 @@ import { raycast } from './collision.js';
 const FIRE = [0xfff0a0, 0xffb040, 0xff7020].map((c) => new THREE.Color(c));
 const SMOKE = new THREE.Color(0x3a3834), DIRT = new THREE.Color(0x5a4a38);
 const UP = new THREE.Vector3(0, 1, 0);
-const lights = [];
 
 // opts: { radius (m), damage (at the centre), frag (shrapnel reach, m), big
 // (0.5 .. 1.5: how loud and large it looks), by (a name for messages) }
@@ -31,10 +30,7 @@ export function explode(game, pos, opts = {}) {
   }
   fx.holes.add(pos.clone().setY(y + 0.02), UP, R * 0.45);
   // the flash
-  let L = lights.find((l) => l.intensity <= 0.01);
-  if (!L) { L = new THREE.PointLight(0xffa050, 0, 30, 1.6); lights.push(L); game.scene.add(L); }
-  L.position.copy(pos).setY(y + 1.2); L.intensity = 120 * big; L.distance = 12 + 14 * big;
-  L.userData.decay = 400 * big;
+  game.lights.burst(pos.clone().setY(y + 1.2), 120 * big, { color: 0xffa050, distance: 12 + 14 * big, decay: 1.6, linear: 400 * big });
   // the boom, heard and felt
   const dx = pos.x - p.pos.x, dz = pos.z - p.pos.z, d = Math.hypot(dx, dz);
   const right = new THREE.Vector3(Math.cos(p.yaw), 0, -Math.sin(p.yaw));
@@ -95,9 +91,4 @@ export function explode(game, pos, opts = {}) {
     const dd = Math.hypot(s.x - pos.x, s.z - pos.z);
     if (dd < R && s.hp > 0) game.damageStructure(s, D * (1 - dd / R), pos);
   }
-}
-
-// Fade the flashes (call every frame)
-export function updateExplosions(dt) {
-  for (const L of lights) if (L.intensity > 0) L.intensity = Math.max(0, L.intensity - (L.userData.decay || 300) * dt);
 }

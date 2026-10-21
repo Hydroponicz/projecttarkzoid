@@ -39,7 +39,9 @@ const vcMat = (rough = 0.95) => new THREE.MeshStandardMaterial({ vertexColors: t
 // camera) only draw the ones near the player. items: [{x, z, matrix, color?}]
 // Returns, per item, where its instance lives: {mesh, k}.
 const CHUNK = 60;
-function chunked(group, geo, mat, items, { shadow = true, receive = false } = {}) {
+// low: a simpler geometry for the same instances, drawn when the chunk is
+// far off (it shares the instances' matrices and colours)
+function chunked(group, geo, mat, items, { shadow = true, receive = false, low = null, near = false } = {}) {
   const buckets = new Map();
   for (const it of items) {
     const key = `${Math.floor(it.x / CHUNK)},${Math.floor(it.z / CHUNK)}`;
@@ -56,8 +58,16 @@ function chunked(group, geo, mat, items, { shadow = true, receive = false } = {}
     });
     m.castShadow = shadow; m.receiveShadow = receive;
     m.computeBoundingSphere();
-    m.userData.cull = { kind: 'chunk' }; // culled by distance (World.cull)
+    m.userData.cull = { kind: 'chunk', lod: low || near ? 'near' : undefined }; // culled by distance (World.cull)
     group.add(m);
+    if (low) {
+      const f = new THREE.InstancedMesh(low, mat, list.length);
+      f.instanceMatrix = m.instanceMatrix; f.instanceColor = m.instanceColor;
+      f.castShadow = shadow; f.receiveShadow = receive;
+      f.computeBoundingSphere();
+      f.userData.cull = { kind: 'chunk', lod: 'far' };
+      group.add(f);
+    }
   }
   return where;
 }
@@ -71,6 +81,16 @@ function speciesGeometry(sp) {
   if (sp === 'oak') return compound([[C(0.18, 0.3, 2.8), 0x4a3a28, 0, 1.4, 0], [I(1.7), 0x34502a, 0, 3.7, 0], [I(1.2), 0x3a5a2e, 0.95, 3.2, 0.45], [I(1.3), 0x2e4a26, -0.85, 3.4, -0.5], [I(1.1), 0x40602e, 0.1, 4.5, -0.2]]);
   if (sp === 'birch') return compound([[C(0.09, 0.14, 4.2), 0xd8d4c8, 0, 2.1, 0], [C(0.095, 0.095, 0.12), 0x2a2a2a, 0, 1.5, 0], [C(0.093, 0.093, 0.1), 0x2a2a2a, 0, 2.6, 0], [I(0.95), 0x6a8a3a, 0, 4.4, 0], [I(0.8), 0x5a7a32, 0.35, 3.6, 0.2], [I(0.7), 0x74943e, -0.3, 3.9, -0.25]]);
   if (sp === 'apple') return compound([[C(0.12, 0.18, 1.5), 0x5a4030, 0, 0.75, 0], [I(1.45, 1), 0x4a6a2a, 0, 2.35, 0, 1, 0.8, 1], [I(1.0), 0x52742e, 0.6, 2.0, 0.35]]);
+  return null;
+}
+// The same trees from a distance: a trunk and one shape of foliage
+function speciesLow(sp) {
+  const C = (r0, r1, h) => new THREE.CylinderGeometry(r0, r1, h, 4, 1, true);
+  const I = (r) => new THREE.IcosahedronGeometry(r, 0);
+  if (sp === 'pine') return compound([[C(0.12, 0.22, 2.4), 0x4a3222, 0, 1.2, 0], [new THREE.ConeGeometry(1.6, 5.4, 6), 0x283c20, 0, 3.6, 0]]);
+  if (sp === 'oak') return compound([[C(0.18, 0.3, 2.8), 0x4a3a28, 0, 1.4, 0], [I(2.1), 0x34502a, 0, 3.8, 0]]);
+  if (sp === 'birch') return compound([[C(0.09, 0.14, 4.2), 0xd8d4c8, 0, 2.1, 0], [I(1.15), 0x6a8a3a, 0, 4.0, 0, 1, 1.2, 1]]);
+  if (sp === 'apple') return compound([[C(0.12, 0.18, 1.5), 0x5a4030, 0, 0.75, 0], [I(1.5), 0x4a6a2a, 0, 2.35, 0, 1, 0.8, 1]]);
   return null;
 }
 const SPECIES = ['pine', 'oak', 'birch', 'apple'];
@@ -118,7 +138,7 @@ export function plantTrees({ group, trees, addBox, rnd }) {
   for (const sp of SPECIES) {
     if (!items[sp].length) continue;
     const mat = seasonal(vcMat(), sp === 'pine' ? foliage.pine : foliage.deciduous);
-    for (const [k, v] of chunked(group, speciesGeometry(sp), mat, items[sp], { receive: true })) where.set(k, v);
+    for (const [k, v] of chunked(group, speciesGeometry(sp), mat, items[sp], { receive: true, low: speciesLow(sp) })) where.set(k, v);
   }
   // Apples: a cluster of fruit on each apple tree, hidden once picked.
   if (fruitItems.length) {
@@ -129,7 +149,7 @@ export function plantTrees({ group, trees, addBox, rnd }) {
       const r = 1.45 * Math.sqrt(Math.max(0, 1 - k * k)) + 0.06;
       parts.push([new THREE.IcosahedronGeometry(0.11, 0), i % 3 ? 0xc8302a : 0xd84a2a, Math.cos(a) * r, y, Math.sin(a) * r]);
     }
-    for (const [k, v] of chunked(group, compound(parts), vcMat(0.6), fruitItems, { shadow: false })) where.set(k, v);
+    for (const [k, v] of chunked(group, compound(parts), vcMat(0.6), fruitItems, { shadow: false, near: true })) where.set(k, v);
   }
   const zero = new THREE.Matrix4().makeScale(0, 0, 0);
   const set = (it, m) => { const w = where.get(it); w.mesh.setMatrixAt(w.k, m); w.mesh.instanceMatrix.needsUpdate = true; };

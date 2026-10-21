@@ -2,7 +2,6 @@
 // hospital, offices, skyscrapers, police, military sites), roads, trees,
 // cars and lootable containers whose contents fit where they are.
 import * as THREE from 'three';
-import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { SpatialHash } from './collision.js';
 import { CONTAINER_TYPES, rollLoot } from './items.js';
 import { makeGrid, addItem } from './inventory.js';
@@ -12,6 +11,7 @@ import { worldTextures, wallMaterial, WALL, worldUV, mergeableMaterial } from '.
 import { Levels, LH } from './levels.js';
 import { buildStoreys, STOREYS } from './storeys.js';
 import * as East from './eastern.js';
+import { INTERIOR_LAYER } from './dynlights.js';
 
 export const HALF = 220;      // map half-size (town in the middle, countryside around it)
 // Bump when generation changes so old saves don't map loot onto new layouts.
@@ -21,6 +21,9 @@ const ROAD = 8;
 const WALL_H = 3.0;
 const WALL_T = 0.3;
 const DOOR = 1.8;
+const TREE_LOD = 70;           // trees past this are drawn with simple shapes
+const INTERIOR_RANGE = 45;     // furniture in buildings you're not in, drawn to here
+const STOCK_RANGE = 24;        // shelf stock in buildings you're not in
 
 export function mulberry32(seed) {
   let a = seed >>> 0;
@@ -139,12 +142,8 @@ export function buildWorld(scene, seed) {
     const half = width / 2;
     // Hinge at one end of the gap; the panel swings 90 degrees when opened.
     pivot.position.set(ax === 'x' ? x - half : x, 0, ax === 'x' ? z : z - half);
-    const panel = new THREE.Mesh(new THREE.BoxGeometry(width - 0.04, 2.15, 0.07), new THREE.MeshStandardMaterial({ map: WT.planks, color: width < 1.6 ? 0x9a7048 : 0x7a4e2c, roughness: 0.8 }));
-    panel.position.set(half, 1.08, 0);
-    const knob = new THREE.Mesh(new THREE.SphereGeometry(0.04, 6, 4), new THREE.MeshStandardMaterial({ color: 0xccaa55, metalness: 0.8 }));
-    knob.position.set(width - 0.15, 1.0, 0.06);
-    panel.castShadow = true;
-    pivot.add(panel, knob);
+    // (the panel and knob are drawn by two instanced meshes for every door
+    // in town, set up once the town is built; the pivot carries the swing)
     if (ax === 'z') pivot.rotation.y = -Math.PI / 2;
     pivot.userData.dynamic = true; // swings open: never merged
     group.add(pivot);
@@ -1628,9 +1627,22 @@ export function buildWorld(scene, seed) {
   //  - furniture and fittings by building and storey: within 50 m, and inside
   //    a building only the storeys next to yours
   const solid = buildings.filter((b) => !b.area);
-  const zoneOf = (x, y, z, r) => {
+  //  Anything wholly inside a building's walls, below its roof, counts as its
+  //  contents whatever its size (a shop's shelving, a ceiling of lights); the
+  //  shell (floors, slabs, roofs, facades) is scenery.
+  const within = (q, box) => box.min.x > q.x0 - 0.02 && box.max.x < q.x1 + 0.02 && box.min.z > q.z0 - 0.02 && box.max.z < q.z1 + 0.02;
+  const zoneOf = (x, y, z, r, box, tex) => {
     const chunk = regionOf(x, z);
-    if (r > 1.5) return { key: chunk, kind: 'chunk' };
+    if (r > 1.5) {
+      const B = !tex && levels.buildingAt(x, z);
+      if (B && within(B, box)) {
+        const L = Math.max(0, Math.floor((box.min.y + 0.05) / LH));
+        if (L <= B.top && box.max.y < (L + 1) * LH + 0.05) return { key: `in${levels.buildings.indexOf(B)}.${L}`, kind: 'interior', B, L };
+      }
+      const b = !tex && !B && solid.find((q) => !q.legacy && within(q, box));
+      if (b && box.max.y < WALL_H + 0.06) return { key: `ib${buildings.indexOf(b)}`, kind: 'interior', b };
+      return { key: chunk, kind: 'chunk' };
+    }
     const B = levels.buildingAt(x, z);
     if (B) {
       const L = Math.max(0, Math.floor((y - 0.05) / LH));
@@ -1642,6 +1654,35 @@ export function buildWorld(scene, seed) {
   };
   mergeStatic(group, zoneOf);
 
+  // Doors: every panel in one instanced mesh and every knob in another, two
+  // draw calls for the whole town. Each door's pivot still swings (and
+  // carries bullet holes); sync() copies it into the instances.
+  const liveDoors = doors.filter((d) => !d.retired);
+  const doorIM = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 2.15, 0.07), new THREE.MeshStandardMaterial({ map: WT.planks, roughness: 0.8 }), Math.max(1, liveDoors.length));
+  const knobIM = new THREE.InstancedMesh(new THREE.SphereGeometry(0.04, 6, 4), new THREE.MeshStandardMaterial({ color: 0xccaa55, metalness: 0.8 }), Math.max(1, liveDoors.length));
+  doorIM.castShadow = doorIM.receiveShadow = true;
+  const _dl = new THREE.Matrix4(), _dm = new THREE.Matrix4();
+  liveDoors.forEach((d, i) => {
+    const w = d.w;
+    d.sync = () => {
+      const pv = d.mesh;
+      pv.updateMatrix();
+      if (d.broken) { doorIM.setMatrixAt(i, _dm.makeScale(0, 0, 0)); knobIM.setMatrixAt(i, _dm); }
+      else {
+        doorIM.setMatrixAt(i, _dm.multiplyMatrices(pv.matrix, _dl.makeScale(w - 0.04, 1, 1).setPosition(w / 2, 1.08, 0)));
+        knobIM.setMatrixAt(i, _dm.multiplyMatrices(pv.matrix, _dl.makeTranslation(w - 0.15, 1.0, 0.06)));
+      }
+      doorIM.instanceMatrix.needsUpdate = knobIM.instanceMatrix.needsUpdate = true;
+    };
+    // beaten doors darken toward splintered wood
+    d.tint = (c) => { doorIM.setColorAt(i, c); doorIM.instanceColor.needsUpdate = true; };
+    d.tint(new THREE.Color(w < 1.6 ? 0x9a7048 : 0x7a4e2c));
+    d.sync();
+  });
+  doorIM.userData.dynamic = knobIM.userData.dynamic = true;
+  doorIM.frustumCulled = knobIM.frustumCulled = false; // (spread over the whole town)
+  group.add(doorIM, knobIM);
+
   const lod = [];
   for (const o of group.children) {
     const cu = o.userData.cull;
@@ -1649,7 +1690,6 @@ export function buildWorld(scene, seed) {
     const bs = o.isInstancedMesh ? o.boundingSphere : (o.geometry.computeBoundingSphere(), o.geometry.boundingSphere);
     if (bs) lod.push({ o, ...cu, c: bs.center.clone().applyMatrix4(o.matrixWorld), r: bs.radius });
   }
-  for (const d of doors) if (!d.retired) lod.push({ o: d.mesh, kind: 'door', c: d.mesh.position, r: d.w, base: d.base || 0 });
 
   // Saves keep containers, doors and windows by position in these lists:
   // the first part as the town was first laid out (retired ones left empty),
@@ -1693,11 +1733,11 @@ export function buildWorld(scene, seed) {
       for (const f of lod) {
         const d = Math.hypot(f.c.x - x, f.c.z - z) - f.r;
         let vis;
-        if (f.kind === 'chunk') vis = d < range;
+        if (f.kind === 'chunk') vis = f.lod === 'near' ? d < Math.min(range, TREE_LOD) : f.lod === 'far' ? d >= TREE_LOD && d < range : d < range;
         else if (f.kind === 'detail') vis = d < Math.min(range, 100);
         else if (f.kind === 'door') vis = d < Math.min(range, 70) && (!inB || Math.abs(f.base / LH - inL) <= 1);
-        else if (f.B) vis = f.B === inB ? Math.abs(f.L - inL) <= 1 : d < Math.min(range, 50);
-        else vis = f.b === inb || d < Math.min(range, 50);
+        else if (f.B) vis = f.B === inB ? Math.abs(f.L - inL) <= 1 : d < Math.min(range, f.near || INTERIOR_RANGE);
+        else vis = f.b === inb || d < Math.min(range, f.near || INTERIOR_RANGE);
         f.o.visible = vis;
       }
     },
@@ -1745,6 +1785,7 @@ export function setDoor(d, open) {
   d.box.blocksShot = d.box.blocksSight = !open;
   if (d.leaf) { d.leaf.noCollide = !open; d.leaf.blocksShot = open; }
   d.mesh.rotation.y = d.baseRot + (open ? Math.PI / 2 : 0);
+  d.sync?.();
 }
 
 export function corpseMesh(parent, x, z, color, rot = Math.random() * Math.PI * 2) {
@@ -1777,53 +1818,87 @@ const vcMat = (rough, metal, side) => {
 
 // Batch all static, untextured, opaque scenery (furniture, props, vehicles,
 // sandbags, fences...) into one mesh per material to keep draw calls low.
-const _mp = new THREE.Vector3();
+// Each piece's triangles are written straight into the batch's arrays,
+// transformed to world space, with its colour as vertex colour.
+const _mp = new THREE.Vector3(), _mb = new THREE.Box3(), _nm = new THREE.Matrix3();
 function mergeStatic(group, zoneOf) {
   group.updateMatrixWorld(true);
   const buckets = new Map();
-  const victims = [];
+  const victims = new Set();
   group.traverse((o) => {
     if (!o.isMesh || o.isInstancedMesh || Array.isArray(o.material)) return;
     const m = o.material;
     const texMerge = m.map && m.userData.mergeUV; // shared textured material (sidewalks, floors)
     if ((m.map && !texMerge) || m.transparent || m.emissiveMap) return;
     for (let p = o; p && p !== group; p = p.parent) if (p.userData.dynamic) return;
+    const geo = o.geometry;
+    if (!geo.attributes.normal || !geo.attributes.uv) return;
     // Plain materials merge regardless of colour (it goes into vertex
     // colours), so all the furniture of one finish is a single draw call.
     const plain = !m.emissive || m.emissive.getHex() === 0;
     const rough = Math.round(m.roughness * 10) / 10, metal = Math.round(m.metalness * 10) / 10;
-    if (!o.geometry.boundingSphere) o.geometry.computeBoundingSphere();
-    _mp.copy(o.geometry.boundingSphere.center).applyMatrix4(o.matrixWorld);
-    const zone = zoneOf(_mp.x, _mp.y, _mp.z, o.geometry.boundingSphere.radius * o.matrixWorld.getMaxScaleOnAxis());
-    const key = zone.key + (o.castShadow ? '|' : '|ns|') + (texMerge ? 'tex|' + m.uuid : plain ? ['vc', rough, metal, m.side].join('|') : [m.type, m.color.getHex(), m.roughness, m.metalness, m.emissive.getHex(), m.side].join('|'));
-    let geo = o.geometry.index ? o.geometry.toNonIndexed() : o.geometry.clone();
+    if (!geo.boundingSphere) geo.computeBoundingSphere();
+    if (!geo.boundingBox) geo.computeBoundingBox();
+    _mp.copy(geo.boundingSphere.center).applyMatrix4(o.matrixWorld);
+    _mb.copy(geo.boundingBox).applyMatrix4(o.matrixWorld);
+    const zone = zoneOf(_mp.x, _mp.y, _mp.z, geo.boundingSphere.radius * o.matrixWorld.getMaxScaleOnAxis(), _mb, texMerge);
+    const stock = !!o.userData.stock;
+    const key = zone.key + (stock ? '|stock' : '') + (o.castShadow ? '|' : '|ns|') + (texMerge ? 'tex|' + m.uuid : plain ? ['vc', rough, metal, m.side].join('|') : [m.type, m.color.getHex(), m.roughness, m.metalness, m.emissive.getHex(), m.side].join('|'));
     // (pre-coloured geometry, like a shelf's packed stock, keeps its colours)
     const own = m.vertexColors && geo.attributes.color;
-    for (const name of Object.keys(geo.attributes)) if (!['position', 'normal', 'uv', ...(own ? ['color'] : [])].includes(name)) geo.deleteAttribute(name);
-    if (!geo.attributes.uv || !geo.attributes.normal) return;
-    geo.applyMatrix4(o.matrixWorld);
-    if (texMerge) worldUV(geo, m.userData.mergeUV);
-    else if (plain && !own) {
-      const n = geo.attributes.position.count, col = new Float32Array(n * 3);
-      for (let i = 0; i < n; i++) { col[i * 3] = m.color.r; col[i * 3 + 1] = m.color.g; col[i * 3 + 2] = m.color.b; }
-      geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
-    }
-    if (!buckets.has(key)) buckets.set(key, { mat: plain && !texMerge ? vcMat(rough, metal, m.side) : m, geos: [], shadow: o.castShadow, zone });
-    // (ground patches and furrows don't cast shadows: they'd only shade themselves)
-    buckets.get(key).geos.push(geo);
-    victims.push(o);
+    let b = buckets.get(key);
+    if (!b) buckets.set(key, b = { mat: plain && !texMerge ? vcMat(rough, metal, m.side) : m, parts: [], n: 0, shadow: o.castShadow, zone, stock, tex: texMerge, colour: plain && !texMerge });
+    const n = geo.index ? geo.index.count : geo.attributes.position.count;
+    b.parts.push({ geo, matrix: o.matrixWorld, color: own ? null : m.color, n });
+    b.n += n;
+    victims.add(o);
   });
-  for (const o of victims) o.parent.remove(o);
+  // Take the pieces out (one pass per parent, not one search per piece)
+  const parents = new Set([...victims].map((o) => o.parent));
+  for (const p of parents) { p.children = p.children.filter((c) => !victims.has(c)); }
+  for (const o of victims) o.parent = null;
   // The furniture groups those came from are empty shells now: drop them
   // (the scene graph is walked every frame)
-  const prune = (o) => { for (const c of [...o.children]) prune(c); if (o !== group && o.type === 'Group' && !o.children.length && !o.userData.dynamic) o.parent.remove(o); };
+  const prune = (o) => {
+    for (const c of o.children) if (c.type === 'Group' && !c.userData.dynamic) prune(c);
+    o.children = o.children.filter((c) => { const empty = c.type === 'Group' && !c.children.length && !c.userData.dynamic; if (empty) c.parent = null; return !empty; });
+  };
   prune(group);
-  for (const { mat, geos, shadow, zone } of buckets.values()) {
-    const merged = mergeGeometries(geos);
-    if (!merged) continue;
-    const mesh = new THREE.Mesh(merged, mat);
-    mesh.userData.cull = { kind: zone.kind, B: zone.B, L: zone.L, b: zone.b };
-    mesh.castShadow = shadow;
+  for (const b of buckets.values()) {
+    const pos = new Float32Array(b.n * 3), nor = new Float32Array(b.n * 3), uv = new Float32Array(b.n * 2);
+    const col = b.colour || b.parts.some((q) => !q.color) ? new Float32Array(b.n * 3) : null;
+    let o = 0;
+    for (const { geo, matrix, color, n } of b.parts) {
+      const P = geo.attributes.position, N = geo.attributes.normal, U = geo.attributes.uv, C = geo.attributes.color, idx = geo.index?.array;
+      const e = matrix.elements, ne = _nm.getNormalMatrix(matrix).elements;
+      for (let k = 0; k < n; k++, o++) {
+        const v = idx ? idx[k] : k;
+        const x = P.getX(v), y = P.getY(v), z = P.getZ(v);
+        pos[o * 3] = e[0] * x + e[4] * y + e[8] * z + e[12];
+        pos[o * 3 + 1] = e[1] * x + e[5] * y + e[9] * z + e[13];
+        pos[o * 3 + 2] = e[2] * x + e[6] * y + e[10] * z + e[14];
+        const a = N.getX(v), bb = N.getY(v), c = N.getZ(v);
+        let nx = ne[0] * a + ne[3] * bb + ne[6] * c, ny = ne[1] * a + ne[4] * bb + ne[7] * c, nz = ne[2] * a + ne[5] * bb + ne[8] * c;
+        const l = Math.hypot(nx, ny, nz) || 1;
+        nor[o * 3] = nx / l; nor[o * 3 + 1] = ny / l; nor[o * 3 + 2] = nz / l;
+        uv[o * 2] = U.getX(v); uv[o * 2 + 1] = U.getY(v);
+        if (col) {
+          if (color) { col[o * 3] = color.r; col[o * 3 + 1] = color.g; col[o * 3 + 2] = color.b; }
+          else { col[o * 3] = C.getX(v); col[o * 3 + 1] = C.getY(v); col[o * 3 + 2] = C.getZ(v); }
+        }
+      }
+    }
+    const merged = new THREE.BufferGeometry();
+    merged.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    merged.setAttribute('normal', new THREE.BufferAttribute(nor, 3));
+    merged.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
+    if (col) merged.setAttribute('color', new THREE.BufferAttribute(col, 3));
+    if (b.tex) worldUV(merged, b.tex);
+    const mesh = new THREE.Mesh(merged, b.mat);
+    const { zone, stock } = b;
+    mesh.userData.cull = { kind: zone.kind, B: zone.B, L: zone.L, b: zone.b, near: stock ? STOCK_RANGE : undefined };
+    mesh.castShadow = b.shadow;
+    if (zone.kind === 'interior') mesh.layers.set(INTERIOR_LAYER);
     mesh.receiveShadow = true;
     group.add(mesh);
   }

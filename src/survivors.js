@@ -660,8 +660,6 @@ export class Survivors {
     this.list = [];
     this.tracers = [];
     this.spawnTimer = 120;
-    this.flash = new THREE.PointLight(0xffaa55, 0, 10, 2);
-    this.scene.add(this.flash);
     this.tagLayer = document.getElementById('npc-tags');
     this.tagEls = new Map();
     this.buildDoorCells();
@@ -819,8 +817,7 @@ export class Survivors {
     const d = this.distToPlayer(s);
     const P = this.game.player, dx = m.x - P.pos.x, dz = m.z - P.pos.z, dl = Math.hypot(dx, dz) || 1;
     sfx.shot(s.weapon.key, false, Math.max(0, 1 - d / 140) ** 1.5, (dx * Math.cos(P.yaw) - dz * Math.sin(P.yaw)) / dl);
-    this.flash.position.copy(m);
-    this.flash.intensity = 25;
+    this.game.lights.burst(m, 25, { distance: 10, exp: 40 });
     const end = new THREE.Vector3(tx, 1.2, tz);
     const geo = new THREE.BufferGeometry().setFromPoints([m, end]);
     const line = new THREE.Line(geo, new THREE.LineBasicMaterial({ color: 0xffdd88, transparent: true, opacity: 0.7 }));
@@ -921,7 +918,6 @@ export class Survivors {
   dispose() {
     for (const s of this.list) this.scene.remove(s.mesh);
     for (const t of this.tracers) this.scene.remove(t.line);
-    this.scene.remove(this.flash);
     this.list = [];
     this.tagLayer.innerHTML = '';
     this.tagEls.clear();
@@ -932,7 +928,6 @@ export class Survivors {
     const g = this.game;
     for (const s of this.list) if (!s.dead) s.update(dt, g);
     this.list = this.list.filter((s) => !s.dead);
-    this.flash.intensity *= Math.exp(-dt * 40);
     for (let i = this.tracers.length - 1; i >= 0; i--) {
       const t = this.tracers[i];
       t.t -= dt;

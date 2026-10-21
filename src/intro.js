@@ -118,7 +118,7 @@ export class Intro {
     p.gun.setVisible(false);
     if (p.vm) p.vm.visible = false;
     // (the lights you carry stay off: they'd light the cabin from the camera)
-    p.light.intensity = 0; p.flash.intensity = 0;
+    p.setLight(0);
     this.cam = game.camera;
     this.fov0 = this.cam.fov;
     this.done = false;

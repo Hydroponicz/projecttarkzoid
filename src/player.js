@@ -7,6 +7,7 @@ import { moveCircle, segBox, raycast } from './collision.js';
 import { ITEMS, itemWeight } from './items.js';
 import { sfx } from './audio.js';
 import { GunController, VM_LAYER } from './weapons.js';
+import { vmFill, INTERIOR_LAYER } from './dynlights.js';
 
 export const PARTS = {
   head: { name: 'Head', max: 35, vital: true },
@@ -19,6 +20,7 @@ export const PARTS = {
 };
 const HIT_WEIGHTS = [['head', 0.08], ['thorax', 0.3], ['stomach', 0.15], ['armL', 0.14], ['armR', 0.14], ['legL', 0.095], ['legR', 0.095]];
 
+const _flashAt = new THREE.Vector3();
 export class Player {
   constructor(camera, scene, game) {
     this.camera = camera;
@@ -80,17 +82,38 @@ export class Player {
     this.light.castShadow = true;
     this.light.shadow.mapSize.set(1024, 1024);
     this.light.shadow.camera.near = 0.3;
+    this.light.shadow.camera.layers.enable(INTERIOR_LAYER); // (furniture casts in the flashlight)
+    this.light.castShadow = game.sun.castShadow; // (graphics setting)
     // Placed past the muzzle so the cone doesn't blow out the viewmodel.
     this.light.position.set(0.15, -0.1, -0.9);
     this.light.target.position.set(0, 0, -6);
     camera.add(this.light, this.light.target);
-    this.handLight = new THREE.PointLight(0xc8c0b0, 2.2, 1.6, 1);
-    this.handLight.position.set(0.1, 0.2, 0);
-    camera.add(this.handLight);
+  }
 
-    this.flash = new THREE.PointLight(0xffaa55, 0, 12, 2);
-    camera.add(this.flash);
-    this.flash.position.set(0.2, -0.15, -1.2);
+  // The muzzle flash lights up the room (the shared flash light)
+  muzzleFlash(intensity) {
+    this.camera.updateMatrixWorld();
+    this.game.lights.burst(this.camera.localToWorld(_flashAt.set(0.2, -0.15, -1.2)), intensity, { exp: 40 });
+  }
+  // The flashlight's shadow map is only drawn while it's on
+  setLight(intensity) {
+    this.light.intensity = intensity;
+    this.light.shadow.autoUpdate = intensity > 0;
+  }
+  // Driving with the lights on, the flashlight is the headlights (from the
+  // car's nose toward `to`); with from = null it's the flashlight again
+  headlights(from, to, intensity) {
+    const L = this.light;
+    if (!from) {
+      if (L.userData.car) { L.userData.car = false; L.position.set(0.15, -0.1, -0.9); L.target.position.set(0, 0, -6); L.angle = 0.42; L.distance = 38; }
+      this.setLight(this.flashlight ? 40 : 0);
+      return;
+    }
+    this.camera.updateMatrixWorld();
+    L.userData.car = true; L.angle = 0.55; L.distance = 45;
+    L.position.copy(this.camera.worldToLocal(_flashAt.copy(from)));
+    L.target.position.copy(this.camera.worldToLocal(_flashAt.copy(to)));
+    this.setLight(intensity);
   }
 
   get equip() { return this.game.profile.equip; }
@@ -128,6 +151,7 @@ export class Player {
     vm.position.copy(vm.userData.hip);
     vm.visible = !gunActive;
     vm.traverse((o) => o.layers.set(VM_LAYER));
+    vmFill(vm);
     this.vm = vm;
     this.camera.add(vm);
   }
@@ -152,7 +176,6 @@ export class Player {
       this.gun.setVisible(false);
       this.vm.visible = false;
       this.speed = 0;
-      this.light.intensity = this.flashlight ? 40 : 0;
       this.updateBody(dt);
       return;
     }
@@ -404,8 +427,7 @@ export class Player {
       if (input.firePressed && this.meleeCd <= 0) this.meleeAttack();
     }
     if (input.flashlight) this.flashlight = !this.flashlight;
-    this.light.intensity = this.flashlight ? 40 : 0;
-    this.flash.intensity *= Math.exp(-dt * 40);
+    this.setLight(this.flashlight ? 40 : 0);
 
     this.updateBody(dt);
   }

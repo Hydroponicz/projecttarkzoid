@@ -4,6 +4,7 @@
 // animations, and aiming physics (inertia, breathing sway, arm stamina,
 // hold breath, spring recoil with camera climb and recovery).
 import * as THREE from 'three';
+import { vmFill, INTERIOR_LAYER } from './dynlights.js';
 import { ITEMS, makeItem } from './items.js';
 import { addItem, removeItem, takeItem } from './inventory.js';
 import { sfx } from './audio.js';
@@ -1197,6 +1198,7 @@ export class GunController {
     const newRoot = new THREE.Group();
     newRoot.add(buildMag(best.key));
     newRoot.traverse((o) => { o.layers.set(VM_LAYER); if (o.isMesh && o.material.isMeshStandardMaterial && !o.geometry.userData.uvDone) { metricUV(o.geometry); o.geometry.userData.uvDone = true; } });
+    vmFill(newRoot);
     newRoot.visible = false;
     this.built.model.add(newRoot);
     const ph = () => this.anim?.tl?.ph || tl.ph;
@@ -1292,8 +1294,8 @@ export class GunController {
     this.fireCd = 60 / def.rpm;
     const suppressed = isSuppressed(w);
     sfx.shot(w.key, suppressed);
-    if (!suppressed) { this.flashT = 0.045; p.flash.intensity = 30; }
-    else p.flash.intensity = 4;
+    if (!suppressed) this.flashT = 0.045;
+    p.muzzleFlash(suppressed ? 4 : 30);
 
     // Bullets travel along the barrel (camera direction + weapon offset), from
     // where you were aiming when the shot broke: the recoil comes after.
@@ -1365,7 +1367,7 @@ export class GunController {
     cam.quaternion.setFromEuler(_scopeEuler.set(this.p.pitch + this.offPitch, this.p.yaw + this.offYaw, 0, 'YXZ'));
     cam.fov = op.fov;
     cam.updateProjectionMatrix();
-    cam.layers.set(0);
+    cam.layers.set(0); cam.layers.enable(INTERIOR_LAYER);
     const prevTarget = renderer.getRenderTarget();
     const autoShadow = renderer.shadowMap.autoUpdate;
     renderer.shadowMap.autoUpdate = false; // reuse this frame's shadow maps

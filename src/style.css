@@ -403,3 +403,12 @@ body.cinematic > *:not(#game):not(#intro) { visibility: hidden !important; }
 #intro .sub { position: absolute; left: 50%; bottom: 14vh; transform: translateX(-50%); color: #f0f0e0; font-size: 18px; text-shadow: 0 0 4px #000, 1px 1px 0 #000; white-space: nowrap; transition: opacity .4s; }
 #intro .sub b { color: #c8d88a; }
 #intro .skip { position: absolute; right: 3vw; bottom: 3.5vh; color: #888; font-size: 12px; }
+
+/* Graphics panel */
+.gfx-panel { width: min(520px, 94vw); }
+.gfx-presets { display: flex; gap: 6px; margin-bottom: 10px; }
+.gfx-presets button { flex: 1; }
+.gfx-presets button.on { background: #4a5a2a; color: #f0f0d0; }
+.gfx-row { display: grid; grid-template-columns: 1fr 160px 80px; align-items: center; gap: 8px; font-size: 12px; color: #cfc8a8; padding: 4px 0; }
+.gfx-row input, .gfx-row select { width: 100%; accent-color: #8aa04a; background: #1c1d15; color: #cfc8a8; border: 1px solid #3a3b30; }
+.gfx-fps { margin-top: 8px; font-size: 12px; }

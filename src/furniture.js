@@ -134,6 +134,7 @@ export function createFurnisher(group) {
     geo.setAttribute('uv', new THREE.BufferAttribute(uv, 2)); geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
     const m = new THREE.Mesh(geo, stockMat);
     m.castShadow = false; m.receiveShadow = true;
+    m.userData.stock = true; // (small stuff: drawn from closer in than the furniture)
     g.add(m);
     return m;
   };

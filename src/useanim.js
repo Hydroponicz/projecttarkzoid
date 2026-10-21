@@ -5,6 +5,7 @@
 // thigh, pills are shaken out, and surgery is a longer job with tools. The
 // item's effect lands when the animation finishes.
 import * as THREE from 'three';
+import { vmFill } from './dynlights.js';
 import { ITEMS } from './items.js';
 import { MAT, B, C, RB, hand, metricUV } from './gunmodels.js';
 import { sfx } from './audio.js';
@@ -97,6 +98,7 @@ export class UseAnimator {
     if (kind === 'bandage') { wrap = C(L.userData.arm, 0.04, 0.07, MAT.white, 0, 0, 0.1, 16); wrap.scale.set(0.01, 0.01, 1); }
     root.add(R, L);
     root.traverse((o) => { o.layers.set(VM_LAYER); if (o.isMesh && o.material.isMeshStandardMaterial && !o.geometry.userData.uvDone) { metricUV(o.geometry); o.geometry.userData.uvDone = true; } });
+    vmFill(root);
     const c = this.p.gun.cond || { tired: 0, hurt: 0 };
     const k = 1 + 0.3 * c.tired + 0.5 * c.hurt; // tired and hurt hands are slower
     this.cur = { kind, t: 0, dur: DUR[kind] * k, R, L, model, wrap, onDone, sounds: new Set(), cond: c };

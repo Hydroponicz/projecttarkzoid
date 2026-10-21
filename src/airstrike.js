@@ -88,8 +88,7 @@ export class AirSupport {
     this.spot.renderOrder = 5;
     this.beam = new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3()]), new THREE.LineBasicMaterial({ color: 0xff3020, transparent: true, opacity: 0.35, fog: false }));
     this.spot.visible = this.beam.visible = false;
-    this.flashLight = new THREE.PointLight(0xffb060, 0, 40, 1.5);
-    game.scene.add(this.spot, this.beam, this.flashLight);
+    game.scene.add(this.spot, this.beam);
     this.hudT = 0;
   }
 
@@ -164,7 +163,6 @@ export class AirSupport {
     if (this.active && !this.carries()) this.toggle(false);
     if (this.active) this.updateLase(dt, radio);
     if (this.strike) this.updateStrike(dt);
-    this.flashLight.intensity = Math.max(0, this.flashLight.intensity - dt * 120);
   }
 
   updateLase(dt, radio) {
@@ -339,7 +337,7 @@ export class AirSupport {
     fx.burst(at, FIRE, 4, 10, 0.25, 0.06);
     if (n % 3 === 0) fx.burst(at, DEBRIS, 5, 7, 0.9, 0.08);
     fx.holes.add(at.clone().setY(at.y + 0.02), UP, 0.7 + Math.random() * 0.5);
-    if (n % 4 === 0) { this.flashLight.position.copy(at).setY(at.y + 1.5); this.flashLight.intensity = 60; }
+    if (n % 4 === 0) this.game.lights.burst(at.clone().setY(at.y + 1.5), 60, { color: 0xffb060, distance: 40, decay: 1.5, linear: 120 });
     // what you hear and feel of it
     const d = Math.hypot(at.x - p.pos.x, at.z - p.pos.z);
     if (n % 2 === 0 && d < 260) {
@@ -376,7 +374,7 @@ export class AirSupport {
 
   dispose() {
     this.endStrike();
-    this.game.scene.remove(this.spot, this.beam, this.flashLight);
+    this.game.scene.remove(this.spot, this.beam);
     this.el.remove();
   }
 }
