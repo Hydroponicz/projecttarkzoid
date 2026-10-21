@@ -93,6 +93,7 @@ const GROUPS = [
     ['cannonHit', '30 mm rounds landing', () => sfx.cannonHit(0.8)],
     ['jet', 'A-10 engines', null],
     ['drone', 'FPV drone motors', null],
+    ['heli', 'Insertion helicopter', null],
   ]],
   ['Vehicles', [
     ['engine', 'Engine', null],

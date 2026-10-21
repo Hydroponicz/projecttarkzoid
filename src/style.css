@@ -389,3 +389,17 @@ button.snd-test:hover { background: #2a321e; }
 #fpv .fpv-bl { left: 6%; bottom: 10%; } #fpv .fpv-br { right: 6%; bottom: 10%; text-align: right; color: #ffd060; }
 #fpv .fpv-mid { position: absolute; left: 50%; top: 30%; transform: translateX(-50%); color: #ff5a3a; font-size: 18px; }
 body.fpv-on #hud, body.fpv-on #hotbar { visibility: hidden; }
+#cc-guns { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; margin-bottom: 6px; }
+#cc-guns .prof { margin: 0; padding: 6px 8px; }
+
+/* helicopter insertion */
+body.cinematic > *:not(#game):not(#intro) { visibility: hidden !important; }
+#intro { display: none; position: fixed; inset: 0; pointer-events: none; z-index: 20; font-family: monospace; }
+#intro .bar { position: absolute; left: 0; right: 0; height: 11vh; background: #000; }
+#intro .bar.t { top: 0; } #intro .bar.b { bottom: 0; }
+#intro .title { position: absolute; left: 6vw; top: 16vh; color: #e8e0c8; text-shadow: 0 0 8px #000; transition: opacity 1.2s; }
+#intro .title h1 { margin: 0; font-size: 44px; letter-spacing: 6px; }
+#intro .title p { margin: 4px 0; font-size: 15px; color: #c8c0a0; letter-spacing: 2px; }
+#intro .sub { position: absolute; left: 50%; bottom: 14vh; transform: translateX(-50%); color: #f0f0e0; font-size: 18px; text-shadow: 0 0 4px #000, 1px 1px 0 #000; white-space: nowrap; transition: opacity .4s; }
+#intro .sub b { color: #c8d88a; }
+#intro .skip { position: absolute; right: 3vw; bottom: 3.5vh; color: #888; font-size: 12px; }

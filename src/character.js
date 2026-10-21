@@ -29,13 +29,25 @@ export const PROFESSIONS = {
   veteran: { name: 'Veteran', desc: 'Seen worse. Brought a shotgun.', points: -2, bonus: { aiming: 3, strength: 1, guns: 2 }, kit: [['mp133', { loaded: 6 }], ['ammo_12g', { count: 8 }], 'knife'] },
 };
 
+// The gun you bring in on the helicopter (loaded, two spare magazines and a
+// little loose ammo), or nothing
+export const INSERT_GUNS = {
+  ak74: { kit: [['ak74', { loaded: 30 }], ['mag_ak30', { rounds: 30 }], ['mag_ak30', { rounds: 30 }], ['ammo_545', { count: 30 }]] },
+  m4a1: { kit: [['m4a1', { loaded: 30 }], ['mag_stanag', { rounds: 30 }], ['mag_stanag', { rounds: 30 }], ['ammo_556', { count: 30 }]] },
+  sks: { kit: [['sks', { loaded: 10 }], ['mag_sks', { rounds: 10 }], ['mag_sks', { rounds: 10 }], ['ammo_762', { count: 20 }]] },
+  mp5: { kit: [['mp5', { loaded: 30 }], ['mag_mp5', { rounds: 30 }], ['ammo_9x19', { count: 30 }]] },
+  mp133: { kit: [['mp133', { loaded: 6 }], ['ammo_12g', { count: 16 }]] },
+  pm: { kit: [['pm', { loaded: 8 }], ['mag_pm', { rounds: 8 }], ['mag_pm', { rounds: 8 }], ['ammo_9x18', { count: 16 }]] },
+  none: { kit: [], name: 'Nothing', desc: 'Travel light: just your profession\'s kit' },
+};
+
 const FIRST = ['Kate', 'Bob', 'Marcus', 'Elena', 'Dmitri', 'Jo', 'Sam', 'Alex', 'Nadia', 'Victor', 'Ruth', 'Leon', 'Ivy', 'Pavel', 'Grace', 'Theo'];
 const LAST = ['Smith', 'Petrov', 'Hale', 'Moreno', 'Kowalski', 'Reyes', 'Novak', 'Grant', 'Volkov', 'Baker', 'Lindqvist', 'Okafor', 'Price', 'Doyle'];
 export const randomName = () => `${FIRST[Math.floor(Math.random() * FIRST.length)]} ${LAST[Math.floor(Math.random() * LAST.length)]}`;
 
 const SLOT_FOR_TYPE = { weapon: 'weapon', melee: 'melee', armor: 'armor', helmet: 'helmet', backpack: 'backpack', clothing: 'clothing', rig: 'rig' };
 
-export function makeCharacter(name, profKey, bought) {
+export function makeCharacter(name, profKey, bought, gun = 'none') {
   const prof = PROFESSIONS[profKey];
   const stats = {};
   for (const k in STATS) stats[k] = Math.min(MAX_SKILL, (prof.bonus[k] || 0) + (bought[k] || 0));
@@ -45,7 +57,8 @@ export function makeCharacter(name, profKey, bought) {
     pockets: makeGrid(4, 2),
     daysSurvived: 0, kills: 0,
   };
-  const kit = [...prof.kit, 'water', 'crackers', 'hoodie'];
+  // (the chosen gun first, so it takes the weapon slot)
+  const kit = [...(INSERT_GUNS[gun]?.kit || []), ...prof.kit, 'water', 'crackers', 'hoodie'];
   // Backpacks and clothing with pockets first so later items have room.
   kit.sort((a, b) => (b === 'bp_scav' || b === 'hoodie') - (a === 'bp_scav' || a === 'hoodie'));
   for (const entry of kit) {
@@ -63,7 +76,7 @@ export function makeCharacter(name, profKey, bought) {
 // Wires up the creation screen. Calls onDone(character) when the player spawns.
 export function setupCreation(onDone) {
   const $ = (id) => document.getElementById(id);
-  let prof = 'unemployed';
+  let prof = 'unemployed', gun = 'ak74';
   const bought = Object.fromEntries(Object.keys(STATS).map((k) => [k, 0]));
   $('cc-name').value = randomName();
   $('cc-random').onclick = () => { $('cc-name').value = randomName(); };
@@ -108,7 +121,16 @@ export function setupCreation(onDone) {
       });
       $('cc-stats').appendChild(row);
     }
-    const kit = [...PROFESSIONS[prof].kit, 'water', 'crackers', 'hoodie'].map((e) => {
+    $('cc-guns').innerHTML = '';
+    for (const [k, gdef] of Object.entries(INSERT_GUNS)) {
+      const b = document.createElement('button');
+      b.className = 'prof gun' + (k === gun ? ' sel' : '');
+      const it = ITEMS[gdef.kit[0]?.[0]];
+      b.innerHTML = `${gdef.name || it.name}<small>${gdef.desc || gdef.kit.slice(1).map(([key, o]) => ITEMS[key].short + (o.count ? ' ×' + o.count : '')).join(', ')}</small>`;
+      b.onclick = () => { gun = k; render(); };
+      $('cc-guns').appendChild(b);
+    }
+    const kit = [...(INSERT_GUNS[gun]?.kit || []), ...PROFESSIONS[prof].kit, 'water', 'crackers', 'hoodie'].map((e) => {
       const [key, opts] = Array.isArray(e) ? e : [e, {}];
       return ITEMS[key].name + (opts.count ? ` ×${opts.count}` : '');
     });
@@ -118,7 +140,7 @@ export function setupCreation(onDone) {
 
   $('cc-start').onclick = () => {
     const name = $('cc-name').value.trim() || randomName();
-    onDone(makeCharacter(name, prof, bought));
+    onDone(makeCharacter(name, prof, bought, gun));
   };
-  return { reset() { prof = 'unemployed'; for (const k in bought) bought[k] = 0; $('cc-name').value = randomName(); render(); } };
+  return { reset() { prof = 'unemployed'; gun = 'ak74'; for (const k in bought) bought[k] = 0; $('cc-name').value = randomName(); render(); } };
 }

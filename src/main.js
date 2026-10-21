@@ -13,6 +13,7 @@ import { setupSoundPanel } from './soundui.js';
 import { AirSupport } from './airstrike.js';
 import { Throwables } from './throwables.js';
 import { Drones } from './drones.js';
+import { Intro, findLZ } from './intro.js';
 import { updateExplosions } from './explosives.js';
 import { Traders } from './traders.js';
 import { Progress } from './progress.js';
@@ -312,7 +313,12 @@ class Game {
     if (ch.player) this.player.restore(ch.player);
     // New characters (and anyone whose town was rebuilt, since their old spot
     // may be inside a new building) wake up in a random house.
-    if (this.worldRegenerated) this.placeNewCharacter(false);
+    // New characters are flown in to a landing zone on the edge of town
+    // (automated test runs skip the cinematic unless asked for it)
+    const flyIn = !ch.player && !this.worldRegenerated && (!navigator.webdriver || localStorage.getItem('tarkzoid-intro'));
+    let lz = null;
+    if (flyIn) { lz = findLZ(this.world, w?.zombies || []); this.player.pos.set(lz.x, 0, lz.z); }
+    else if (this.worldRegenerated) this.placeNewCharacter(false);
     else if (!ch.player) this.placeNewCharacter(!!w);
     if (w) this.zombies.restore(w.zombies);
     else this.zombies.populate(85, this.player.pos);
@@ -329,6 +335,7 @@ class Game {
     this.updateLighting();
     this.autosave = AUTOSAVE;
     this.lookTarget = null;
+    this.intro = lz ? new Intro(this, lz) : null;
     this.state = 'play';
     $('loading').style.display = 'none';
     this.hud.show(true);
@@ -452,6 +459,7 @@ class Game {
     this.air?.dispose(); this.air = null;
     this.thr?.dispose(); this.thr = null;
     this.drone?.dispose(); this.drone = null;
+    this.intro?.dispose(); this.intro = null; this.heliOut?.dispose(); this.heliOut = null;
     this.zombies?.dispose();
     this.survivors?.dispose();
     this.survivors = null;
@@ -932,6 +940,20 @@ class Game {
   update(dt, now) {
     const inp = this.input.state();
     const pressed = (c) => this.input.pressed.has(c);
+    // The insertion cinematic: it has the camera until you're on the ground
+    if (this.intro && !this.intro.done) {
+      if (pressed('Space') || pressed('Escape') || pressed('Enter')) this.intro.finish();
+      else this.intro.update(dt);
+      this.time += dt * this.dev.timeScale;
+      this.updateLighting();
+      this.weather.update(dt);
+      if (!this.dev.freeze) this.zombies.update(dt, this.player, this);
+      if (!this.intro.done) return;
+      this.heliOut = this.intro; this.intro = null;
+      this.input.lock();
+      return;
+    }
+    if (this.heliOut && !this.heliOut.depart(dt)) this.heliOut = null;
     if (this.dialogOpen) {
       // Talking: number keys pick an option; Esc, walking or distance ends it.
       const s = this.survivors.dialogFor;

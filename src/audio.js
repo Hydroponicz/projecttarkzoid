@@ -591,6 +591,37 @@ export function jetSound() {
   return loop;
 }
 
+// A helicopter: the rotor's heavy thump and the turbines' whine. set(level
+// 0..1, inside: muffled through the cabin)
+export function heliSound() {
+  if (!ctx) return { set() {}, stop() {} };
+  const n = ctx.createBufferSource(); n.buffer = brown; n.loop = true;
+  const w = ctx.createBufferSource(); w.buffer = white; w.loop = true;
+  const lp = filter('lowpass', 260, 0.8), am = ctx.createGain(); am.gain.value = 0.55;
+  const lfo = ctx.createOscillator(); lfo.type = 'triangle'; lfo.frequency.value = 3.4;
+  const depth = ctx.createGain(); depth.gain.value = 0.45; lfo.connect(depth); depth.connect(am.gain);
+  const whine = filter('bandpass', 3200, 3), wg = ctx.createGain(); wg.gain.value = 0.18;
+  const muff = filter('lowpass', 8000, 0.7), g = ctx.createGain(); g.gain.value = 0;
+  n.connect(lp); lp.connect(am); am.connect(muff); w.connect(whine); whine.connect(wg); wg.connect(muff); muff.connect(g);
+  const pan = ctx.createStereoPanner(); g.connect(pan); pan.connect(master);
+  const send = ctx.createGain(); send.gain.value = 0.3; pan.connect(send); send.connect(verbBus);
+  n.start(); w.start(); lfo.start();
+  let level = 0;
+  const loop = {
+    set(lvl, inside = false, p = 0) {
+      const t = ctx.currentTime;
+      level = lvl;
+      g.gain.setTargetAtTime(lvl * soundVol('heli'), t, 0.1);
+      muff.frequency.setTargetAtTime(inside ? 900 : 8000, t, 0.1);
+      pan.pan.setTargetAtTime(Math.max(-1, Math.min(1, p)), t, 0.1);
+    },
+    refresh() { g.gain.setTargetAtTime(level * soundVol('heli'), ctx.currentTime, 0.05); },
+    stop() { try { n.stop(); w.stop(); lfo.stop(); } catch { /* stopped */ } loops.splice(loops.indexOf(loop), 1); },
+  };
+  loops.push(loop);
+  return loop;
+}
+
 // An FPV drone's motors: a buzzing whine that rises with the throttle.
 // set(level 0..1, throttle 0..1)
 export function droneSound() {
