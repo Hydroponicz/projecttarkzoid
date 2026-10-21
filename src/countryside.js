@@ -8,7 +8,6 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
 import { mergeableMaterial } from './worldtex.js';
 
 const CELL = 40;
-const TOWN = 100;   // town lots end here (the outer town road runs along it)
 const DIRT = 6;     // dirt road width
 const FARM_NAMES = ['Kolkhoz Rassvet', 'Sokolov Khutor', 'Kolkhoz Pobeda', 'Berezovka', 'Old Mill', 'Ivanov Khutor', 'Sosnovka', 'Kolkhoz Iskra', 'Krasnaya Gorka', 'Novak'];
 
@@ -172,7 +171,7 @@ export function plantTrees({ group, trees, addBox, rnd }) {
 // ctx: helpers from buildWorld (seeded rand, scene group, colliders, building
 // and container factories, the shared tree list and spawn/landmark lists).
 export function buildCountryside(ctx) {
-  const { rand, rnd, pick, shuffle, group, fur, addBox, prop, building, car, addContainer, trees, zombieSpawns, landmarks, HALF } = ctx;
+  const { rand, rnd, pick, shuffle, group, fur, addBox, prop, building, car, addContainer, trees, zombieSpawns, landmarks, HALF, TOWN } = ctx;
   const dirtRoads = [];
   const features = [];   // for the map: {x0, z0, x1, z1, color} or {x, z, r, color}
   const gardens = [];    // pre-dug farm garden plots: {x, z, crop, growth, water}
@@ -201,9 +200,9 @@ export function buildCountryside(ctx) {
     dirtRoads.push({ axis, k, a0, a1 });
   }
   const E = HALF - 3;
-  for (const k of [-20, 60]) { dirtRoad('x', k, -E, -TOWN - 4); dirtRoad('x', k, TOWN + 4, E); }
-  for (const k of [-60, 20]) { dirtRoad('z', k, -E, -TOWN - 4); dirtRoad('z', k, TOWN + 4, E); }
-  const RING = 140;
+  for (const k of [-100, -20, 60]) { dirtRoad('x', k, -E, -TOWN - 4); dirtRoad('x', k, TOWN + 4, E); }
+  for (const k of [-60, 20, 100]) { dirtRoad('z', k, -E, -TOWN - 4); dirtRoad('z', k, TOWN + 4, E); }
+  const RING = TOWN + 40;
   for (const s of [-1, 1]) { dirtRoad('x', s * RING, -RING - DIRT / 2, RING + DIRT / 2); dirtRoad('z', s * RING, -RING + DIRT / 2, RING - DIRT / 2); }
   const onRoad = (x, z, pad = 1) => dirtRoads.some((r) => {
     const [u, v] = r.axis === 'x' ? [x, z] : [z, x];
@@ -216,7 +215,7 @@ export function buildCountryside(ctx) {
   for (let i = 0; i < N; i++) for (let j = 0; j < N; j++) {
     const cx = -HALF + (i + 0.5) * CELL, cz = -HALF + (j + 0.5) * CELL;
     if (Math.abs(cx) < TOWN && Math.abs(cz) < TOWN) continue;
-    const band = Math.max(Math.abs(cx), Math.abs(cz)) < 130 ? 1 : Math.max(Math.abs(cx), Math.abs(cz)) < 170 ? 2 : 3;
+    const dd = Math.max(Math.abs(cx), Math.abs(cz)), band = dd < TOWN + 35 ? 1 : dd < TOWN + 85 ? 2 : 3;
     cells.push({ i, j, cx, cz, band, type: null });
   }
   const cellAt = (i, j) => cells.find((c) => c.i === i && c.j === j);
@@ -229,7 +228,7 @@ export function buildCountryside(ctx) {
   const free = () => cells.filter((c) => !c.type);
   const farms = [];
   for (const c of shuffle(free().filter((f) => f.band < 3))) {
-    if (farms.length < 8 && farms.every((o) => Math.abs(o.i - c.i) + Math.abs(o.j - c.j) > 2)) farms.push(c);
+    if (farms.length < 15 && farms.every((o) => Math.abs(o.i - c.i) + Math.abs(o.j - c.j) > 2)) farms.push(c);
   }
   for (const f of farms) f.type = 'farm';
   for (const f of farms) {
@@ -237,11 +236,11 @@ export function buildCountryside(ctx) {
     const k = 2 + (rand() < 0.5 ? 1 : 0);
     for (const n of ns.slice(0, k)) { n.type = 'field'; n.farm = f; }
   }
-  for (const c of shuffle(free()).slice(0, 4)) c.type = 'orchard';
-  const seeds = shuffle(free().filter((c) => c.band >= 2)).slice(0, 7);
+  for (const c of shuffle(free()).slice(0, 7)) c.type = 'orchard';
+  const seeds = shuffle(free().filter((c) => c.band >= 2)).slice(0, 13);
   const forest = [...seeds];
   for (const s of seeds) s.type = 'forest';
-  while (forest.length < 36) {
+  while (forest.length < 72) {
     const from = pick(forest), n = neigh(from).filter((c) => !c.type);
     if (!n.length) { if (forest.every((f) => !neigh(f).some((c) => !c.type))) break; continue; }
     const c = pick(n);
@@ -538,9 +537,9 @@ export function buildCountryside(ctx) {
 
   // Assign forest specials and ponds, then build every cell
   const fcells = shuffle(cells.filter((c) => c.type === 'forest'));
-  fcells.slice(0, 3).forEach((c) => { c.special = 'cabin'; });
-  fcells.slice(3, 5).forEach((c) => { c.special = 'camp'; });
-  shuffle(cells.filter((c) => c.type === 'meadow')).slice(0, 5).forEach((c) => { c.pond = true; });
+  fcells.slice(0, 5).forEach((c) => { c.special = 'cabin'; });
+  fcells.slice(5, 9).forEach((c) => { c.special = 'camp'; });
+  shuffle(cells.filter((c) => c.type === 'meadow')).slice(0, 9).forEach((c) => { c.pond = true; });
   farms.forEach((c, i) => farm(c, i));
   for (const c of cells) {
     if (c.type === 'field') field(c);

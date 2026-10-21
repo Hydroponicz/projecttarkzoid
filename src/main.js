@@ -333,10 +333,10 @@ class Game {
     else if (this.worldRegenerated) this.placeNewCharacter(false);
     else if (!ch.player) this.placeNewCharacter(!!w);
     if (w) this.zombies.restore(w.zombies);
-    else this.zombies.populate(85, this.player.pos);
+    else this.zombies.populate(150, this.player.pos);
     this.survivors = new Survivors(this);
     if (w?.survivors) this.survivors.restore(w.survivors);
-    else this.survivors.populate(8);
+    else this.survivors.populate(12);
     this.traders = new Traders(this, w?.traders || null);
     this.traders.spawnNPCs();
     this.progress = new Progress(this, this.profile, !ch.player);
@@ -700,12 +700,35 @@ class Game {
   }
 
   // ---------- world interaction ----------
-  interactables() {
-    const out = [...this.world.containers, ...this.world.beds];
-    for (const w of this.world.windows) if (w.sill < 1.2) out.push(w);
-    if (this.vehicles) out.push(...this.vehicles.interactables(), ...this.world.pumps);
-    if (this.farming) out.push(...this.farming.interactables());
-    for (const d of this.world.doors) if (!d.broken) out.push(d);
+  // Things you can use; near (x, z) only, if given
+  interactables(x, z) {
+    const near = x === undefined ? () => true : (c) => Math.abs(c.x - x) < 8 && Math.abs(c.z - z) < 8;
+    const W = this.world, out = [];
+    if (x === undefined) {
+      out.push(...W.containers, ...W.beds);
+      for (const w of W.windows) if (w.sill < 1.2) out.push(w);
+    } else {
+      // The town's containers, beds, windows and doors stay put: they're
+      // kept by 8 m cell (rebuilt when containers come or go). What moves
+      // or was added since (dropped bags, bodies, car trunks) is checked
+      // one by one.
+      const sig = W.containers.length * 7 + W.beds.length;
+      if (!this.iGrid || this.iGrid.W !== W || this.iGrid.sig !== sig) {
+        const cells = new Map(), add = (o) => { const k = Math.floor(o.x / 8) * 4096 + Math.floor(o.z / 8); let c = cells.get(k); if (!c) cells.set(k, c = []); c.push(o); };
+        for (const c of W.containers.slice(0, W.generatedContainers)) if (!c.vehicleTrunk) add(c);
+        for (const b of W.beds) add(b);
+        for (const w of W.windows) if (w.sill < 1.2) add(w);
+        for (const d of W.doors) add(d);
+        this.iGrid = { W, sig, cells, trunks: W.containers.filter((c) => c.vehicleTrunk) };
+      }
+      const ci = Math.floor(x / 8), cj = Math.floor(z / 8);
+      for (let a = -1; a <= 1; a++) for (let b = -1; b <= 1; b++) for (const o of this.iGrid.cells.get((ci + a) * 4096 + cj + b) || []) if (!o.broken) out.push(o);
+      for (const c of this.iGrid.trunks) if (near(c)) out.push(c);
+      for (let i = W.generatedContainers; i < W.containers.length; i++) if (near(W.containers[i])) out.push(W.containers[i]);
+    }
+    if (this.vehicles) out.push(...this.vehicles.interactables(x, z), ...this.world.pumps);
+    if (this.farming) for (const f of this.farming.interactables()) if (near(f) || f.reach) out.push(f);
+    if (x === undefined) for (const d of W.doors) if (!d.broken) out.push(d);
     for (const s of this.builder.structures) if (s.grid || s.door || s.type === 'bed' || s.type === 'rain_barrel') out.push(s);
     for (const s of this.survivors.list) if (!s.dead && s.disp !== 'hostile') out.push(s);
     out.push(...this.world.levels.interactables()); // elevators
@@ -716,7 +739,9 @@ class Game {
     const p = this.player;
     const fx = -Math.sin(p.yaw), fz = -Math.cos(p.yaw);
     let best = null, bestScore = Infinity;
-    for (const c of this.interactables()) {
+    // (thousands of containers: skip the far ones before anything else)
+    const px = p.pos.x, pz = p.pos.z;
+    for (const c of this.interactables(px, pz)) {
       const dx = c.x - p.pos.x, dz = c.z - p.pos.z;
       const dist = Math.hypot(dx, dz), d = Math.max(0, dist - (c.reach || 0)); // reach: big things (ponds)
       if (d > 2.3) continue;

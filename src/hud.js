@@ -2,7 +2,7 @@
 // interaction prompts, build bar, messages, hitmarker and a fold-out map.
 import { PARTS } from './player.js';
 import { ITEMS } from './items.js';
-import { HALF } from './world.js';
+import { HALF, TOWN } from './world.js';
 
 const $ = (id) => document.getElementById(id);
 const DIRS = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
@@ -199,12 +199,12 @@ export class HUD {
     ctx.fillStyle = '#1c2616';
     for (const [x, z] of game.world.trees) ctx.fillRect(tx(x) - 1, tx(z) - 1, 2, 2);
     ctx.fillStyle = '#3a3a3a';
-    for (let k = -100; k <= 100; k += 40) { ctx.fillRect(tx(k) - 4 * S, tx(-104), 8 * S, 208 * S); ctx.fillRect(tx(-104), tx(k) - 4 * S, 208 * S, 8 * S); }
+    for (let k = -TOWN; k <= TOWN; k += 40) { ctx.fillRect(tx(k) - 4 * S, tx(-TOWN - 4), 8 * S, (2 * TOWN + 8) * S); ctx.fillRect(tx(-TOWN - 4), tx(k) - 4 * S, (2 * TOWN + 8) * S, 8 * S); }
     const colors = {
       house: '#8a7a62', shop: '#6a7a8a', clinic: '#c8c8c0', warehouse: '#5a5a4a', pharmacy: '#6ac08a', hospital: '#e8e8e0',
       office: '#7a8aa8', skyscraper: '#9aaac8', police: '#4a6ab8', grocery: '#b8984a', hardware: '#a86a3a', gas: '#c85a3a', military: '#5a6a3a',
       farmhouse: '#c8bca0', barn: '#a83a2a', cabin: '#6a4a2a',
-      panel5: '#a8a49a', panel9: '#b8b8b4', stalinka: '#c8b088', factory: '#8a4a3a', boiler: '#7a4234', dacha: '#7a8a5a',
+      panel5: '#a8a49a', panel9: '#b8b8b4', panel16: '#c8c8c4', stalinka: '#c8b088', factory: '#8a4a3a', boiler: '#7a4234', dacha: '#7a8a5a', hotel: '#a89aaa',
     };
     for (const b of game.world.buildings) {
       if (b.area) { ctx.strokeStyle = '#7a8a4a'; ctx.setLineDash([4, 3]); ctx.strokeRect(tx(b.x0), tx(b.z0), (b.x1 - b.x0) * S, (b.z1 - b.z0) * S); ctx.setLineDash([]); continue; }

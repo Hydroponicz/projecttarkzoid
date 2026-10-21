@@ -164,15 +164,15 @@ export function fence(c, r, style, gaps = []) {
 }
 
 // Lamps along the town's sidewalks and a few bus shelters
-export function streetLights(c, BLOCK, ROAD) {
+export function streetLights(c, BLOCK, ROAD, TOWN) {
   const { fur, rand, addBox } = c;
-  for (const k of [-100, -60, -20, 20, 60, 100]) for (const axis of ['x', 'z']) for (const side of [-1, 1]) {
-    for (let a = -100 + ROAD / 2 + 6; a < 100; a += 20) {
-      if (((a + 100) % BLOCK) < ROAD / 2 + 2 || ((a + 100) % BLOCK) > BLOCK - ROAD / 2 - 2) continue; // not in a junction
+  for (let k = -TOWN; k <= TOWN; k += BLOCK) for (const axis of ['x', 'z']) for (const side of [-1, 1]) {
+    for (let a = -TOWN + ROAD / 2 + 6; a < TOWN; a += 20) {
+      if (((a + TOWN) % BLOCK) < ROAD / 2 + 2 || ((a + TOWN) % BLOCK) > BLOCK - ROAD / 2 - 2) continue; // not in a junction
       if ((Math.round(a / 20) + (side > 0 ? 1 : 0)) % 2) continue; // staggered
       const off = k + side * (ROAD / 2 + 1.4);
       const [x, z] = axis === 'x' ? [off, a] : [a, off];
-      if (Math.abs(x) > 100 || Math.abs(z) > 100) continue;
+      if (Math.abs(x) > TOWN || Math.abs(z) > TOWN) continue;
       // the arm reaches out over the road
       const rot = axis === 'x' ? (side > 0 ? -Math.PI / 2 : Math.PI / 2) : (side > 0 ? Math.PI : 0);
       fur.model('street_lamp', x, z, rot, {}, rand);
@@ -214,4 +214,36 @@ export function factoryRoof(c, b) {
     const g = prop(0.06, 1.4, d - 0.4, 0x6a8090, x0 + step - 0.03, top + 0.7, cz);
     g.material = fur.M(0x6a8090, 0.15, 0.4);
   }
+}
+
+// The television tower: a square steel lattice tapering up to a platform
+// and an antenna mast, painted in red and white bands, warning lights on top
+export function tvTower(c, x, z, h) {
+  const { prop, addBox, fur } = c;
+  const steel = [0xc83a2a, 0xe8e8e0];
+  const base = 4.5, top = 1.4, seg = 12, sh = h * 0.8 / seg;
+  const half = (y) => base + (top - base) * (y / (h * 0.8));
+  for (let i = 0; i < seg; i++) {
+    const y0 = i * sh, y1 = y0 + sh, a0 = half(y0), a1 = half(y1), col = steel[Math.floor(i / 2) % 2];
+    // four corner legs (leaning in), a ring and a cross brace on each face
+    for (const sx of [-1, 1]) for (const sz of [-1, 1]) {
+      const leg = prop(0.22, Math.hypot(sh, a0 - a1) + 0.05, 0.22, col, x + sx * (a0 + a1) / 2, (y0 + y1) / 2, z + sz * (a0 + a1) / 2);
+      leg.rotation.set(-sz * Math.atan2(a0 - a1, sh), 0, sx * Math.atan2(a0 - a1, sh), 'XYZ');
+    }
+    for (const s of [-1, 1]) { prop(a1 * 2, 0.14, 0.14, col, x, y1, z + s * a1); prop(0.14, 0.14, a1 * 2, col, x + s * a1, y1, z); }
+    const L = Math.hypot(a0 + a1, sh);
+    for (const s of [-1, 1]) {
+      const b1 = prop(L, 0.08, 0.08, col, x, (y0 + y1) / 2, z + s * (a0 + a1) / 2); b1.rotation.z = Math.atan2(sh, a0 + a1) * (i % 2 ? 1 : -1);
+      const b2 = prop(0.08, 0.08, L, col, x + s * (a0 + a1) / 2, (y0 + y1) / 2, z); b2.rotation.x = Math.atan2(sh, a0 + a1) * (i % 2 ? 1 : -1);
+    }
+  }
+  // the platform with its dishes, then the mast
+  const py = h * 0.8;
+  prop(top * 2 + 2, 0.4, top * 2 + 2, 0x8a8a84, x, py + 0.2, z);
+  for (let i = 0; i < 4; i++) { const d = prop(1.2, 1.2, 0.2, 0xd8d8d0, x + Math.cos(i * 1.57) * (top + 0.8), py + 1.2, z + Math.sin(i * 1.57) * (top + 0.8)); d.rotation.y = -i * 1.57 + Math.PI / 2; }
+  for (let i = 0; i < 4; i++) prop(0.3 - i * 0.05, h * 0.05, 0.3 - i * 0.05, steel[i % 2], x, py + 0.4 + h * 0.05 * (i + 0.5), z);
+  const lamp = prop(0.4, 0.4, 0.4, 0xff3020, x, h + 0.6, z);
+  lamp.material = fur.M(0xff3020, 0.5, 0, 0xff2010);
+  addBox(x - base, z - base, x + base, z + base, { blocksSight: false, blocksShot: false, h: 3 });
+  for (const sx of [-1, 1]) for (const sz of [-1, 1]) addBox(x + sx * base - 0.3, z + sz * base - 0.3, x + sx * base + 0.3, z + sz * base + 0.3, { h });
 }

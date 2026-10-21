@@ -26,13 +26,13 @@ class Heap {
     return top;
   }
 }
-import { HALF } from './world.js';
+import { HALF, TOWN } from './world.js';
 import { sfx, zombieVoice } from './audio.js';
 import { lookMats, JOINT } from './ragdoll.js';
 
 export const NAV_CELL = 0.6;
 export const NAV_N = Math.ceil((HALF * 2) / NAV_CELL);
-const TOWN_R = 104; // half-size of the town (zombies are densest there)
+const TOWN_R = TOWN + 4; // half-size of the town (zombies are densest there)
 export const FIELD_R = 100; // cells around the player covered by the flow field (60 m)
 
 const TYPES = {
@@ -183,20 +183,18 @@ export class Zombies {
     B.sheets ??= [];
     if (B.sheets[L]) return B.sheets[L];
     const ni = Math.ceil((B.x1 - B.x0) / NAV_CELL), nj = Math.ceil((B.z1 - B.z0) / NAV_CELL);
-    const blocked = new Uint8Array(ni * nj), y = L * LH, r = 0.32, tmp = [];
-    const holes = [...B.holes, ...B.cores.map((c) => ({ x0: c.x0, x1: c.x1, z0: c.z0, z1: c.z1 }))];
-    for (let i = 0; i < ni; i++) {
-      for (let j = 0; j < nj; j++) {
-        const x = B.x0 + (i + 0.5) * NAV_CELL, z = B.z0 + (j + 0.5) * NAV_CELL;
-        let b = holes.some((h) => x > h.x0 - r && x < h.x1 + r && z > h.z0 - r && z < h.z1 + r) ? 1 : 0;
-        if (!b) {
-          for (const box of this.world.hash.query(x - r, z - r, x + r, z + r, tmp)) {
-            if (box.noCollide || box.door || !atHeight(box, y)) continue;
-            if (x > box.minX - r && x < box.maxX + r && z > box.minZ - r && z < box.maxZ + r) { b = 1; break; }
-          }
-        }
-        blocked[i * nj + j] = b;
-      }
+    const blocked = new Uint8Array(ni * nj), y = L * LH, r = 0.32;
+    // Mark the cells each obstacle (grown by a zombie's radius) covers: the
+    // stairwell and lift holes, and every box at this storey's height
+    const mark = (x0, z0, x1, z1) => {
+      const i0 = Math.max(0, Math.ceil((x0 - B.x0) / NAV_CELL - 0.5)), i1 = Math.min(ni - 1, Math.floor((x1 - B.x0) / NAV_CELL - 0.5));
+      const j0 = Math.max(0, Math.ceil((z0 - B.z0) / NAV_CELL - 0.5)), j1 = Math.min(nj - 1, Math.floor((z1 - B.z0) / NAV_CELL - 0.5));
+      for (let i = i0; i <= i1; i++) for (let j = j0; j <= j1; j++) blocked[i * nj + j] = 1;
+    };
+    for (const h of [...B.holes, ...B.cores]) mark(h.x0 - r, h.z0 - r, h.x1 + r, h.z1 + r);
+    for (const box of this.world.hash.query(B.x0 - 1, B.z0 - 1, B.x1 + 1, B.z1 + 1, [])) {
+      if (box.noCollide || box.door || !atHeight(box, y)) continue;
+      mark(box.minX - r + 1e-6, box.minZ - r + 1e-6, box.maxX + r - 1e-6, box.maxZ + r - 1e-6);
     }
     return (B.sheets[L] = { ni, nj, blocked });
   }
@@ -703,7 +701,8 @@ export class Zombies {
     if (r.sleeping) { r.onSettle(r); r.freeze(); }
   }
 
-  update(dt, player, game) {
+  update(frameDt, player, game) {
+    const dt = frameDt;
     const hash = this.world.hash;
     const px = player.pos.x, pz = player.pos.z;
 
@@ -712,7 +711,7 @@ export class Zombies {
 
     // Trickle spawns keep the town alive; more over time.
     this.spawnTimer -= dt;
-    const cap = 115 + Math.min(80, game.day * 8);
+    const cap = 230 + Math.min(160, game.day * 16);
     if (this.spawnTimer <= 0) {
       this.spawnTimer = game.isNight ? 5 : 10;
       if (this.list.length < cap) {
@@ -723,9 +722,26 @@ export class Zombies {
 
     let nearest = Infinity;
     this.pathBudget = 3; // A* searches allowed this frame
+    // Who's near whom, by 1 m cell (for keeping out of each other's way)
+    const sep = this.sepGrid || (this.sepGrid = new Map());
+    sep.clear();
+    const cellKey = (x, z) => (Math.floor(x) + 2048) * 4096 + Math.floor(z) + 2048;
+    for (const o of this.list) { if (o.down) continue; const k = cellKey(o.pos.x, o.pos.z); let c = sep.get(k); if (!c) sep.set(k, c = []); c.push(o); }
+    this.frame = (this.frame || 0) + 1;
+    const night = game.isNight; // (a getter that works it out: once a frame is plenty)
     for (const zb of this.list) {
-      if (zb.down) { this.updateDown(zb, dt); continue; }
-      if (zb.vault) { this.updateVault(zb, dt); continue; }
+      if (zb.down) { this.updateDown(zb, frameDt); continue; }
+      if (zb.vault) { this.updateVault(zb, frameDt); continue; }
+      // Level of detail: the further from you, the less often a zombie thinks
+      // and moves (in bigger steps): every frame close in, every other
+      // frame past 35 m, every fourth past 80 m
+      const pd0 = Math.hypot(px - zb.pos.x, pz - zb.pos.z);
+      nearest = Math.min(nearest, pd0);
+      const every = pd0 < 35 ? 1 : pd0 < 80 ? 2 : 4;
+      zb.lodAcc = (zb.lodAcc || 0) + frameDt;
+      zb.lodSlot ??= Math.floor(Math.random() * 4);
+      if (every > 1 && (this.frame + zb.lodSlot) % every) continue;
+      const dt = Math.min(0.15, zb.lodAcc); zb.lodAcc = 0;
       // A zombie hunts either the player or an AI survivor ("prey").
       if (zb.prey && zb.prey.dead) { zb.prey = null; if (zb.state === 'chase') zb.state = 'wander'; }
       const prey = zb.prey;
@@ -735,19 +751,18 @@ export class Zombies {
       const zy = zb.pos.y, ty0 = prey ? 0 : player.floorY, sameFloor = Math.abs(ty0 - zy) < 1.0;
       const dx = tx0 - zb.pos.x, dz = tz0 - zb.pos.z;
       const dist = Math.hypot(dx, dz);
-      nearest = Math.min(nearest, pdist);
 
       // Hidden beyond what the fog lets you see (saves draw calls); in clear
       // daylight that's far enough to pick them off through a scope.
-      zb.mesh.visible = pdist < Math.min(game.camera.far, game.isNight ? 80 : 200);
+      zb.mesh.visible = pdist < Math.min(game.camera.far, night ? 80 : 200);
       // Too far away: cheap sleep update.
-      if (pdist > 90 && !prey && zb.state === 'wander') continue;
+      if (pdist > 70 && !prey && zb.state === 'wander') continue;
 
       // Perception (staggered)
       zb.losTimer -= dt;
       if (zb.losTimer <= 0) {
         zb.losTimer = 0.25;
-        let range = (player.flashlight ? 30 : 18) * (game.isNight ? 0.8 : 1.3) * player.stealthMul * (game.dev?.invisible ? 0 : 1) * (game.weather?.sightMul ?? 1);
+        let range = (player.flashlight ? 30 : 18) * (night ? 0.8 : 1.3) * player.stealthMul * (game.dev?.invisible ? 0 : 1) * (game.weather?.sightMul ?? 1);
         if (player.prone) range *= 0.4;
         else if (player.crouch) range *= 0.6;
         const seesPlayer = pdist < range && Math.abs(player.floorY - zy) < 1.2 && hasLOS(hash, zb.pos.x, zb.pos.z, px, pz, zy);
@@ -757,7 +772,7 @@ export class Zombies {
           const da = Math.abs(((ang - zb.dir + Math.PI) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2) - Math.PI);
           return d < 4 || da < 1.4 || zb.state === 'chase';
         };
-        const surv = zy < 0.5 ? game.survivors?.nearestVisible(zb.pos, game.isNight ? 14 : 20) : null;
+        const surv = zy < 0.5 ? game.survivors?.nearestVisible(zb.pos, night ? 14 : 20) : null;
         if (seesPlayer && (!surv || pdist <= surv.d) && facing(px, pz, pdist)) {
           zb.prey = null; zb.state = 'chase'; zb.lastSeen = 4;
         } else if (surv && facing(surv.s.pos.x, surv.s.pos.z, surv.d)) {
@@ -770,7 +785,7 @@ export class Zombies {
       if (zb.state === 'chase') {
         zb.lastSeen -= dt;
         if (zb.lastSeen <= 0 && !zb.canSee) { zb.state = 'investigate'; zb.target = { x: tx0, z: tz0 }; zb.prey = null; }
-        speed = zb.def.chase * (game.isNight ? 1.15 : 1) * (game.weather?.zombieSpeedMul ?? 1);
+        speed = zb.def.chase * (night ? 1.15 : 1) * (game.weather?.zombieSpeedMul ?? 1);
         // The flow field leads to the player (through doors, which get
         // bashed); beyond it, or after survivors out of sight, A* paths.
         const direct = !zb.climb && sameFloor && zb.canSee && dist < 6 && hasLOS(hash, zb.pos.x, zb.pos.z, tx0, tz0, zy);
@@ -805,11 +820,15 @@ export class Zombies {
 
       // Separation from other zombies (only nearby ones matter)
       if (speed > 0) {
-        for (const o of this.list) {
-          if (o === zb || o.down || Math.abs(o.pos.y - zy) > 1) continue;
-          const ox = zb.pos.x - o.pos.x, oz = zb.pos.z - o.pos.z;
-          const d2 = ox * ox + oz * oz;
-          if (d2 < 0.5 && d2 > 1e-6) { const d = Math.sqrt(d2); mx += (ox / d) * 0.8; mz += (oz / d) * 0.8; }
+        const ci = Math.floor(zb.pos.x), cj = Math.floor(zb.pos.z);
+        for (let a = -1; a <= 1; a++) for (let b = -1; b <= 1; b++) {
+          const cell = sep.get((ci + a + 2048) * 4096 + cj + b + 2048);
+          if (cell) for (const o of cell) {
+            if (o === zb || Math.abs(o.pos.y - zy) > 1) continue;
+            const ox = zb.pos.x - o.pos.x, oz = zb.pos.z - o.pos.z;
+            const d2 = ox * ox + oz * oz;
+            if (d2 < 0.5 && d2 > 1e-6) { const d = Math.sqrt(d2); mx += (ox / d) * 0.8; mz += (oz / d) * 0.8; }
+          }
         }
       }
 
@@ -882,10 +901,10 @@ export class Zombies {
       const p = zb.parts;
       zb.mesh.rotation.y = zb.dir;
       // Hit reaction springs; while getting up the body pivots up from the ground.
-      const L = zb.lean, K = zb.headKick;
-      L.vx += (-70 * L.x - 10 * L.vx) * dt; L.vz += (-70 * L.z - 10 * L.vz) * dt;
-      L.x += L.vx * dt; L.z += L.vz * dt;
-      K.v += (-90 * K.x - 9 * K.v) * dt; K.x += K.v * dt;
+      const L = zb.lean, K = zb.headKick, sdt = Math.min(dt, 0.033); // (stiff springs: small steps)
+      L.vx += (-70 * L.x - 10 * L.vx) * sdt; L.vz += (-70 * L.z - 10 * L.vz) * sdt;
+      L.x += L.vx * sdt; L.z += L.vz * sdt;
+      K.v += (-90 * K.x - 9 * K.v) * sdt; K.x += K.v * sdt;
       zb.mesh.rotation.x = L.x + (zb.rise > 0 ? zb.riseSide * (Math.PI / 2) * smooth(Math.min(1, zb.rise)) : 0);
       zb.mesh.rotation.z = L.z;
       const swing = Math.sin(zb.phase) * 0.6;

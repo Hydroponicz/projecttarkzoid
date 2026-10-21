@@ -8,7 +8,7 @@ import { addItem, makeGrid } from './inventory.js';
 import { PARTS } from './player.js';
 import { STATS, MAX_SKILL } from './character.js';
 import { moveCircle, raycast } from './collision.js';
-import { HALF, setDoor } from './world.js';
+import { HALF, TOWN, setDoor } from './world.js';
 import { NAV_CELL, NAV_N, FIELD_R } from './zombies.js';
 import { fillWeapon, weaponRounds } from './weapons.js';
 import { loadSave, writeSave, deleteSave } from './save.js';
@@ -570,7 +570,7 @@ export class DevConsole {
     const S = c.width / (HALF * 2), tx = (v) => (v + HALF) * S;
     ctx.fillStyle = '#26301f'; ctx.fillRect(0, 0, c.width, c.height);
     ctx.fillStyle = '#3a3a3a';
-    for (let k = -100; k <= 100; k += 40) { ctx.fillRect(tx(k) - 4 * S, tx(-104), 8 * S, 208 * S); ctx.fillRect(tx(-104), tx(k) - 4 * S, 208 * S, 8 * S); }
+    for (let k = -TOWN; k <= TOWN; k += 40) { ctx.fillRect(tx(k) - 4 * S, tx(-TOWN - 4), 8 * S, (2 * TOWN + 8) * S); ctx.fillRect(tx(-TOWN - 4), tx(k) - 4 * S, (2 * TOWN + 8) * S, 8 * S); }
     ctx.fillStyle = '#7a6a52';
     for (const b of g.world.buildings) ctx.fillRect(tx(b.x0), tx(b.z0), (b.x1 - b.x0) * S, (b.z1 - b.z0) * S);
     ctx.fillStyle = '#c8a050';

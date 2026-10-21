@@ -13,10 +13,12 @@ import { buildStoreys, STOREYS } from './storeys.js';
 import * as East from './eastern.js';
 import { INTERIOR_LAYER } from './dynlights.js';
 
-export const HALF = 220;      // map half-size (town in the middle, countryside around it)
 // Bump when generation changes so old saves don't map loot onto new layouts.
-export const WORLD_VERSION = 6;
+export const WORLD_VERSION = 7;
 const BLOCK = 40;             // road grid spacing
+export const TOWN_N = 7;      // town blocks across
+export const TOWN = (TOWN_N * BLOCK) / 2; // town half-size (the outer road runs along it)
+export const HALF = 300;      // map half-size (town in the middle, countryside around it; cells line up with the town edge)
 const ROAD = 8;
 const WALL_H = 3.0;
 const WALL_T = 0.3;
@@ -98,16 +100,18 @@ export function buildWorld(scene, seed) {
   const walkMat = mergeableMaterial('slab', 0xb0aca4, 0.5, 0.9), curbMat = mergeableMaterial('concrete', 0x9a9890, 1, 0.9);
   const lineMat = new THREE.MeshBasicMaterial({ color: 0x8a8460 });
   const roads = [];
-  for (let k = -100; k <= 100; k += BLOCK) {
+  const roadKs = [];
+  for (let k = -TOWN; k <= TOWN; k += BLOCK) roadKs.push(k);
+  for (const k of roadKs) {
     for (const axis of ['x', 'z']) {
-      const len = 200 + ROAD;
+      const len = 2 * TOWN + ROAD;
       const m = new THREE.Mesh(new THREE.PlaneGeometry(axis === 'x' ? ROAD : len, axis === 'x' ? len : ROAD), roadMats[axis]);
       m.rotation.x = -Math.PI / 2;
       m.position.set(axis === 'x' ? k : 0, 0.01, axis === 'x' ? 0 : k);
       m.receiveShadow = true;
       group.add(m);
       roads.push({ axis, k });
-      for (let s = -100; s < 100; s += 6) {
+      for (let s = -TOWN; s < TOWN; s += 6) {
         const l = new THREE.Mesh(new THREE.PlaneGeometry(axis === 'x' ? 0.15 : 2.5, axis === 'x' ? 2.5 : 0.15), lineMat);
         l.rotation.x = -Math.PI / 2;
         l.position.set(axis === 'x' ? k : s, 0.02, axis === 'x' ? s : k);
@@ -120,8 +124,8 @@ export function buildWorld(scene, seed) {
   // (also kept as a grid of rectangles: bodies lie on them, not in them)
   const walks = new Map();
   const addWalk = (r) => { for (let gx = Math.floor(r.x0 / 8); gx <= Math.floor(r.x1 / 8); gx++) for (let gz = Math.floor(r.z0 / 8); gz <= Math.floor(r.z1 / 8); gz++) { const k = gx * 1000 + gz; if (!walks.has(k)) walks.set(k, []); walks.get(k).push(r); } };
-  for (const k of [-100, -60, -20, 20, 60, 100]) for (const axis of ['x', 'z']) for (const side of [-1, 1]) {
-    for (let c = -100; c < 100; c += BLOCK) {
+  for (const k of roadKs) for (const axis of ['x', 'z']) for (const side of [-1, 1]) {
+    for (let c = -TOWN; c < TOWN; c += BLOCK) {
       const a0 = c + ROAD / 2 + 0.2, a1 = c + BLOCK - ROAD / 2 - 0.2, len = a1 - a0, mid = (a0 + a1) / 2;
       const off = k + side * (ROAD / 2 + 0.85);
       const walk = new THREE.Mesh(new THREE.BoxGeometry(axis === 'x' ? 1.6 : len, 0.1, axis === 'x' ? len : 1.6), walkMat);
@@ -249,6 +253,9 @@ export function buildWorld(scene, seed) {
     panel5: { floor: 0x7a6a58, wall: [0xc8c4b8, 0xb8b8b0, 0xd0c8b4, 0xa8b0b0], interior: FLAT_INT, finish: 'panel', corridor: true, windows: PANEL_WIN, roomRoles: ['flat'], roomLoot: FLAT_LOOT, balconies: true, zombies: { n: 4 } },
     panel9: { floor: 0x7a6a58, wall: [0xd8d4cc, 0xc0c4c8, 0xb8c0b8, 0xd8c8b8], interior: FLAT_INT, finish: 'panel', corridor: true, windows: PANEL_WIN, roomRoles: ['flat'], roomLoot: FLAT_LOOT, balconies: true, zombies: { n: 5 } },
     stalinka: { floor: 0x6a5a48, wall: [0xd8c08a, 0xe0c8a0, 0xc8a87a, 0xd0b8a0], interior: FLAT_INT, finish: 'plaster', corridor: true, windows: { w: 1.2, gap: 2.5, sill: 0.8, top: 2.4, sides: ['n', 's'], skip: 0.03 }, roomRoles: ['flat'], roomLoot: FLAT_LOOT, balconies: true, zombies: { n: 4 } },
+    // Downtown housing and the hotel
+    panel16: { floor: 0x7a6a58, wall: [0xe0dcd4, 0xd0d8e0, 0xc8d0c8, 0xd8ccc0], interior: FLAT_INT, finish: 'panel', corridor: true, windows: PANEL_WIN, roomRoles: ['flat'], roomLoot: FLAT_LOOT, balconies: true, zombies: { n: 6 } },
+    hotel: { floor: 0x5a3a2a, wall: [0xd8d0c0, 0xb8c0c8], interior: [0xd8c8a8, 0xc8b8a0], finish: 'concrete', corridor: true, windows: CORRIDOR_WIN, sign: { text: 'ГОСТИНИЦА «ВОСТОК»', label: 'Hotel Vostok', bg: '#2a2a5a' }, roomRoles: ['hotel'], roomLoot: ['wardrobe', 'nightstand', 'dresser'], zombies: { n: 6 } },
     // Industry
     factory: { floor: 0x5a5a54, wall: [0x8a5a44, 0x7a5040, 0x9a6a50], finish: 'brick', open: true, windows: { w: 2.2, gap: 3.6, sill: 1.5, top: 2.8, skip: 0.15 }, sign: { text: 'ЗАВОД «КРАСНЫЙ ОКТЯБРЬ»', label: 'Red October Plant', bg: '#8a1a1a' }, zombies: { n: 7 } },
     boiler: { floor: 0x4a4a48, wall: [0x8a4a3a, 0x7a4234], finish: 'brick', open: true, windows: { w: 1.0, gap: 3.0, sill: 1.6, top: 2.6, skip: 0.3 }, sign: { text: 'КОТЕЛЬНАЯ', label: 'Boiler House', bg: '#4a4a48' }, zombies: { n: 2 } },
@@ -433,6 +440,10 @@ export function buildWorld(scene, seed) {
   function roomPlacer(room, bDoors, wins, keepOut = []) {
     const inner = { x0: room.x0 + WALL_T / 2, x1: room.x1 - WALL_T / 2, z0: room.z0 + WALL_T / 2, z1: room.z1 - WALL_T / 2 };
     const occ = [];
+    // (the containers already standing near this room, and any added from
+    // here on: not every container in town for every spot tried)
+    const c0 = containers.length;
+    const nearC = containers.filter((c) => c.mesh && c.x > room.x0 - 2 && c.x < room.x1 + 2 && c.z > room.z0 - 2 && c.z < room.z1 + 2);
     const dims = (type) => (CONTAINER_TYPES[type] ? [CONTAINER_TYPES[type].size[0], CONTAINER_TYPES[type].size[2], CONTAINER_TYPES[type].size[1]] : FOOT[type]);
     const rectDist = (r, x, z) => Math.hypot(Math.max(r.x0 - x, 0, x - r.x1), Math.max(r.z0 - z, 0, z - r.z1));
     const ok = (r, tall, free = false) => {
@@ -440,7 +451,8 @@ export function buildWorld(scene, seed) {
       if (!free && occ.some((o) => r.x0 < o.x1 + 0.06 && r.x1 > o.x0 - 0.06 && r.z0 < o.z1 + 0.06 && r.z1 > o.z0 - 0.06)) return false;
       if (bDoors.some((d) => rectDist(r, d.x, d.z) < (d.w ?? DOOR) / 2 + 0.75)) return false;
       if (tall && wins.some((wn) => rectDist(r, wn.x, wn.z) < wn.w / 2 + 0.15)) return false;
-      if (!free && containers.some((c) => c.mesh && rectDist(r, c.x, c.z) < 0.45)) return false;
+      if (!free && nearC.some((c) => rectDist(r, c.x, c.z) < 0.45)) return false;
+      if (!free) for (let k = c0; k < containers.length; k++) { const c = containers[k]; if (c.mesh && rectDist(r, c.x, c.z) < 0.45) return false; }
       if (keepOut.some((k) => rectDist(r, k.x, k.z) < k.r * 0.6)) return false;
       return true;
     };
@@ -1306,25 +1318,31 @@ export function buildWorld(scene, seed) {
   // repair) and the rest is housing of every age: Khrushchyovkas, a private
   // sector of houses, dachas, with a market, shops and a park between. The
   // military holds one corner, away from the factories.
+  // Seven blocks across: downtown is the centre and the ring round it (the
+  // towers, the hotel, the hospital and police), then a ring of big blocks
+  // and the shops, then the outskirts.
   const lotKinds = new Map();
-  const ring1 = shuffle(['hospital', 'office', 'police', 'grocery', 'panel9', 'panel9', 'stalinka', 'stalinka']);
+  const C = (TOWN_N - 1) / 2, LAST = TOWN_N - 1;
+  const ring1 = shuffle(['skyscraper', 'skyscraper', 'hotel', 'office', 'police', 'hospital', 'grocery', 'stalinka']);
+  const ring2 = shuffle(['panel16', 'panel16', 'panel9', 'panel9', 'panel9', 'panel9', 'stalinka', 'stalinka', 'office', 'clinic', 'pharmacy', 'market', 'park', 'gas', 'hardware', 'grocery']);
   const outer = [];
   const corners = [];
-  for (let ix = 0; ix < 5; ix++) for (let iz = 0; iz < 5; iz++) {
-    const ring = Math.max(Math.abs(ix - 2), Math.abs(iz - 2));
+  for (let ix = 0; ix < TOWN_N; ix++) for (let iz = 0; iz < TOWN_N; iz++) {
+    const ring = Math.max(Math.abs(ix - C), Math.abs(iz - C));
     if (ring === 0) lotKinds.set(`${ix},${iz}`, 'skyscraper');
     else if (ring === 1) lotKinds.set(`${ix},${iz}`, ring1.pop());
-    else { outer.push(`${ix},${iz}`); if ((ix === 0 || ix === 4) && (iz === 0 || iz === 4)) corners.push(`${ix},${iz}`); }
+    else if (ring === 2) lotKinds.set(`${ix},${iz}`, ring2.pop() || 'houses');
+    else { outer.push(`${ix},${iz}`); if ((ix === 0 || ix === LAST) && (iz === 0 || iz === LAST)) corners.push(`${ix},${iz}`); }
   }
   const mil = pick(corners);
   lotKinds.set(mil, 'militaryBase');
   // the industrial edge: one of the two edges that don't touch that corner
   const [mx0, mz0] = mil.split(',').map(Number);
-  const edge = rand() < 0.5 ? { ax: 'x', k: 4 - mx0 } : { ax: 'z', k: 4 - mz0 };
+  const edge = rand() < 0.5 ? { ax: 'x', k: LAST - mx0 } : { ax: 'z', k: LAST - mz0 };
   const edgeLots = shuffle(outer.filter((k) => { const [ix, iz] = k.split(',').map(Number); return (edge.ax === 'x' ? ix : iz) === edge.k && !lotKinds.has(k); }))
     .sort((p, q) => corners.includes(p) - corners.includes(q)); // the middle of the edge first
-  for (const k of ['factory', 'boilerYard', 'warehouse', 'mechanic']) { const l = edgeLots.shift(); if (l) lotKinds.set(l, k); }
-  const outerKinds = shuffle(['panel5', 'panel5', 'panel5', 'houses', 'houses', 'dachas', 'pharmacy', 'hardware', 'gas', 'clinic', 'market', 'park']);
+  for (const k of ['factory', 'boilerYard', 'warehouse', 'mechanic', 'factory', 'boilerYard', 'warehouse']) { const l = edgeLots.shift(); if (l) lotKinds.set(l, k); }
+  const outerKinds = shuffle(['panel5', 'panel5', 'panel5', 'panel5', 'panel5', 'houses', 'houses', 'houses', 'houses', 'dachas', 'dachas', 'dachas', 'park', 'tvtower', 'gas', 'pharmacy']);
   for (const k of shuffle(outer)) if (!lotKinds.has(k)) lotKinds.set(k, outerKinds.pop() || 'houses');
 
   // what the yards and streets are made with (eastern.js)
@@ -1333,9 +1351,9 @@ export function buildWorld(scene, seed) {
     wall: (minX, minZ, maxX, maxZ, h, color, pattern) => walls.push({ minX, maxX, minZ, maxZ, y0: 0, y1: h, color, pattern: WALL[pattern] }),
   };
 
-  for (let ix = 0; ix < 5; ix++) {
-    for (let iz = 0; iz < 5; iz++) {
-      const bx = -100 + ix * BLOCK, bz = -100 + iz * BLOCK;
+  for (let ix = 0; ix < TOWN_N; ix++) {
+    for (let iz = 0; iz < TOWN_N; iz++) {
+      const bx = -TOWN + ix * BLOCK, bz = -TOWN + iz * BLOCK;
       const lx0 = bx + ROAD / 2 + 2, lx1 = bx + BLOCK - ROAD / 2 - 2;
       const lz0 = bz + ROAD / 2 + 2, lz1 = bz + BLOCK - ROAD / 2 - 2;
       const mx = (lx0 + lx1) / 2, mz = (lz0 + lz1) / 2;
@@ -1378,9 +1396,20 @@ export function buildWorld(scene, seed) {
         landmarks.push({ x: mx, z: mz, name: 'Dachas', kind: 'dacha' });
         continue;
       }
-      if (kind === 'panel5' || kind === 'panel9' || kind === 'stalinka') {
+      if (kind === 'hotel') { building(mx, mz - 2, rnd(23, 25), rnd(15, 17), 'hotel'); car(mx - 5, lz1 - 1.5, Math.PI / 2); car(mx + 4, lz1 - 1.5, Math.PI / 2); continue; }
+      if (kind === 'tvtower') {
+        // The television tower: a steel lattice 90 m up, the transmitter
+        // hall at its foot, a fence round both
+        const tx = mx + rnd(-3, 3), tz = mz + 4;
+        East.tvTower(E, tx, tz, 90);
+        building(mx, mz - 8, rnd(12, 14), rnd(8, 9), 'boiler').name = 'Transmitter';
+        East.fence(E, { x0: lx0, x1: lx1, z0: lz0, z1: lz1 }, 'profile', [{ x: mx, z: lz0, w: 5 }, { x: mx, z: lz1, w: 5 }]);
+        landmarks.push({ x: tx, z: tz, name: 'TV Tower', kind: 'tvtower' });
+        continue;
+      }
+      if (kind === 'panel5' || kind === 'panel9' || kind === 'panel16' || kind === 'stalinka') {
         // the block along one side of the lot, its courtyard on the other
-        const [bw, bd] = kind === 'panel5' ? [rnd(25, 27), rnd(10.5, 11.5)] : kind === 'panel9' ? [rnd(23, 25), rnd(12.5, 13.5)] : [rnd(23, 25), rnd(13, 14)];
+        const [bw, bd] = kind === 'panel5' ? [rnd(25, 27), rnd(10.5, 11.5)] : kind === 'panel9' || kind === 'panel16' ? [rnd(23, 25), rnd(12.5, 13.5)] : [rnd(23, 25), rnd(13, 14)];
         const side = rand() < 0.5 ? -1 : 1;
         const by = mz + side * (14 - bd / 2 - 0.5);
         const b = building(mx, by, bw, bd, kind);
@@ -1460,10 +1489,10 @@ export function buildWorld(scene, seed) {
   }
 
   // Street lamps, and bus shelters at the kerb where there's room
-  East.streetLights(E, BLOCK, ROAD);
-  for (let i = 0, made = 0; i < 30 && made < 6; i++) {
-    const road = pick(roads.filter((r) => Math.abs(r.k) < 100)), seg = Math.floor(rand() * 5), side = rand() < 0.5 ? -1 : 1;
-    const along = -100 + seg * BLOCK + 20 + rnd(-6, 6), off = road.k + side * (ROAD / 2 + 3.0);
+  East.streetLights(E, BLOCK, ROAD, TOWN);
+  for (let i = 0, made = 0; i < 60 && made < 12; i++) {
+    const road = pick(roads.filter((r) => Math.abs(r.k) < TOWN)), seg = Math.floor(rand() * TOWN_N), side = rand() < 0.5 ? -1 : 1;
+    const along = -TOWN + seg * BLOCK + 20 + rnd(-6, 6), off = road.k + side * (ROAD / 2 + 3.0);
     const [x, z] = road.axis === 'x' ? [off, along] : [along, off];
     if (buildings.some((b) => x > b.x0 - 3 && x < b.x1 + 3 && z > b.z0 - 3 && z < b.z1 + 3)) continue;
     // its open front faces the road
@@ -1472,20 +1501,20 @@ export function buildWorld(scene, seed) {
   }
 
   // Military checkpoints on the streets (not at intersections)
-  const xRoads = roads.filter((r) => Math.abs(r.k) < 100);
-  for (let i = 0; i < 3; i++) {
+  const xRoads = roads.filter((r) => Math.abs(r.k) < TOWN);
+  for (let i = 0; i < 5; i++) {
     const road = pick(xRoads);
-    const seg = Math.floor(rand() * 5);
-    checkpoint(road, -100 + seg * BLOCK + 20 + rnd(-4, 4));
+    const seg = Math.floor(rand() * TOWN_N);
+    checkpoint(road, -TOWN + seg * BLOCK + 20 + rnd(-4, 4));
   }
 
   // Farmland, woods and meadows around the town
-  const country = buildCountryside({ rand, rnd, pick, shuffle, group, fur, addBox, prop, building, car, addContainer, trees, zombieSpawns, landmarks, corpseMesh, HALF });
+  const country = buildCountryside({ rand, rnd, pick, shuffle, group, fur, addBox, prop, building, car, addContainer, trees, zombieSpawns, landmarks, corpseMesh, HALF, TOWN });
 
   // Abandoned cars on roads
-  for (let i = 0; i < 26; i++) {
+  for (let i = 0; i < 50; i++) {
     const road = pick(roads);
-    const along = rnd(-95, 95);
+    const along = rnd(-TOWN + 5, TOWN - 5);
     const off = rnd(-2, 2);
     const rot = road.axis === 'x' ? Math.PI / 2 + rnd(-0.3, 0.3) : rnd(-0.3, 0.3);
     if (road.axis === 'x') car(road.k + off, along, rot); else car(along, road.k + off, rot);
@@ -1575,9 +1604,9 @@ export function buildWorld(scene, seed) {
   }
 
   // Scav corpses scattered in the streets
-  for (let i = 0; i < 10; i++) {
+  for (let i = 0; i < 20; i++) {
     const road = pick(roads);
-    const along = rnd(-95, 95);
+    const along = rnd(-TOWN + 5, TOWN - 5);
     const x = road.axis === 'x' ? road.k + rnd(-3, 3) : along;
     const z = road.axis === 'x' ? along : road.k + rnd(-3, 3);
     const c = addContainer('body', x, z);
@@ -1687,7 +1716,7 @@ export function buildWorld(scene, seed) {
   for (const o of group.children) {
     const cu = o.userData.cull;
     if (!cu) continue;
-    const bs = o.isInstancedMesh ? o.boundingSphere : (o.geometry.computeBoundingSphere(), o.geometry.boundingSphere);
+    const bs = o.isInstancedMesh ? o.boundingSphere : o.geometry.boundingSphere || (o.geometry.computeBoundingSphere(), o.geometry.boundingSphere);
     if (bs) lod.push({ o, ...cu, c: bs.center.clone().applyMatrix4(o.matrixWorld), r: bs.radius });
   }
 
@@ -1728,6 +1757,11 @@ export function buildWorld(scene, seed) {
     // Show what's in range of the camera at (x, y, z); `floor` is the storey
     // height the player stands on (for the floors of the building they're in)
     cull(x, z, range, floor = 0) {
+      // (only worth redoing once you've moved a little, changed floor, or
+      // the fog has; and every half second regardless)
+      const k = this._cullAt, now = performance.now();
+      if (k && Math.hypot(k.x - x, k.z - z) < 1 && k.floor === floor && Math.abs(k.range - range) < 3 && now - k.t < 500) return;
+      this._cullAt = { x, z, floor, range, t: now };
       const inB = levels.buildingAt(x, z), inL = Math.max(0, Math.round(floor / LH));
       const inb = inB ? null : solid.find((q) => !q.legacy && x > q.x0 && x < q.x1 && z > q.z0 && z < q.z1);
       for (const f of lod) {
@@ -1820,7 +1854,8 @@ const vcMat = (rough, metal, side) => {
 // sandbags, fences...) into one mesh per material to keep draw calls low.
 // Each piece's triangles are written straight into the batch's arrays,
 // transformed to world space, with its colour as vertex colour.
-const _mp = new THREE.Vector3(), _mb = new THREE.Box3(), _nm = new THREE.Matrix3();
+function dropArray() { this.array = null; }
+const _mp = new THREE.Vector3(), _ms = new THREE.Vector3(), _mb = new THREE.Box3(), _nm = new THREE.Matrix3();
 function mergeStatic(group, zoneOf) {
   group.updateMatrixWorld(true);
   const buckets = new Map();
@@ -1837,11 +1872,11 @@ function mergeStatic(group, zoneOf) {
     // colours), so all the furniture of one finish is a single draw call.
     const plain = !m.emissive || m.emissive.getHex() === 0;
     const rough = Math.round(m.roughness * 10) / 10, metal = Math.round(m.metalness * 10) / 10;
-    if (!geo.boundingSphere) geo.computeBoundingSphere();
+    // (where it is and how big, from its box: one pass over its vertices)
     if (!geo.boundingBox) geo.computeBoundingBox();
-    _mp.copy(geo.boundingSphere.center).applyMatrix4(o.matrixWorld);
     _mb.copy(geo.boundingBox).applyMatrix4(o.matrixWorld);
-    const zone = zoneOf(_mp.x, _mp.y, _mp.z, geo.boundingSphere.radius * o.matrixWorld.getMaxScaleOnAxis(), _mb, texMerge);
+    _mb.getCenter(_mp);
+    const zone = zoneOf(_mp.x, _mp.y, _mp.z, geo.boundingBox.getSize(_ms).length() / 2 * o.matrixWorld.getMaxScaleOnAxis(), _mb, texMerge);
     const stock = !!o.userData.stock;
     const key = zone.key + (stock ? '|stock' : '') + (o.castShadow ? '|' : '|ns|') + (texMerge ? 'tex|' + m.uuid : plain ? ['vc', rough, metal, m.side].join('|') : [m.type, m.color.getHex(), m.roughness, m.metalness, m.emissive.getHex(), m.side].join('|'));
     // (pre-coloured geometry, like a shelf's packed stock, keeps its colours)
@@ -1867,16 +1902,16 @@ function mergeStatic(group, zoneOf) {
   for (const b of buckets.values()) {
     const pos = new Float32Array(b.n * 3), nor = new Float32Array(b.n * 3), uv = new Float32Array(b.n * 2);
     const col = b.colour || b.parts.some((q) => !q.color) ? new Float32Array(b.n * 3) : null;
-    let o = 0;
+    let o = 0, x0 = Infinity, y0 = Infinity, z0 = Infinity, x1 = -Infinity, y1 = -Infinity, z1 = -Infinity;
     for (const { geo, matrix, color, n } of b.parts) {
       const P = geo.attributes.position, N = geo.attributes.normal, U = geo.attributes.uv, C = geo.attributes.color, idx = geo.index?.array;
       const e = matrix.elements, ne = _nm.getNormalMatrix(matrix).elements;
       for (let k = 0; k < n; k++, o++) {
         const v = idx ? idx[k] : k;
         const x = P.getX(v), y = P.getY(v), z = P.getZ(v);
-        pos[o * 3] = e[0] * x + e[4] * y + e[8] * z + e[12];
-        pos[o * 3 + 1] = e[1] * x + e[5] * y + e[9] * z + e[13];
-        pos[o * 3 + 2] = e[2] * x + e[6] * y + e[10] * z + e[14];
+        const wx = e[0] * x + e[4] * y + e[8] * z + e[12], wy = e[1] * x + e[5] * y + e[9] * z + e[13], wz = e[2] * x + e[6] * y + e[10] * z + e[14];
+        pos[o * 3] = wx; pos[o * 3 + 1] = wy; pos[o * 3 + 2] = wz;
+        if (wx < x0) x0 = wx; if (wx > x1) x1 = wx; if (wy < y0) y0 = wy; if (wy > y1) y1 = wy; if (wz < z0) z0 = wz; if (wz > z1) z1 = wz;
         const a = N.getX(v), bb = N.getY(v), c = N.getZ(v);
         let nx = ne[0] * a + ne[3] * bb + ne[6] * c, ny = ne[1] * a + ne[4] * bb + ne[7] * c, nz = ne[2] * a + ne[5] * bb + ne[8] * c;
         const l = Math.hypot(nx, ny, nz) || 1;
@@ -1894,6 +1929,12 @@ function mergeStatic(group, zoneOf) {
     merged.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
     if (col) merged.setAttribute('color', new THREE.BufferAttribute(col, 3));
     if (b.tex) worldUV(merged, b.tex);
+    // (bounds from the pass above; the sphere round the box is plenty for culling)
+    merged.boundingBox = new THREE.Box3(new THREE.Vector3(x0, y0, z0), new THREE.Vector3(x1, y1, z1));
+    merged.boundingSphere = merged.boundingBox.getBoundingSphere(new THREE.Sphere());
+    // Once on the GPU the vertex arrays aren't needed here (nothing reads
+    // them back): let them go, a few hundred MB on a big map
+    for (const k in merged.attributes) merged.attributes[k].onUpload(dropArray);
     const mesh = new THREE.Mesh(merged, b.mat);
     const { zone, stock } = b;
     mesh.userData.cull = { kind: zone.kind, B: zone.B, L: zone.L, b: zone.b, near: stock ? STOCK_RANGE : undefined };

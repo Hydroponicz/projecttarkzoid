@@ -105,10 +105,22 @@ function meshOf(list, mat = PAINT) {
 // mode: 'parked' (one merged mesh), 'anim' (hinged panels and wheels as
 // pieces), 'drive' (as anim, from the driver's seat: no tinted glass, a
 // dashboard, seats and a steering wheel).
+// Parked cars that look the same (type, paint, which lights and tyres are
+// missing) share one geometry: built once, not once per car
+const PARKED = new Map();
 export function buildCarModel(v, mode) {
   mats();
   const { L, W } = v.def, t = v.type, col = v.color, P = v.parts;
   const split = mode !== 'parked', inside = mode === 'drive';
+  const key = split ? null : [t, col, P.headlights == null, ...v.wheelPositions().map((w) => P[w[2]] == null)].join('|');
+  if (key && PARKED.has(key)) {
+    const hit = PARKED.get(key), root = new THREE.Group(), bodyG = new THREE.Group();
+    root.add(bodyG);
+    const m = new THREE.Mesh(hit.geo, PAINT);
+    m.castShadow = m.receiveShadow = true;
+    bodyG.add(m);
+    return { ...JSON.parse(hit.out), root, body: bodyG, wheels: [], lightMeshes: [], brakeMeshes: [], bar: [], steeringWheel: null };
+  }
   const body = [], glass = [], door = [], hood = [], trunk = [], wheels = [];
   const dark = 0x1a1a1a, trim = 0x2a2a2a, chrome = 0x9a9c9e;
   const out = { pivots: {}, wheels: [], lightMeshes: [], brakeMeshes: [], bar: [], steeringWheel: null };
@@ -238,6 +250,9 @@ export function buildCarModel(v, mode) {
     // everything in one mesh; glass included with the paint
     const m = meshOf([...body, ...glass, ...door.map((g) => g.translate(...out.pivots.door.at) && g), ...hood.map((g) => g.translate(...out.pivots.hood?.at || [0, 0, 0]) && g), ...trunk.map((g) => g.translate(...out.pivots.trunk?.at || [0, 0, 0]) && g), ...wheels]);
     bodyG.add(m);
+    m.geometry.userData.shared = true; // (other cars use it: never disposed)
+    const { root: _r, body: _b, wheels: _w, lightMeshes: _l, brakeMeshes: _br, bar: _ba, steeringWheel: _s, ...rest } = out;
+    PARKED.set(key, { geo: m.geometry, out: JSON.stringify(rest) });
     return out;
   }
   bodyG.add(meshOf([...body, ...wheels]));

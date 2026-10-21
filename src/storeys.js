@@ -14,10 +14,12 @@ export const STOREYS = {
   office: { levels: 2, perLevel: 3 },
   police: { levels: 2, perLevel: 3 },
   hospital: { levels: 3, lift: true, perLevel: 5 },
-  skyscraper: { levels: [9, 13], lift: true, perLevel: 2 }, // real floors all the way up
+  skyscraper: { levels: [14, 20], lift: true, perLevel: 2 }, // real floors all the way up
+  hotel: { levels: [11, 14], lift: true, perLevel: 2 },      // Hotel Vostok: a lobby, then rooms
   // Housing: a flat off each side of the landing corridor on every floor
   panel5: { levels: 5, perLevel: 2 },             // Khrushchyovka
   panel9: { levels: 9, lift: true, perLevel: 2 }, // the nine-storey panel block
+  panel16: { levels: 16, lift: true, perLevel: 2 }, // the sixteen-storey tower block
   stalinka: { levels: 4, perLevel: 2 },           // the grand 50s block
 };
 // Stairwell: open strip at the near end, the flights, the far landing
@@ -89,7 +91,7 @@ export function buildStoreys(c, b) {
 
   // ---------- one storey of a corridor building ----------
   function corridorStorey(L) {
-    const ground = L === 0, lobby = ground && kindName === 'skyscraper';
+    const ground = L === 0, lobby = ground && (kindName === 'skyscraper' || kindName === 'hotel');
     const ext = { n: [], s: [], w: [], e: [] }, junc = { n: [], s: [], w: [], e: [] };
     const bDoors = [], rooms = [];
     c.setPattern('plaster');
@@ -257,6 +259,15 @@ export function buildStoreys(c, b) {
     }
     const role = pick(kind.roomRoles || ['generic']);
     if (role === 'flat') { flat(r, bDoors, wins); return; }
+    if (role === 'hotel') {
+      // A hotel room: the bed, a wardrobe, a desk with a telly, a chair
+      const P = c.roomPlacer(r, bDoors, wins, keepOut);
+      c.floorPatch(r, pick([0x6a2a2a, 0x2a3a5a, 0x5a4a2a]));
+      c.ceilingPlane(r);
+      c.furnishBedroom(P, rand() < 0.3);
+      P.wall('crt_tv'); if (rand() < 0.6) P.wall('armchair');
+      return;
+    }
     const P = c.roomPlacer(r, bDoors, wins, keepOut);
     if (kind.roomDesks && rand() < 0.5) {
       for (let z = r.z0 + 1.8; z < r.z1 - 1.6; z += 2.8) for (let x = r.x0 + 1.9; x < r.x1 - 1.6; x += 2.4) {

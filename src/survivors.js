@@ -650,6 +650,7 @@ class Survivor {
 // ---------------------------------------------------------------------------
 // Manager
 // ---------------------------------------------------------------------------
+const _near = [];
 const _ray = new THREE.Raycaster(), _hits = [];
 
 export class Survivors {
@@ -767,8 +768,10 @@ export class Survivors {
 
   // Open closed building doors in the survivor's way.
   openDoorsAhead(s) {
-    for (const d of this.world.doors) {
-      if (d.open || d.broken || d.base) continue; // (survivors stay on the ground floor)
+    // (the doors' colliders near them, not every door in town)
+    for (const b of this.world.hash.query(s.pos.x - 1.5, s.pos.z - 1.5, s.pos.x + 1.5, s.pos.z + 1.5, _near)) {
+      const d = b.door && b.structure;
+      if (!d || d.open || d.broken || d.base) continue; // (survivors stay on the ground floor)
       if (Math.hypot(d.x - s.pos.x, d.z - s.pos.z) < 1.4) {
         setDoor(d, true);
         this.game.zombies.updateNavRegion(d.box.minX, d.box.minZ, d.box.maxX, d.box.maxZ);
@@ -1067,6 +1070,7 @@ export class Survivors {
       panel5: 'a five-storey block of flats — most people never got out of theirs', panel9: 'one of the nine-storey blocks. The lift still runs, they say',
       stalinka: 'an old Stalin-era block, big flats, nice things in them', factory: 'the factory. Workers left their lockers full',
       boiler: 'the boiler house, with the garages behind it — people kept all sorts in those lock-ups', dacha: 'the dachas — preserves in every cellar',
+      panel16: 'one of the sixteen-storey towers. Long way up, but nobody has been through the top floors', hotel: 'the Hotel Vostok. Guests left in a hurry, bags and all', tvtower: 'the TV tower. The transmitter hall at the bottom has tools and batteries',
     }[b.kind] || 'a house that looked untouched';
     if (s.trust < 10 && Math.random() < 0.5) return "Why would I tell you anything?";
     if (Math.random() < 0.4) { const t = this.game.traders?.rumor(); if (t) return t; }

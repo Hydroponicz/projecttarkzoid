@@ -92,7 +92,7 @@ class Vehicle {
   // 'drive' (anim, seen from the driver's seat). true/false = drive/parked.
   buildMesh(mode) {
     if (mode === true) mode = 'drive'; else if (mode === false || mode == null) mode = 'parked';
-    for (const o of [...this.group.children]) { this.group.remove(o); o.traverse((c) => c.geometry?.dispose()); }
+    for (const o of [...this.group.children]) { this.group.remove(o); o.traverse((c) => { if (!c.geometry?.userData.shared) c.geometry?.dispose(); }); }
     const m = buildCarModel(this, mode);
     this.mode = mode;
     this.group.add(m.root);
@@ -168,7 +168,7 @@ class Vehicle {
   }
   flats() { return TIRES.filter((t) => this.parts[t] == null || this.parts[t] < 3); }
 
-  dispose() { this.setColliders(false); this.sys.scene.remove(this.group); for (const o of this.group.children) o.geometry?.dispose(); }
+  dispose() { this.setColliders(false); this.sys.scene.remove(this.group); for (const o of this.group.children) if (!o.geometry?.userData.shared) o.geometry?.dispose(); }
 }
 
 export class Vehicles {
@@ -194,7 +194,11 @@ export class Vehicles {
     return v;
   }
 
-  interactables() { return this.active ? [] : this.list.flatMap((v) => v.points()); }
+  interactables(x, z) {
+    if (this.active) return [];
+    const list = x === undefined ? this.list : this.list.filter((v) => Math.hypot(v.x - x, v.z - z) < 12);
+    return list.flatMap((v) => v.points());
+  }
 
   nearest(pos, r = 6) {
     let best = null, bd = r;
