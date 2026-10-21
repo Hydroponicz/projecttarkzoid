@@ -346,3 +346,18 @@ button.small:not(.danger) { background: #1c1d15; color: #ccc; border: 1px solid 
 .snd-test { padding: 1px 4px; font-size: 10px; min-width: 22px; background: #1c1d15; color: #cfc8a8; border: 1px solid #3a3b30; cursor: pointer; }
 button.snd-test:hover { background: #2a321e; }
 .snd-head button { background: #1c1d15; color: #ccc; border: 1px solid #3a3b30; padding: 4px 10px; cursor: pointer; }
+
+/* laser designator view */
+#lase { display: none; position: fixed; inset: 0; pointer-events: none; z-index: 2; font-family: monospace; color: #ff6a4a; text-shadow: 0 0 4px #000; }
+.lase-mask { position: absolute; inset: 0; background: radial-gradient(ellipse 46% 60% at 50% 50%, transparent 92%, #000 100%), linear-gradient(transparent, transparent); box-shadow: inset 0 0 160px 40px #000; }
+.lase-ret { position: absolute; left: 50%; top: 50%; width: 220px; height: 220px; transform: translate(-50%, -50%); }
+.lase-ret i { position: absolute; background: #ff4a2a; opacity: .85; }
+.lase-ret i.h { left: 0; right: 0; top: 50%; height: 1px; background: linear-gradient(90deg, #ff4a2a 0 40%, transparent 40% 60%, #ff4a2a 60%); }
+.lase-ret i.v { top: 0; bottom: 0; left: 50%; width: 1px; background: linear-gradient(#ff4a2a 0 40%, transparent 40% 60%, #ff4a2a 60%); }
+.lase-ret b { position: absolute; left: 50%; top: 50%; width: 26px; height: 26px; margin: -13px; border: 1px solid #ff4a2a; }
+.lase-top { position: absolute; left: 50%; top: 14%; transform: translateX(-50%); display: flex; gap: 28px; font-size: 15px; letter-spacing: 1px; }
+.lase-bar { position: absolute; left: 50%; top: calc(50% + 130px); width: 160px; height: 6px; margin-left: -80px; border: 1px solid #ff4a2a88; }
+.lase-bar i { display: block; height: 100%; width: 0; background: #ff6a3a; }
+.lase-bar.locked i { background: #7aff6a; }
+.lase-status { position: absolute; left: 50%; top: calc(50% + 150px); transform: translateX(-50%); font-size: 14px; white-space: nowrap; }
+.lase-help { position: absolute; left: 50%; bottom: 12%; transform: translateX(-50%); font-size: 11px; color: #c8a090; white-space: nowrap; }

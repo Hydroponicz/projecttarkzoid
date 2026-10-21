@@ -52,7 +52,7 @@ const GARMENTS = {
   winter_coat: { len: 0.36, bulk: 0.06, collar: true, fur: false },
   parka: { len: 0.4, bulk: 0.06, hood: true, fur: true },
 };
-const PACKS = { bp_scav: [0.34, 0.4, 0.16], bp_tri: [0.38, 0.5, 0.2], bp_mil: [0.44, 0.62, 0.26] };
+const PACKS = { bp_scav: [0.34, 0.4, 0.16], bp_tri: [0.38, 0.5, 0.2], bp_mil: [0.44, 0.62, 0.26], radio_pack: [0.34, 0.44, 0.2] };
 
 function buildFigure(profile) {
   const look = playerLook(profile), eq = profile.equip;
@@ -141,6 +141,12 @@ function buildFigure(profile) {
     box(torso, w, h, d, c, 0, 0.62 - h / 2, backZ - d / 2);
     box(torso, w * 0.8, h * 0.3, 0.05, shade(c, 0.85), 0, 0.62 - h * 0.7, backZ - d - 0.02); // front pocket
     if (eq.backpack.key === 'bp_mil') box(torso, w * 0.9, 0.1, 0.1, 0x5a5a48, 0, 0.66, backZ - d / 2); // bedroll
+    if (eq.backpack.key === 'radio_pack') {
+      box(torso, w * 0.7, 0.12, 0.03, 0x2a2e24, 0, 0.5, backZ - d - 0.03); // front panel, knobs
+      for (const x of [-0.08, 0, 0.08]) box(torso, 0.03, 0.03, 0.03, 0x1a1a1a, x, 0.5, backZ - d - 0.06);
+      box(torso, 0.012, 0.9, 0.012, 0x2a2a2a, w / 2 - 0.05, 0.62 + 0.45, backZ - d / 2); // whip antenna
+      box(torso, 0.05, 0.06, 0.05, 0x1a1a1a, w / 2 - 0.05, 0.64, backZ - d / 2);
+    }
     for (const s of [-1, 1]) box(torso, 0.05, 0.5, 0.02, shade(c, 0.7), s * 0.12, 0.4, front + 0.01); // straps
     backZ -= d;
   }

@@ -10,6 +10,7 @@ import { RagdollSystem, lookMats } from './ragdoll.js';
 import { PaperDoll, playerLook } from './paperdoll.js';
 import { skillSheet } from './skills.js';
 import { setupSoundPanel } from './soundui.js';
+import { AirSupport } from './airstrike.js';
 import { Traders } from './traders.js';
 import { Progress } from './progress.js';
 import { Vehicles } from './vehicles.js';
@@ -301,6 +302,7 @@ class Game {
     this.zombies = new Zombies(this.scene, this.world);
     this.zombies.game = this;
     this.player = new Player(this.camera, this.scene, this);
+    this.air = new AirSupport(this);
     const ch = this.profile;
     if (ch.player) this.player.restore(ch.player);
     // New characters (and anyone whose town was rebuilt, since their old spot
@@ -442,6 +444,7 @@ class Game {
     this.input.unlock();
     this.awaitingRelock = false;
     this.input.softLive = false;
+    this.air?.dispose(); this.air = null;
     this.zombies?.dispose();
     this.survivors?.dispose();
     this.survivors = null;
@@ -571,7 +574,10 @@ class Game {
     this.inv.open(() => this.playerSections(), right, {
       doll: this.doll,
       onChange: () => { this.player.buildViewmodel(); this.player.weightTimer = 0; title(); this.doll.update(this.profile); },
-      onUse: (it) => this.player.use(it),
+      onUse: (it) => {
+        if (ITEMS[it.key].tool === 'designator') { this.closeInventory(); this.air?.toggle(true); return false; }
+        return this.player.use(it);
+      },
       combine: (a, b, ctx) => combineItems(a, b, { ...ctx, game: this }),
       loading: () => this.loader?.target,
       onDrop: (it) => this.dropItem(it),
@@ -989,10 +995,15 @@ class Game {
       inp.fire = inp.firePressed = inp.reload = inp.slot1 = inp.slot2 = inp.aim = inp.prone = false;
     }
 
+    // The laser designator: N raises and lowers it; while it's up it has the mouse
+    if (inp.designate && !this.invOpen) this.air.toggle();
+    if (this.air.active) this.air.input(inp);
+
     this.time += dt * this.dev.timeScale; // one in-game minute per real second at 1x
     this.updateLighting();
     this.weather.update(dt);
     this.player.update(dt, inp);
+    this.air.update(dt);
     setAudioEnv(this.world.buildingAt(this.player.pos.x, this.player.pos.z) ? 'in' : 'out');
     if (this.state !== 'play') return;
     if (!this.dev.god) this.weather.updatePlayer(dt);

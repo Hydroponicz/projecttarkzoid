@@ -382,8 +382,20 @@ Zombies and survivors react physically to what hits them.
 | L | Flashlight |
 | M | Map (your safehouse is outlined in yellow) |
 | B | Build mode: 1–8 select a piece (7 = rain barrel, 8 = garden plot), R rotate, LMB build, X dismantle |
+| N | Raise / lower the laser designator (if you carry one): hold LMB to lase, wheel to zoom |
 | V | Claim a safehouse |
 | Esc | Pause. The game goes fullscreen when you spawn; hold Esc or use the pause menu to leave fullscreen. |
+
+## Close air support
+
+Two rare military finds work together: the **SOFLAM laser designator** and the **PRC-117 military radio pack**. The radio is worn in the backpack slot (with a little room for kit); the designator just has to be somewhere on you.
+
+- **Lasing.** Press **N** (or right-click the designator → **Raise**) to bring it up: a zoomed view with a rangefinder, bearing and zoom (mouse wheel, 2–10×). Hold the left mouse button on a target; the beam puts a red spot on it, and after a little over a second of steady lasing the target is fixed. Let go to call it in. Right-click or **N** lowers it.
+- **Painting a line.** Sweep the beam along a street or across a row of buildings while you hold it, and the gun runs follow the line you painted. Lase a single spot and the runs cross it, side to side as you see it, so they don't come down your line of sight.
+- **The strike.** With the radio on your back, an A-10 checks in ("Hog 1-1, copy your laser…") and arrives about 15 seconds later. It dives in, fires a two-second burst from its 30 mm cannon that walks along the strip, pulls off, comes around and makes a second run from the other way. You see the rounds land before you hear the gun: the tearing BRRRT reaches you a couple of seconds later, then the jet roars over.
+- **What it does.** Every round bursts with dust, sparks and a flash, scorching the ground. Zombies and people within a few metres are torn apart (rounds through a roof reach the storey under it), windows shatter and doors splinter. It's loud enough to bring every zombie for streets around, and if you're standing in the strip, it hits you too ("danger close").
+- **Rearming.** The radio needs three minutes between strikes; the designator view shows the countdown.
+- **Finding them.** Military crates, rarely soldier zombies, or the gunsmith at the highest loyalty. `kit JTAC` in the dev console gives you both.
 
 ## Sound
 
@@ -426,6 +438,7 @@ The command line has Tab completion and ↑/↓ history. Type `help` for the ful
 ```
 give ak74            give mag_ak30 3      kit Rifleman        kit Marksman
 give m4a1            give mag_stanag 3    kit Operator        kit Gunner
+give designator      give radio_pack      kit JTAC
 give scope_pso       give supp_rifle      kit Builder         spawn brute 3
 survivor hostile 2   survivors            trust 40            spawn walker 5
 tp hospital          tp military          tp checkpoint       tp pharmacy
@@ -495,6 +508,7 @@ Buildings and streets are textured with generated maps: brick, wood siding, conc
 | `src/collision.js` | 2D spatial hash, circle-vs-box movement, raycasts |
 | `src/items.js` | Item definitions, loot tables, container types |
 | `src/inventory.js` / `src/invui.js` | Grid inventory logic and drag-and-drop UI |
+| `src/airstrike.js` | Close air support: the laser designator view, painting targets, the A-10 and its gun runs |
 | `src/soundui.js` | The Sound panel: a volume slider (and a test button) for every sound |
 | `src/paperdoll.js` | The 3D figure of your character in the inventory |
 | `src/hud.js` | HUD, compass, map |

@@ -306,7 +306,8 @@ function vocal(o) {
   const env = gainEnv(t, o.attack ?? dur * 0.2, o.gain, dur * 0.28, dur * 0.45);
   if (o.tremolo) { const tr = ctx.createOscillator(), tg = ctx.createGain(); tr.frequency.value = o.tremolo; tg.gain.value = o.gain * 0.6; tr.connect(tg); tg.connect(env.gain); tr.start(t); tr.stop(t + dur + 0.5); }
   sum.connect(env);
-  const lp = filter('lowpass', 900 + 7000 * Math.min(1, o.gain * 3), 0.5); // distance
+  // distance, or a radio's narrow band
+  const lp = o.radio ? filter('bandpass', 1700, 1.2) : filter('lowpass', 900 + 7000 * Math.min(1, o.gain * 3), 0.5);
   env.connect(lp);
   out(lp, o.pan || 0, o.wet ?? 0.25);
   for (const n of [src, lfo, jit, sub]) { n.start(t); n.stop(t + dur + 0.6); }
@@ -378,6 +379,44 @@ export const sfx = {
   },
   // (older callers)
   groan(vol) { this.zombie('groan', vol); },
+  // The radio: a squelch, a few clipped words over the air, a squelch
+  radio(words = 4) {
+    if (!ctx) return;
+    noise(0.12, 2500, 0.5, 0.12, 'highpass', 0.1);
+    tone(1150, 0.08, 0.05, 'square', 0, { delay: 0.1 });
+    const f0 = 110 + Math.random() * 30, v = cur;
+    for (let i = 0; i < words; i++) {
+      setTimeout(() => { if (!ctx) return; const prev = cur; cur = v; vocal({ f0: f0 * (0.9 + Math.random() * 0.25), dur: 0.14 + Math.random() * 0.12, contour: [1, 1.15, 0.9], vowels: [pick(Object.keys(VOWELS)), pick(Object.keys(VOWELS))], rasp: 0.2, breath: 0.3, gain: 0.2, attack: 0.01, wet: 0, radio: true }); noise(0.2, 1800, 1, 0.025, 'bandpass', 0.2); cur = prev; }, 260 + i * 210);
+    }
+    setTimeout(() => { if (!ctx) return; const prev = cur; cur = v; noise(0.15, 2500, 0.5, 0.1, 'highpass', 0.12); cur = prev; }, 300 + words * 210);
+  },
+  // The A-10's 30 mm cannon heard from afar: a tearing buzz (the rounds come
+  // too fast to tell apart) with a long rolling echo. delay: the sound's
+  // flight time from the plane
+  brrrt(vol = 1, pan = 0, delay = 0, dur = 2) {
+    if (!ctx || vol < 0.01) return;
+    const t = now() + delay;
+    const n = noiseSrc(pink, t, dur + 0.5), bp = filter('bandpass', 380, 0.7);
+    const am = ctx.createGain(); am.gain.value = 0.5;
+    const lfo = ctx.createOscillator(); lfo.type = 'square'; lfo.frequency.value = 65;
+    const depth = ctx.createGain(); depth.gain.value = 0.45; lfo.connect(depth); depth.connect(am.gain);
+    const saw = ctx.createOscillator(); saw.type = 'sawtooth'; saw.frequency.value = 65;
+    const sg = ctx.createGain(); sg.gain.value = 0.35;
+    const lp = filter('lowpass', 500 + 2500 * vol, 0.6);
+    const env = gainEnv(t, 0.06, vol * 0.9, 0.35, dur);
+    n.connect(bp); bp.connect(am); saw.connect(sg); sg.connect(am);
+    const grit = ws(3); am.connect(grit); grit.connect(lp); lp.connect(env);
+    out(env, pan, 0.55);
+    for (const o of [lfo, saw]) { o.start(t); o.stop(t + dur + 1); }
+    // the rumble under it
+    noise(dur + 1.5, 120, 0.7, vol * 0.5, 'lowpass', dur + 1, { delay, buf: brown, pan, wet: 0.6 });
+  },
+  // A 30 mm round bursting: a sharp crack and a thump
+  cannonHit(vol = 1, pan = 0, delay = 0) {
+    if (!ctx || vol < 0.02) return;
+    noise(0.05, 2200, 0.8, 0.35 * vol, 'highpass', 0.04, { delay, pan, wet: 0.3 });
+    noise(0.35, 260, 0.8, 0.6 * vol, 'lowpass', 0.3, { delay, buf: brown, pan, wet: 0.4 });
+  },
   click(f = 2400, v = 0.12) { if (ctx) tick(0, f, v * 1.4, 4); },
   magOut() { if (!ctx || playSample('mag_out', 0.6)) return; tick(0, 2800, 0.3); tick(0.012, 1900, 0.2); scrape(0.03, 1400, 900, 0.09, 0.12); },
   magIn() { if (!ctx || playSample('mag_in', 0.6)) return; scrape(0, 900, 1500, 0.06, 0.12); tick(0.065, 2400, 0.42); ring(0.066, 1800, 0.05, 0.05); tone(180, 0.05, 0.12, 'sine', -60, { delay: 0.065 }); },
@@ -500,6 +539,37 @@ export function engineSound() {
       g.gain.setTargetAtTime(level * soundVol('engine'), t, 0.2);
     },
     refresh() { g.gain.setTargetAtTime(level * soundVol('engine'), ctx.currentTime, 0.05); },
+  };
+  loops.push(loop);
+  return loop;
+}
+
+// A jet going over: the turbofans' whine and roar. set(level 0..1, pitch
+// (doppler, ~0.8..1.25), pan)
+export function jetSound() {
+  if (!ctx) return { set() {}, stop() {} };
+  const src = ctx.createBufferSource(); src.buffer = white; src.loop = true;
+  const deep = ctx.createBufferSource(); deep.buffer = brown; deep.loop = true;
+  const whine = filter('bandpass', 2600, 2.5), roar = filter('bandpass', 700, 0.8), rumble = filter('lowpass', 160, 0.7);
+  const g = ctx.createGain(); g.gain.value = 0;
+  const wg = ctx.createGain(); wg.gain.value = 0.35;
+  const pan = ctx.createStereoPanner();
+  src.connect(whine); whine.connect(wg); wg.connect(g); src.connect(roar); roar.connect(g); deep.connect(rumble); rumble.connect(g);
+  g.connect(pan); pan.connect(master);
+  const send = ctx.createGain(); send.gain.value = 0.4; pan.connect(send); send.connect(verbBus);
+  src.start(); deep.start();
+  let level = 0;
+  const loop = {
+    set(lvl, pitch = 1, p = 0) {
+      const t = ctx.currentTime;
+      level = lvl;
+      g.gain.setTargetAtTime(lvl * soundVol('jet'), t, 0.08);
+      whine.frequency.setTargetAtTime(2600 * pitch, t, 0.08);
+      roar.frequency.setTargetAtTime(700 * pitch, t, 0.08);
+      pan.pan.setTargetAtTime(Math.max(-1, Math.min(1, p)), t, 0.08);
+    },
+    refresh() { g.gain.setTargetAtTime(level * soundVol('jet'), ctx.currentTime, 0.05); },
+    stop() { try { src.stop(); deep.stop(); } catch { /* stopped */ } loops.splice(loops.indexOf(loop), 1); },
   };
   loops.push(loop);
   return loop;

@@ -168,6 +168,7 @@ export class InventoryUI {
     let tip = `${def.name}\n₽${itemValue(it).toLocaleString()}`;
     if (def.type === 'weapon') tip += `\n${it.mag ? ITEMS[it.mag.key].name : def.tube ? 'Internal tube' : 'No magazine'}${mods.length ? '\nMods: ' + mods.join(', ') : ''}`;
     if (def.fits) tip += `\nFits: ${def.fits.map((k) => ITEMS[k].short).join(', ')}`;
+    if (def.desc) tip += `\n${def.desc}`;
     el.title = tip;
     el.itemRef = it;
     el.srcRef = src;
@@ -318,6 +319,7 @@ export class InventoryUI {
     h.className = 'ctx-h';
     h.textContent = `${def.name} — ₽${itemValue(it).toLocaleString()}`;
     m.appendChild(h);
+    if (def.tool === 'designator' && this.opts.onUse) add('Raise (N)', () => this.opts.onUse(it));
     if ((def.type === 'food' || def.type === 'med') && this.opts.onUse) {
       add('Use', () => {
         const consumed = this.opts.onUse(it);

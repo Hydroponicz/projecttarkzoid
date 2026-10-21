@@ -86,7 +86,7 @@ export class Input {
       check: p('KeyT'), fireMode: p('KeyZ'),
       flashlight: p('KeyL'),
       inventory: p('Tab') || p('KeyI'), map: p('KeyM'),
-      heal: p('KeyH'), lower: p('KeyG'),
+      heal: p('KeyH'), lower: p('KeyG'), designate: p('KeyN'),
       mdx: live ? this.mdx : 0, mdy: live ? this.mdy : 0,
     };
   }

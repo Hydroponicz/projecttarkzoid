@@ -57,6 +57,8 @@ const ARCH = {
       { id: 'g26', ll: 3, give: [['ledx', 1], ['mil_battery', 1]], get: ['m14', 1], stock: 1 },
       { id: 'g27', ll: 3, give: [['bolts', 3], ['gpu', 1]], get: ['ammo_762x51', 40], stock: 2 },
       { id: 'g28', ll: 3, give: [['laptop', 1], ['tape', 2]], get: ['supp_pistol', 1], stock: 1 },
+      { id: 'g29', ll: 3, give: [['ledx', 2], ['mil_battery', 2]], get: ['designator', 1], stock: 1 },
+      { id: 'g30', ll: 3, give: [['laptop', 2], ['mil_cable', 3]], get: ['radio_pack', 1], stock: 1 },
     ],
     quests: [
       { id: 'gq1', title: 'Proof of Work', text: "Before I trust you with my good stock, show me you can handle yourself. Put down ten of those things.", done: 'Not bad. Come back when you need something that shoots straight.',
