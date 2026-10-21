@@ -92,6 +92,7 @@ const GROUPS = [
     ['brrrt', 'A-10 cannon', () => sfx.brrrt(0.8, 0, 0, 2)],
     ['cannonHit', '30 mm rounds landing', () => sfx.cannonHit(0.8)],
     ['jet', 'A-10 engines', null],
+    ['drone', 'FPV drone motors', null],
   ]],
   ['Vehicles', [
     ['engine', 'Engine', null],

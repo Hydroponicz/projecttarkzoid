@@ -38,6 +38,7 @@ const KITS = {
   'Operator': ['bp_tri', 'm4a1', 'mag_stanag', 'mag_stanag', 'mag_stanag', ['ammo_556', { count: 60 }], ['ammo_556', { count: 30 }], 'scope_acog', 'sight_holo', 'supp_rifle', 'grip_vert', 'glock17', 'mag_glock', ['ammo_9x19', { count: 34 }]],
   'Gunner': ['bp_mil', 'm249', 'box_m249', ['ammo_556', { count: 60 }], ['ammo_556', { count: 60 }], ['ammo_556', { count: 60 }], 'sight_reddot'],
   'Grenadier': ['rig_tactical', ['grenade_f1', { count: 3 }], ['grenade_rgd5', { count: 3 }], ['grenade_m67', { count: 2 }]],
+  'Drones': ['rig_tactical', 'fpv_drone', 'fpv_drone', 'c4', 'pg7v', ['grenade_rgd5', { count: 3 }], 'mil_battery'],
   'JTAC': ['radio_pack', 'designator', 'grenade_m67', 'm4a1', 'mag_stanag', 'mag_stanag', ['ammo_556', { count: 60 }], 'scope_acog', 'armor_paca', 'helmet_6b47'],
   'Rifleman (NATO)': ['bp_scav', 'm14', 'mag_m14', 'mag_m14', ['ammo_762x51', { count: 40 }], 'scope_6x', 'm1911', 'mag_1911', ['ammo_45', { count: 21 }]],
   'Pistolero': ['bp_scav', 'pm', 'mag_pm', 'mag_pm', 'mag_pm', ['ammo_9x18', { count: 50 }], 'supp_pm'],

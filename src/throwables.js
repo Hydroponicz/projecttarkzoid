@@ -72,10 +72,10 @@ export class Throwables {
   }
   count(key) { let n = 0; for (const grid of this.reach()) for (const i of grid.items) if (i.key === key) n += i.count || 1; return n; }
 
-  canBind(item) { const t = ITEMS[item.key].type; return HOTBAR_TYPES.includes(t) && (t !== 'tool' || ITEMS[item.key].tool === 'designator'); }
+  canBind(item) { const t = ITEMS[item.key].type; return HOTBAR_TYPES.includes(t) && (t !== 'tool' || ['designator', 'drone'].includes(ITEMS[item.key].tool)); }
   bind(i, item, src) {
     const g = this.game;
-    if (!this.canBind(item)) { g.hud.message('Only grenades, medical supplies, food and the designator go on the hotbar.', 2.5); return false; }
+    if (!this.canBind(item)) { g.hud.message('Only grenades, medical supplies, food, the designator and drones go on the hotbar.', 2.5); return false; }
     if (!src?.grid || !this.reach().includes(src.grid)) { g.hud.message("Keep it in a pocket, vest or jacket to use it from the hotbar (you can't reach into a backpack).", 3.5); return false; }
     const bar = this.bar;
     for (let k = 0; k < HOTBAR; k++) if (bar[k] === item.uid) bar[k] = null;
@@ -111,6 +111,7 @@ export class Throwables {
     const def = ITEMS[s.it.key];
     if (def.type === 'throwable') return this.held?.it === s.it ? this.cancel() : this.ready(s.it);
     if (def.tool === 'designator') return g.air?.toggle();
+    if (def.tool === 'drone') return g.drone?.launch(s.it, s.grid);
     // meds and food: used straight from the pocket
     if (p.use(s.it)) {
       if (def.uses) { s.it.uses -= 1; if (s.it.uses <= 0) removeItem(s.grid, s.it); }
@@ -189,15 +190,20 @@ export class Throwables {
     const pos = cam.getWorldPosition(new THREE.Vector3()).addScaledVector(fwd, 0.4).addScaledVector(right, 0.15);
     const vel = fwd.multiplyScalar(power > 0.5 ? 17 : 7.5).add(new THREE.Vector3(0, power > 0.5 ? 2.5 : 3.5, 0));
     if (p.vel) vel.add(new THREE.Vector3(p.vel.x || 0, 0, p.vel.z || 0));
-    const mesh = grenadeMesh(H.key);
-    mesh.userData.ring.visible = false;
-    mesh.position.copy(pos);
-    g.scene.add(mesh);
-    this.live.push({ key: H.key, def, mesh, pos, vel, fuse: def.fuse, spin: new THREE.Vector3(Math.random() * 12, Math.random() * 12, Math.random() * 12), floor: p.floorY });
+    this.spawn(H.key, pos, vel, def.fuse);
     H.throwT = 0.35;
     sfx.throwWhoosh();
     g.zombies.noise(p.pos.x, p.pos.z, 4, false, p.floorY);
     this.hudT = 0;
+  }
+
+  // A live grenade loose in the world (thrown, or dropped from a drone)
+  spawn(key, pos, vel, fuse) {
+    const mesh = grenadeMesh(key);
+    mesh.userData.ring.visible = false;
+    mesh.position.copy(pos);
+    this.game.scene.add(mesh);
+    this.live.push({ key, def: ITEMS[key], mesh, pos: pos.clone(), vel: vel.clone(), fuse, spin: new THREE.Vector3(Math.random() * 12, Math.random() * 12, Math.random() * 12) });
   }
 
   // ---------- grenades in flight ----------

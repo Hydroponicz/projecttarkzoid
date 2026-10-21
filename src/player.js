@@ -364,7 +364,11 @@ export class Player {
     if (input.slot1) this.setActive('gun');
     if (input.slot2) this.setActive('melee');
 
-    if (this.useAnim.busy) {
+    if (g.drone?.flying) {
+      // Flying a drone: the controller in your hands, the view is the drone's
+      this.gun.setVisible(false);
+      this.vm.visible = false;
+    } else if (this.useAnim.busy) {
       // Hands are busy with an item: the weapon is put away meanwhile
       this.gun.setVisible(false);
       this.vm.visible = false;

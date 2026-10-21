@@ -95,6 +95,14 @@ export const ITEMS = {
     desc: 'An offensive grenade: a smaller blast, safer to throw in the open. Put it on the hotbar to throw it.' },
   grenade_m67: { name: 'M67 Frag Grenade', short: 'M67', type: 'throwable', w: 1, h: 1, color: '#4e5a3e', value: 9500, fuse: 4.2, radius: 7.5, damage: 250, frag: 16, big: 0.8, shape: 'm67',
     desc: 'The US frag grenade. A longer fuse. Put it on the hotbar to throw it.' },
+  // FPV drone: fly it from its camera to scout; hang a payload under it (drag
+  // a grenade, C4 or an RPG warhead onto it) to drop or to fly it into a target
+  fpv_drone: { name: 'FPV Drone', short: 'FPV', type: 'tool', tool: 'drone', w: 2, h: 2, color: '#34363a', value: 45000,
+    desc: 'Right-click > Fly (or put it on the hotbar). Drag a grenade onto it to drop it on a target, or C4 or an RPG warhead to make it a kamikaze. Its battery lasts about six minutes; a military battery recharges it.' },
+  c4: { name: 'C4 Charge', short: 'C4', type: 'explosive', w: 1, h: 1, color: '#c8c0a0', value: 30000, radius: 9, damage: 520, frag: 14, big: 1.5,
+    desc: 'Plastic explosive with a detonator. Strap it to an FPV drone and fly it into something.' },
+  pg7v: { name: 'PG-7V Rocket Warhead', short: 'PG-7V', type: 'explosive', w: 1, h: 2, color: '#5a6a48', value: 26000, radius: 6.5, damage: 620, frag: 16, big: 1.3,
+    desc: 'An RPG-7 warhead, rigged for an FPV drone: it goes off on impact.' },
   // Close air support: lase a target with the designator; the radio (worn as a
   // backpack) calls in an A-10 for two gun runs
   designator: { name: 'SOFLAM Laser Designator', short: 'Designator', type: 'tool', tool: 'designator', w: 2, h: 1, color: '#5a5a48', value: 85000,
@@ -201,7 +209,7 @@ const KG = {
   pm: 0.73, mp133: 3.4, ak74: 3.3, sks: 3.85, m4a1: 3.0, mp5: 2.5, glock17: 0.7, m1911: 1.1, m14: 4.5, m870: 3.6, m249: 7.5,
   ammo_9x18: 0.01, ammo_12g: 0.045, ammo_545: 0.011, ammo_762: 0.016, ammo_556: 0.012, ammo_9x19: 0.012, ammo_45: 0.021, ammo_762x51: 0.025,
   mag_pm: 0.09, mag_ak30: 0.23, mag_ak45: 0.33, mag_sks: 0.15, mag_stanag: 0.12, box_m249: 0.4, mag_mp5: 0.12, mag_glock: 0.08, mag_1911: 0.07, mag_m14: 0.25,
-  scope_acog: 0.45, supp_pistol: 0.2, designator: 2.3, radio_pack: 7.5, grenade_f1: 0.6, grenade_rgd5: 0.31, grenade_m67: 0.4, scope_thermal: 0.75, laser_peq: 0.2, laser_klesch: 0.15,
+  scope_acog: 0.45, supp_pistol: 0.2, designator: 2.3, radio_pack: 7.5, grenade_f1: 0.6, grenade_rgd5: 0.31, grenade_m67: 0.4, fpv_drone: 1.1, c4: 0.6, pg7v: 1.8, scope_thermal: 0.75, laser_peq: 0.2, laser_klesch: 0.15,
   knife: 0.2, crowbar: 1.4, axe: 1.7, hammer: 0.6, saw: 0.6,
   armor_paca: 3.5, armor_6b13: 10.5, helmet_ssh: 1.6, bp_scav: 0.6, bp_tri: 1.2,
   beans: 0.4, crackers: 0.2, water: 0.6, soda: 0.35,
@@ -339,7 +347,7 @@ export const LOOT_TABLES = {
   // --- military ---
   milcrate: [['rig_tactical', 0.5], ['rig_scav', 0.6], ['ak74', 0.9], ['sks', 0.5], ['mag_ak30', 4], ['mag_ak45', 0.7], ['ammo_545', 4], ['ammo_762', 1.5], ['scope_pso', 0.5], ['sight_reddot', 0.6], ['sight_holo', 0.4],
     ['supp_rifle', 0.3], ['brake_ak', 0.6], ['grip_vert', 0.6], ['armor_6b13', 0.35], ['helmet_6b47', 0.35],
-    ['m4a1', 0.8], ['mag_stanag', 3.5], ['ammo_556', 4], ['m14', 0.3], ['mag_m14', 0.7], ['ammo_762x51', 1.2], ['m249', 0.12], ['box_m249', 0.25], ['scope_acog', 0.3], ['designator', 0.1], ['radio_pack', 0.08], ['grenade_f1', 0.6], ['grenade_rgd5', 0.9], ['grenade_m67', 0.4], ['laser_peq', 0.4], ['scope_thermal', 0.08]],
+    ['m4a1', 0.8], ['mag_stanag', 3.5], ['ammo_556', 4], ['m14', 0.3], ['mag_m14', 0.7], ['ammo_762x51', 1.2], ['m249', 0.12], ['box_m249', 0.25], ['scope_acog', 0.3], ['designator', 0.1], ['radio_pack', 0.08], ['grenade_f1', 0.6], ['grenade_rgd5', 0.9], ['grenade_m67', 0.4], ['laser_peq', 0.4], ['scope_thermal', 0.08], ['fpv_drone', 0.25], ['c4', 0.3], ['pg7v', 0.25]],
   ammobox: [['ammo_545', 6], ['ammo_762', 3], ['ammo_12g', 2], ['ammo_9x18', 2], ['mag_ak30', 1.5], ['ammo_556', 5], ['ammo_9x19', 2.5], ['ammo_45', 1], ['ammo_762x51', 1.5], ['mag_stanag', 1.2]],
   duffel: [['rig_tactical', 0.35], ['parka', 0.8], ['mre', 4], ['water', 2], ['bandage', 2], ['ai2', 2], ['morphine', 0.6], ['mil_battery', 0.25], ['mil_cable', 0.8], ['bp_mil', 0.3], ['armor_6b13', 0.15], ['helmet_6b47', 0.2]],
   soldier: [['rig_scav', 0.5], ['dogtag', 6], ['ammo_545', 3], ['mag_ak30', 2], ['mre', 1.5], ['bandage', 1.5], ['morphine', 0.4], ['mil_cable', 0.3], ['ammo_556', 2.5], ['mag_stanag', 1.5], ['glock17', 0.2], ['m4a1', 0.15], ['designator', 0.03], ['grenade_rgd5', 0.5], ['grenade_f1', 0.25]],

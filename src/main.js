@@ -12,6 +12,7 @@ import { skillSheet } from './skills.js';
 import { setupSoundPanel } from './soundui.js';
 import { AirSupport } from './airstrike.js';
 import { Throwables } from './throwables.js';
+import { Drones } from './drones.js';
 import { updateExplosions } from './explosives.js';
 import { Traders } from './traders.js';
 import { Progress } from './progress.js';
@@ -306,6 +307,7 @@ class Game {
     this.player = new Player(this.camera, this.scene, this);
     this.air = new AirSupport(this);
     this.thr = new Throwables(this);
+    this.drone = new Drones(this);
     const ch = this.profile;
     if (ch.player) this.player.restore(ch.player);
     // New characters (and anyone whose town was rebuilt, since their old spot
@@ -449,6 +451,7 @@ class Game {
     this.input.softLive = false;
     this.air?.dispose(); this.air = null;
     this.thr?.dispose(); this.thr = null;
+    this.drone?.dispose(); this.drone = null;
     this.zombies?.dispose();
     this.survivors?.dispose();
     this.survivors = null;
@@ -584,7 +587,7 @@ class Game {
         if (ITEMS[it.key].tool === 'designator') { this.closeInventory(); this.air?.toggle(true); return false; }
         return this.player.use(it);
       },
-      combine: (a, b, ctx) => combineItems(a, b, { ...ctx, game: this }),
+      combine: (a, b, ctx) => this.drone?.combine(a, b, ctx) || combineItems(a, b, { ...ctx, game: this }),
       loading: () => this.loader?.target,
       onDrop: (it) => this.dropItem(it),
       actions: (it, src) => this.itemActions(it, src),
@@ -615,6 +618,8 @@ class Game {
   }
 
   itemActions(it, src) {
+    const da = this.drone?.actions(it, src) || [];
+    if (da.length) return da;
     const wa = weaponActions(it, src, this);
     if (wa.length) return wa;
     if (it.key !== 'log' || !src.grid) return [];
@@ -1001,6 +1006,8 @@ class Game {
       inp.fire = inp.firePressed = inp.reload = inp.slot1 = inp.slot2 = inp.aim = inp.prone = false;
     }
 
+    // Flying a drone: it has the controls
+    if (this.drone.flying) this.drone.input(inp);
     // The laser designator: N raises and lowers it; while it's up it has the mouse
     if (inp.designate && !this.invOpen && !this.dialogOpen) this.air.toggle();
     if (this.air.active) this.air.input(inp);
@@ -1013,6 +1020,7 @@ class Game {
     this.player.update(dt, inp);
     this.air.update(dt);
     this.thr.update(dt);
+    this.drone.update(dt);
     updateExplosions(dt);
     this.shake = Math.max(0, (this.shake || 0) - dt * 2.2);
     setAudioEnv(this.world.buildingAt(this.player.pos.x, this.player.pos.z) ? 'in' : 'out');

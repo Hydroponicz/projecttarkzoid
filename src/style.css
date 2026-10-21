@@ -379,3 +379,13 @@ button.snd-test:hover { background: #2a321e; }
 .ctx-info { padding: 4px 10px 6px; font-size: 11px; color: #a8b86a; border-top: 1px solid #2a2c22; max-width: 260px; }
 .item.fits { outline: 2px solid #8ac84a; outline-offset: -2px; box-shadow: 0 0 10px #8ac84a88; }
 .item.nofit { opacity: .55; }
+
+/* FPV drone view */
+#fpv { display: none; position: fixed; inset: 0; pointer-events: none; z-index: 2; font-family: monospace; color: #f4f4f4; text-shadow: 0 0 3px #000, 1px 1px 0 #000; font-size: 15px; }
+#fpv .fpv-noise { position: absolute; inset: 0; width: 100%; height: 100%; image-rendering: pixelated; opacity: .55; }
+#fpv .fpv-cross { position: absolute; left: 50%; top: 50%; width: 30px; height: 30px; margin: -15px; border: 2px solid #fff8; border-radius: 50%; }
+#fpv .fpv-tl, #fpv .fpv-tr, #fpv .fpv-bl, #fpv .fpv-br { position: absolute; line-height: 1.4; }
+#fpv .fpv-tl { left: 6%; top: 8%; } #fpv .fpv-tr { right: 6%; top: 8%; text-align: right; }
+#fpv .fpv-bl { left: 6%; bottom: 10%; } #fpv .fpv-br { right: 6%; bottom: 10%; text-align: right; color: #ffd060; }
+#fpv .fpv-mid { position: absolute; left: 50%; top: 30%; transform: translateX(-50%); color: #ff5a3a; font-size: 18px; }
+body.fpv-on #hud, body.fpv-on #hotbar { visibility: hidden; }

@@ -591,6 +591,33 @@ export function jetSound() {
   return loop;
 }
 
+// An FPV drone's motors: a buzzing whine that rises with the throttle.
+// set(level 0..1, throttle 0..1)
+export function droneSound() {
+  if (!ctx) return { set() {}, stop() {} };
+  const o1 = ctx.createOscillator(), o2 = ctx.createOscillator();
+  o1.type = 'sawtooth'; o2.type = 'sawtooth';
+  const f = filter('bandpass', 900, 1.2), g = ctx.createGain(); g.gain.value = 0;
+  const n = ctx.createBufferSource(); n.buffer = white; n.loop = true;
+  const nf = filter('highpass', 3000, 0.7), ng = ctx.createGain(); ng.gain.value = 0.15;
+  o1.connect(f); o2.connect(f); n.connect(nf); nf.connect(ng); ng.connect(g); f.connect(g); g.connect(master);
+  o1.start(); o2.start(); n.start();
+  let level = 0;
+  const loop = {
+    set(lvl, thr = 0.5) {
+      const t = ctx.currentTime;
+      level = lvl;
+      o1.frequency.setTargetAtTime(170 + thr * 160, t, 0.05); o2.frequency.setTargetAtTime(176 + thr * 168, t, 0.05);
+      f.frequency.setTargetAtTime(700 + thr * 900, t, 0.05);
+      g.gain.setTargetAtTime(lvl * soundVol('drone'), t, 0.05);
+    },
+    refresh() { g.gain.setTargetAtTime(level * soundVol('drone'), ctx.currentTime, 0.05); },
+    stop() { try { o1.stop(); o2.stop(); n.stop(); } catch { /* stopped */ } loops.splice(loops.indexOf(loop), 1); },
+  };
+  loops.push(loop);
+  return loop;
+}
+
 // Looping weather ambience: filtered noise. set(volume 0..1, filter Hz)
 let loopBuf = null;
 export function ambientLoop(kind) {
