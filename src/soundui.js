@@ -81,6 +81,12 @@ const GROUPS = [
     ['ambient_rain', 'Rain', null],
     ['ambient_wind', 'Wind', null],
   ]],
+  ['Explosives', [
+    ['explosion', 'Explosions', () => sfx.explosion(0.8, 0, 0, 1)],
+    ['pin', 'Pulling a pin', () => sfx.pin()],
+    ['throwWhoosh', 'Throwing', () => sfx.throwWhoosh()],
+    ['clunk', 'Grenades bouncing', () => sfx.clunk()],
+  ]],
   ['Air support', [
     ['radio', 'Radio chatter', () => sfx.radio(4)],
     ['brrrt', 'A-10 cannon', () => sfx.brrrt(0.8, 0, 0, 2)],

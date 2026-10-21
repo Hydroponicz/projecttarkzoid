@@ -11,6 +11,8 @@ import { PaperDoll, playerLook } from './paperdoll.js';
 import { skillSheet } from './skills.js';
 import { setupSoundPanel } from './soundui.js';
 import { AirSupport } from './airstrike.js';
+import { Throwables } from './throwables.js';
+import { updateExplosions } from './explosives.js';
 import { Traders } from './traders.js';
 import { Progress } from './progress.js';
 import { Vehicles } from './vehicles.js';
@@ -303,6 +305,7 @@ class Game {
     this.zombies.game = this;
     this.player = new Player(this.camera, this.scene, this);
     this.air = new AirSupport(this);
+    this.thr = new Throwables(this);
     const ch = this.profile;
     if (ch.player) this.player.restore(ch.player);
     // New characters (and anyone whose town was rebuilt, since their old spot
@@ -445,6 +448,7 @@ class Game {
     this.awaitingRelock = false;
     this.input.softLive = false;
     this.air?.dispose(); this.air = null;
+    this.thr?.dispose(); this.thr = null;
     this.zombies?.dispose();
     this.survivors?.dispose();
     this.survivors = null;
@@ -546,6 +550,7 @@ class Game {
     const p = this.profile;
     const s = [
       { kind: 'equip', title: `${p.name} — Equipment`, equip: p.equip, doll: true },
+      { kind: 'hotbar', title: 'Hotbar (keys 3–6) — drag grenades, meds or food from your pockets or vest here' },
       { kind: 'grid', title: 'Pockets', grid: p.pockets },
     ];
     // Pockets of what you're wearing: vest / rig first, then the jacket
@@ -573,6 +578,7 @@ class Game {
     this.doll.update(this.profile);
     this.inv.open(() => this.playerSections(), right, {
       doll: this.doll,
+      hotbar: this.thr,
       onChange: () => { this.player.buildViewmodel(); this.player.weightTimer = 0; title(); this.doll.update(this.profile); },
       onUse: (it) => {
         if (ITEMS[it.key].tool === 'designator') { this.closeInventory(); this.air?.toggle(true); return false; }
@@ -996,14 +1002,19 @@ class Game {
     }
 
     // The laser designator: N raises and lowers it; while it's up it has the mouse
-    if (inp.designate && !this.invOpen) this.air.toggle();
+    if (inp.designate && !this.invOpen && !this.dialogOpen) this.air.toggle();
     if (this.air.active) this.air.input(inp);
+    // The hotbar (3-6): use what's there, or bring up a grenade
+    if (!this.invOpen && !this.dialogOpen && !this.builder.active) inp.hot.forEach((on, i) => { if (on) this.thr.press(i); });
 
     this.time += dt * this.dev.timeScale; // one in-game minute per real second at 1x
     this.updateLighting();
     this.weather.update(dt);
     this.player.update(dt, inp);
     this.air.update(dt);
+    this.thr.update(dt);
+    updateExplosions(dt);
+    this.shake = Math.max(0, (this.shake || 0) - dt * 2.2);
     setAudioEnv(this.world.buildingAt(this.player.pos.x, this.player.pos.z) ? 'in' : 'out');
     if (this.state !== 'play') return;
     if (!this.dev.god) this.weather.updatePlayer(dt);

@@ -133,6 +133,7 @@ export class Player {
   }
 
   setActive(slot) {
+    if (this.game.thr?.held) { this.game.thr.cancel(true); this.active = slot; this.buildViewmodel(); return; }
     if (this.active === slot) return;
     this.active = slot;
     this.buildViewmodel();
@@ -349,7 +350,7 @@ export class Player {
       this.pos.z + rzv * leanDist);
     this.camera.rotation.set(this.pitch - this.landDip * 0.4, this.yaw, Math.sin(this.bob * 0.5) * bobAmt * 0.35 - this.lean * 0.16);
     // shaken by cannon fire close by
-    const shake = this.game.air?.shake || 0;
+    const shake = Math.max(this.game.shake || 0, this.game.air?.shake || 0);
     if (shake > 0.01) { this.camera.rotation.x += (Math.random() - 0.5) * 0.03 * shake; this.camera.rotation.y += (Math.random() - 0.5) * 0.03 * shake; }
     // A slight, slow widening at a full sprint; everything eases.
     this.sprintFovK = (this.sprintFovK || 0) + ((wantSprint && moving ? 1 : 0) - (this.sprintFovK || 0)) * Math.min(1, dt * 1.8);
@@ -368,6 +369,11 @@ export class Player {
       this.gun.setVisible(false);
       this.vm.visible = false;
       this.useAnim.update(dt);
+    } else if (g.thr?.held) {
+      // A grenade in the hand (the hotbar): it takes the mouse buttons
+      this.gun.setVisible(false);
+      this.vm.visible = false;
+      g.thr.updateHeld(dt, input, Math.abs(Math.cos(this.bob * 0.5)) * bobAmt * 0.3);
     } else if (this.active === 'gun' && this.weapon) {
       this.vm.visible = false;
       this.gun.setVisible(true);

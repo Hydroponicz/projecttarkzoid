@@ -80,6 +80,14 @@ export const ITEMS = {
   bp_scav: { name: 'Scav Backpack', short: 'Scav BP', type: 'backpack', w: 3, h: 3, color: '#5a5a3a', value: 6000, gw: 4, gh: 4 },
   helmet_6b47: { name: '6B47 Ratnik Helmet', short: '6B47', type: 'helmet', w: 2, h: 2, color: '#3a4a2a', value: 32000, protection: 0.7, durability: 60 },
   bp_mil: { name: 'Military Rucksack', short: 'Rucksack', type: 'backpack', w: 4, h: 4, color: '#3a4a2a', value: 38000, gw: 6, gh: 7 },
+  // Hand grenades: kept in a pocket, vest or jacket (not a backpack), thrown
+  // from the hotbar. radius: lethal blast; frag: how far fragments carry
+  grenade_f1: { name: 'F-1 Hand Grenade', short: 'F-1', type: 'throwable', w: 1, h: 1, color: '#4a5a3a', value: 9000, fuse: 3.6, radius: 8, damage: 260, frag: 20, big: 0.8, shape: 'f1',
+    desc: 'A defensive frag grenade: fragments carry a long way, so throw it from cover. Put it on the hotbar to throw it.' },
+  grenade_rgd5: { name: 'RGD-5 Hand Grenade', short: 'RGD-5', type: 'throwable', w: 1, h: 1, color: '#5a6a48', value: 7000, fuse: 3.4, radius: 6, damage: 230, frag: 12, big: 0.7, shape: 'rgd',
+    desc: 'An offensive grenade: a smaller blast, safer to throw in the open. Put it on the hotbar to throw it.' },
+  grenade_m67: { name: 'M67 Frag Grenade', short: 'M67', type: 'throwable', w: 1, h: 1, color: '#4e5a3e', value: 9500, fuse: 4.2, radius: 7.5, damage: 250, frag: 16, big: 0.8, shape: 'm67',
+    desc: 'The US frag grenade. A longer fuse. Put it on the hotbar to throw it.' },
   // Close air support: lase a target with the designator; the radio (worn as a
   // backpack) calls in an A-10 for two gun runs
   designator: { name: 'SOFLAM Laser Designator', short: 'Designator', type: 'tool', tool: 'designator', w: 2, h: 1, color: '#5a5a48', value: 85000,
@@ -186,7 +194,7 @@ const KG = {
   pm: 0.73, mp133: 3.4, ak74: 3.3, sks: 3.85, m4a1: 3.0, mp5: 2.5, glock17: 0.7, m1911: 1.1, m14: 4.5, m870: 3.6, m249: 7.5,
   ammo_9x18: 0.01, ammo_12g: 0.045, ammo_545: 0.011, ammo_762: 0.016, ammo_556: 0.012, ammo_9x19: 0.012, ammo_45: 0.021, ammo_762x51: 0.025,
   mag_pm: 0.09, mag_ak30: 0.23, mag_ak45: 0.33, mag_sks: 0.15, mag_stanag: 0.12, box_m249: 0.4, mag_mp5: 0.12, mag_glock: 0.08, mag_1911: 0.07, mag_m14: 0.25,
-  scope_acog: 0.45, supp_pistol: 0.2, designator: 2.3, radio_pack: 7.5,
+  scope_acog: 0.45, supp_pistol: 0.2, designator: 2.3, radio_pack: 7.5, grenade_f1: 0.6, grenade_rgd5: 0.31, grenade_m67: 0.4,
   knife: 0.2, crowbar: 1.4, axe: 1.7, hammer: 0.6, saw: 0.6,
   armor_paca: 3.5, armor_6b13: 10.5, helmet_ssh: 1.6, bp_scav: 0.6, bp_tri: 1.2,
   beans: 0.4, crackers: 0.2, water: 0.6, soda: 0.35,
@@ -324,10 +332,10 @@ export const LOOT_TABLES = {
   // --- military ---
   milcrate: [['rig_tactical', 0.5], ['rig_scav', 0.6], ['ak74', 0.9], ['sks', 0.5], ['mag_ak30', 4], ['mag_ak45', 0.7], ['ammo_545', 4], ['ammo_762', 1.5], ['scope_pso', 0.5], ['sight_reddot', 0.6], ['sight_holo', 0.4],
     ['supp_rifle', 0.3], ['brake_ak', 0.6], ['grip_vert', 0.6], ['armor_6b13', 0.35], ['helmet_6b47', 0.35],
-    ['m4a1', 0.8], ['mag_stanag', 3.5], ['ammo_556', 4], ['m14', 0.3], ['mag_m14', 0.7], ['ammo_762x51', 1.2], ['m249', 0.12], ['box_m249', 0.25], ['scope_acog', 0.3], ['designator', 0.1], ['radio_pack', 0.08]],
+    ['m4a1', 0.8], ['mag_stanag', 3.5], ['ammo_556', 4], ['m14', 0.3], ['mag_m14', 0.7], ['ammo_762x51', 1.2], ['m249', 0.12], ['box_m249', 0.25], ['scope_acog', 0.3], ['designator', 0.1], ['radio_pack', 0.08], ['grenade_f1', 0.6], ['grenade_rgd5', 0.9], ['grenade_m67', 0.4]],
   ammobox: [['ammo_545', 6], ['ammo_762', 3], ['ammo_12g', 2], ['ammo_9x18', 2], ['mag_ak30', 1.5], ['ammo_556', 5], ['ammo_9x19', 2.5], ['ammo_45', 1], ['ammo_762x51', 1.5], ['mag_stanag', 1.2]],
   duffel: [['rig_tactical', 0.35], ['parka', 0.8], ['mre', 4], ['water', 2], ['bandage', 2], ['ai2', 2], ['morphine', 0.6], ['mil_battery', 0.25], ['mil_cable', 0.8], ['bp_mil', 0.3], ['armor_6b13', 0.15], ['helmet_6b47', 0.2]],
-  soldier: [['rig_scav', 0.5], ['dogtag', 6], ['ammo_545', 3], ['mag_ak30', 2], ['mre', 1.5], ['bandage', 1.5], ['morphine', 0.4], ['mil_cable', 0.3], ['ammo_556', 2.5], ['mag_stanag', 1.5], ['glock17', 0.2], ['m4a1', 0.15], ['designator', 0.03]],
+  soldier: [['rig_scav', 0.5], ['dogtag', 6], ['ammo_545', 3], ['mag_ak30', 2], ['mre', 1.5], ['bandage', 1.5], ['morphine', 0.4], ['mil_cable', 0.3], ['ammo_556', 2.5], ['mag_stanag', 1.5], ['glock17', 0.2], ['m4a1', 0.15], ['designator', 0.03], ['grenade_rgd5', 0.5], ['grenade_f1', 0.25]],
   kitchen: [['beans', 4], ['rice', 3], ['crackers', 3], ['coffee', 3], ['chips', 2], ['knife', 1.5], ['water', 1.5], ['soda', 1], ['tape', 0.6], ['painkillers', 0.4]],
   wardrobe: [['hoodie', 2], ['winter_coat', 1.2], ['raincoat', 0.8], ['work_jacket', 0.8], ['vest_fishing', 0.4], ['bp_scav', 1.2], ['bp_tri', 0.25], ['tape', 1], ['bandage', 1], ['chain', 0.6], ['roler', 0.25], ['helmet_ssh', 0.15], ['armor_paca', 0.08], ['wires', 0.6], ['crowbar', 0.3]],
   nightstand: [['painkillers', 3], ['vitamins', 2], ['coffee', 1], ['chain', 1], ['roler', 0.4], ['ammo_9x18', 1], ['pm', 0.25], ['bandage', 1], ['flashdrive', 0.3]],

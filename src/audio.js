@@ -411,6 +411,22 @@ export const sfx = {
     // the rumble under it
     noise(dur + 1.5, 120, 0.7, vol * 0.5, 'lowpass', dur + 1, { delay, buf: brown, pan, wet: 0.6 });
   },
+  // An explosion: the crack of the blast, a deep thump, and the boom rolling
+  // off the buildings. big: 0.5 (a grenade) .. 1.5 (an RPG warhead or C4)
+  explosion(vol = 1, pan = 0, delay = 0, big = 1) {
+    if (!ctx || vol < 0.01) return;
+    noise(0.08, 1800, 0.7, 0.7 * vol, 'highpass', 0.06, { delay, pan, wet: 0.35 });
+    noise(0.6 * big, 180, 0.8, 1.0 * vol, 'lowpass', 0.45 * big, { delay, buf: brown, pan, wet: 0.5 });
+    tone(55 / big, 0.5 * big, 0.5 * vol, 'sine', -30, { delay, pan, wet: 0.3 });
+    noise(2.2 * big, 90, 0.7, 0.45 * vol, 'lowpass', 1.6 * big, { delay: delay + 0.08, buf: brown, pan, wet: 0.8 });
+    // debris pattering down
+    for (let i = 0; i < 5; i++) tick(delay + 0.4 + Math.random() * 0.9, 1200 + Math.random() * 2500, 0.04 * vol, 3, pan, 0.01);
+  },
+  // Pulling the pin: the ring, the spoon pinging off
+  pin() { if (!ctx) return; tick(0, 3200, 0.2, 8); ring(0.18, 3600, 0.03, 0.06); },
+  throwWhoosh() { if (!ctx) return; noise(0.25, 900, 0.8, 0.08, 'bandpass', 0.18); },
+  // A grenade bouncing on the ground
+  clunk(vol = 1) { if (!ctx) return; noise(0.05, 500, 1.5, 0.15 * vol, 'bandpass', 0.04, { buf: pink }); tick(0, 1400, 0.06 * vol, 4); },
   // A 30 mm round bursting: a sharp crack and a thump
   cannonHit(vol = 1, pan = 0, delay = 0) {
     if (!ctx || vol < 0.02) return;

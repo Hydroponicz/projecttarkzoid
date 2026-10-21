@@ -70,6 +70,7 @@ export class InventoryUI {
     }
     else if (s.kind === 'equip') box.appendChild(this.renderEquip(s));
     else if (s.kind === 'shop') box.appendChild(this.renderShop(s));
+    else if (s.kind === 'hotbar') box.appendChild(this.renderHotbar());
     else if (s.kind === 'html') { const d = document.createElement('div'); d.className = s.cls || ''; d.innerHTML = s.html(); box.appendChild(d); }
     else if (s.kind === 'sell') {
       const z = document.createElement('div');
@@ -123,6 +124,25 @@ export class InventoryUI {
     row.className = 'equip-row';
     row.append(this.opts.doll.canvas, wrap);
     return row;
+  }
+
+  // The hotbar: slots that point at things in your pockets (dropping an item
+  // here binds it; it stays where it is). Right-click a slot to clear it.
+  renderHotbar() {
+    const hb = this.opts.hotbar, wrap = document.createElement('div');
+    wrap.className = 'hotbar-edit';
+    if (!hb) return wrap;
+    hb.bar.forEach((uid, i) => {
+      const el = document.createElement('div');
+      el.className = 'hb-slot';
+      el.dataset.hotbar = i;
+      const s = uid ? hb.slot(i) : null, key = s?.it.key || this.opts.hotbar.game.profile.hotkeys?.[i];
+      el.innerHTML = `<b>${i + 3}</b>${key ? `<span style="background:${ITEMS[key].color}">${ITEMS[key].short}</span><i>×${hb.count(key)}</i>` : '<em>empty</em>'}`;
+      el.title = key ? `${ITEMS[key].name}\nRight-click to clear` : 'Drag a grenade, medical item or food here';
+      el.addEventListener('contextmenu', (e) => { e.preventDefault(); hb.unbind(i); this.render(); });
+      wrap.appendChild(el);
+    });
+    return wrap;
   }
 
   renderShop(s) {
@@ -262,6 +282,10 @@ export class InventoryUI {
       }
     }
 
+    // Onto a hotbar slot: bind it there (it stays in its pocket)
+    const hbEl = target.closest('[data-hotbar]');
+    if (hbEl && this.opts.hotbar) { this.opts.hotbar.bind(+hbEl.dataset.hotbar, item, src); return revert(); }
+
     const slotEl = target.closest('[data-slot]');
     if (slotEl && this.equipSection) {
       const slot = slotEl.dataset.slot;
@@ -320,6 +344,10 @@ export class InventoryUI {
     h.textContent = `${def.name} — ₽${itemValue(it).toLocaleString()}`;
     m.appendChild(h);
     if (def.tool === 'designator' && this.opts.onUse) add('Raise (N)', () => this.opts.onUse(it));
+    const hb = this.opts.hotbar;
+    if (hb && hb.canBind(it) && src.grid && hb.reach().includes(src.grid)) {
+      for (let i = 0; i < 4; i++) add(`Put on hotbar ${i + 3}`, () => { hb.bind(i, it, src); this.render(); });
+    }
     if ((def.type === 'food' || def.type === 'med') && this.opts.onUse) {
       add('Use', () => {
         const consumed = this.opts.onUse(it);

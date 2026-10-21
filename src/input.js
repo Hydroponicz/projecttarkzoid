@@ -83,6 +83,7 @@ export class Input {
       reload: p('KeyR'), interact: p('KeyF'),
       leanL: live && k('KeyQ'), leanR: live && k('KeyE'),
       slot1: p('Digit1'), slot2: p('Digit2'),
+      hot: [p('Digit3'), p('Digit4'), p('Digit5'), p('Digit6')],
       check: p('KeyT'), fireMode: p('KeyZ'),
       flashlight: p('KeyL'),
       inventory: p('Tab') || p('KeyI'), map: p('KeyM'),

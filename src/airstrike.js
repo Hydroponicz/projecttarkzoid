@@ -369,7 +369,7 @@ export class AirSupport {
       g.breakWindow(w, new THREE.Vector3(w.x, (w.base || 0) + (w.sill + w.top) / 2, w.z), new THREE.Vector3(w.x - at.x, 0, w.z - at.z).normalize());
     }
     for (const dr of W.doors) {
-      if (dr.broken || Math.hypot(dr.x - at.x, dr.z - at.z) > 3.5 || Math.abs((dr.base || 0) - at.y) > LH + 1) continue;
+      if (dr.hp <= 0 || Math.hypot(dr.x - at.x, dr.z - at.z) > 3.5 || Math.abs((dr.base || 0) - at.y) > LH + 1) continue;
       g.damageStructure(dr, 140, at);
     }
   }
