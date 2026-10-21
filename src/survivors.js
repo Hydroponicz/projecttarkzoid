@@ -13,9 +13,10 @@ import { NAV_CELL, NAV_N } from './zombies.js';
 import { randomName } from './character.js';
 import { sfx } from './audio.js';
 import { lookMats, JOINT } from './ragdoll.js';
+import { Factions } from './factions.js';
 const smooth = (t) => t * t * (3 - 2 * t);
 
-const MAX_SURVIVORS = 9;
+const MAX_SURVIVORS = 18;
 const DISP_LABEL = { friendly: 'Friendly', neutral: 'Wary', hostile: 'Hostile' };
 
 // How the AI uses each weapon (simplified ballistics; real ammo is tracked).
@@ -87,6 +88,9 @@ class Survivor {
     this.look = d.look;
     this.order = d.order || null; // 'follow' | 'wait' | null
     this.vip = d.vip || false; // a contract's scientist: to be brought out alive
+    this.gid = d.gid || null;  // their gang or band (see factions.js)
+    this.nades = d.nades || 0; // grenades carried
+    this.job = null;
     this.skill = d.skill ?? 0.5 + Math.random() * 0.5;
     this.pos = new THREE.Vector3(d.x, 0, d.z);
     this.dir = d.dir ?? Math.random() * Math.PI * 2;
@@ -125,22 +129,31 @@ class Survivor {
     this.armL = arm(-0.27); this.armR = arm(0.27);
     // Weapon prop
     this.gunMesh = new THREE.Group();
-    const key = this.weapon?.key || this.melee;
-    const len = { pm: 0.2, glock17: 0.2, m1911: 0.22, mp133: 0.85, m870: 0.85, sks: 0.95, m14: 1.05, ak74: 0.8, m4a1: 0.8, mp5: 0.6, m249: 1.0, knife: 0.25, crowbar: 0.6, axe: 0.7, hammer: 0.35 }[key] || 0.3;
-    box(0.05, 0.07, len, key === 'sks' || key === 'mp133' || key === 'm14' ? mat(0x5a3a20) : dark, 0, 0, len / 2, this.gunMesh);
     this.gunMesh.position.set(0.1, 1.3, 0.35);
     g.add(this.gunMesh);
-    this.muzzle = new THREE.Object3D();
-    this.muzzle.position.set(0, 0, len);
-    this.gunMesh.add(this.muzzle);
+    this.mesh = g;
+    this.buildGun();
     g.position.copy(this.pos);
     g.rotation.order = 'YXZ';
     g.rotation.y = this.dir;
-    this.mesh = g;
-    this.gunLen = len;
     this.lookMats = { skin, top: shirt, bottom: pants };
     this.mats = [shirt, pants];
     this.mgr.scene.add(g);
+  }
+
+  // The gun (or the melee weapon) in their hands, rebuilt when it changes
+  buildGun() {
+    const gm = this.gunMesh;
+    for (const c of [...gm.children]) { gm.remove(c); c.geometry?.dispose(); }
+    const key = this.weapon?.key || this.melee;
+    const len = { pm: 0.2, glock17: 0.2, m1911: 0.22, mp133: 0.85, m870: 0.85, sks: 0.95, m14: 1.05, ak74: 0.8, m4a1: 0.8, mp5: 0.6, m249: 1.0, knife: 0.25, crowbar: 0.6, axe: 0.7, hammer: 0.35 }[key] || 0.3;
+    const b = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.07, len), new THREE.MeshStandardMaterial({ color: key === 'sks' || key === 'mp133' || key === 'm14' ? 0x5a3a20 : 0x222222, roughness: 0.85 }));
+    b.position.z = len / 2; b.castShadow = true;
+    gm.add(b);
+    this.muzzle = new THREE.Object3D();
+    this.muzzle.position.set(0, 0, len);
+    gm.add(this.muzzle);
+    this.gunLen = len;
   }
 
   say(text, vol = 1) {
@@ -404,6 +417,26 @@ class Survivor {
           const ax = this.pos.x - tp.x, az = this.pos.z - tp.z, al = Math.hypot(ax, az) || 1;
           moveTo = { x: this.pos.x + (ax / al) * 3 + az / al * 2, z: this.pos.z + (az / al) * 3 - ax / al * 2 };
         }
+        // Against people, bandits fight smart: lose sight of you and they
+        // come looking (a grenade over the cover first, if they have one);
+        // with you in sight they don't stand still
+        if (t.kind === 'survivor' || t === p) {
+          this.losT = (this.losT || 0) - dt;
+          if (this.losT <= 0) { this.losT = 0.25; this.los = hasLOS(this.mgr.world.hash, this.pos.x, this.pos.z, tp.x, tp.z); if (this.los) this.seenAt = { x: tp.x, z: tp.z }; }
+          if (!this.los) {
+            this.lostT = (this.lostT || 0) + dt;
+            const at = this.seenAt || tp;
+            if (this.disp === 'hostile' && this.nades > 0 && this.lostT > 2.5 && (this.nadeCd = (this.nadeCd ?? 4) - dt) <= 0 && dT > 6 && dT < 24) { this.nadeCd = 12 + Math.random() * 8; this.throwNade(game, at); }
+            if (this.disp === 'hostile' || this.order === 'follow') { moveTo = Math.hypot(at.x - this.pos.x, at.z - this.pos.z) > 2 ? at : tp; run = dT > 12; }
+          } else {
+            this.lostT = 0;
+            if (!moveTo && this.disp === 'hostile') {
+              this.strafeT = (this.strafeT || 0) - dt;
+              if (this.strafeT <= 0) { this.strafeT = 1 + Math.random() * 2; this.strafe = Math.random() < 0.3 ? 0 : Math.random() < 0.5 ? -1 : 1; }
+              if (this.strafe) { const ax = tp.x - this.pos.x, az = tp.z - this.pos.z, al = Math.hypot(ax, az) || 1; moveTo = { x: this.pos.x - (az / al) * this.strafe * 2, z: this.pos.z + (ax / al) * this.strafe * 2 }; }
+            }
+          }
+        }
         this.combatShoot(dt, game, t, dT, gunStats);
       } else {
         // Melee: close in and swing
@@ -432,6 +465,12 @@ class Survivor {
         face = p.pos;
         if (!this.greeted && dP < 6) { this.greeted = true; this.say(this.mgr.game.traders?.greet(this) || this.line('greet')); }
       } else face = { x: this.pos.x + Math.sin(this.home.dir), z: this.pos.z + Math.cos(this.home.dir) };
+      if (dP > 14) this.greeted = false;
+    } else if ((this.gid || this.disp !== 'neutral') && !this.trader && !this.vip) {
+      const J = this.mgr.factions.drive(this, dt, game);
+      moveTo = J.moveTo; run = J.run; face = J.face;
+      // say hello on the way past
+      if (dP < 7 && this.disp === 'friendly' && !this.greeted && this.mgr.canSeePlayer(this)) { this.greeted = true; this.say(this.line('greet')); }
       if (dP > 14) this.greeted = false;
     } else {
       this.state = 'roam';
@@ -471,7 +510,7 @@ class Survivor {
       if (clear) { this.path = []; mx = moveTo.x - this.pos.x; mz = moveTo.z - this.pos.z; }
       else {
         this.repathT = (this.repathT || 0) - dt;
-        if (this.repathT <= 0 || this.path.length === 0) { this.repathT = 1.2; this.path = this.mgr.findPath(this.pos.x, this.pos.z, moveTo.x, moveTo.z) || []; }
+        if (this.repathT <= 0 || this.path.length === 0) { const P = this.mgr.findPath(this.pos.x, this.pos.z, moveTo.x, moveTo.z); if (P !== undefined) { this.repathT = 1.2; this.path = P || []; } }
       }
     }
     if (this.path.length) {
@@ -480,6 +519,7 @@ class Survivor {
       if (Math.hypot(mx, mz) < 0.5) { this.path.shift(); if (!this.path.length && this.state === 'roam') this.linger = 8 + Math.random() * 20; }
       this.mgr.openDoorsAhead(this);
     }
+    if (this.sidestep) { mx = this.sidestep.x; mz = this.sidestep.z; this.sidestep.t -= dt; if (this.sidestep.t <= 0) this.sidestep = null; }
     const ml = Math.hypot(mx, mz);
     let moved = 0;
     if (ml > 0.3 && !(this.state === 'follow' && !this.path.length && ml < 3.5)) {
@@ -490,8 +530,12 @@ class Survivor {
       const ox = this.pos.x - p.pos.x, oz = this.pos.z - p.pos.z, od = Math.hypot(ox, oz);
       if (od < 0.65 && od > 1e-4) { this.pos.x = p.pos.x + (ox / od) * 0.65; this.pos.z = p.pos.z + (oz / od) * 0.65; }
       moved = Math.hypot(this.pos.x - bx, this.pos.z - bz);
-      if (moved < sp * dt * 0.25) { this.stuckT += dt; if (this.stuckT > 2) { this.stuckT = 0; this.path = []; this.goal = null; } }
-      else this.stuckT = 0;
+      if (moved < sp * dt * 0.25) {
+        this.stuckT += dt;
+        // pressed against something: a step to one side, then a new route
+        if (this.stuckT > 0.8 && !this.sidestep) { const a = Math.atan2(mz, mx) + (Math.random() < 0.5 ? 1.6 : -1.6); this.sidestep = { x: Math.cos(a), z: Math.sin(a), t: 0.6 }; }
+        if (this.stuckT > 2) { this.stuckT = 0; this.path = []; this.goal = null; this.pathAt = -1e9; }
+      } else this.stuckT = 0;
       if (!face) face = { x: this.pos.x + mx, z: this.pos.z + mz };
     }
     if (face) {
@@ -568,10 +612,12 @@ class Survivor {
     const ang = Math.atan2(tx - this.pos.x, tz - this.pos.z);
     if (Math.abs(Math.atan2(Math.sin(ang - this.dir), Math.cos(ang - this.dir))) > 0.25) return;
     this.aimT += dt;
-    if (this.aimT < 0.6 / this.skill || this.fireCd > 0) return;
-    if (st.burst) {
-      if (this.burst <= 0) this.burst = 2 + Math.floor(Math.random() * st.burst);
-      this.burst--;
+    const sharp = this.disp === 'hostile' || this.order === 'follow';
+    if (this.aimT < (sharp ? 0.35 : 0.6) / this.skill || this.fireCd > 0) return;
+    if (st.burst && dT > 28) this.fireCd = st.rate * 3.5; // (taps at range)
+    else if (st.burst) {
+      if (this.burst <= 0) { this.burst = 2 + Math.floor(Math.random() * st.burst); this.burstN = 0; }
+      this.burst--; this.burstN = (this.burstN || 0) + 1;
       this.fireCd = this.burst > 0 ? st.rate : 0.6 + Math.random() * 0.5;
     } else this.fireCd = st.rate * (0.9 + Math.random() * 0.5);
     this.takeRound();
@@ -579,6 +625,8 @@ class Survivor {
     if (!this.trader) game.zombies.noise(this.pos.x, this.pos.z, ITEMS[this.weapon.key].noise); // traders' guns don't draw crowds
     // Hit chance: skill, range, target movement / stance, darkness
     let chance = st.acc * this.skill * (1 - (dT / st.range) * 0.55);
+    if (st.burst && dT <= 28 && this.burstN > 1) chance *= this.burstN > 2 ? 0.45 : 0.65; // (recoil climbs through a burst)
+    if (sharp) chance *= Math.min(1.25, 0.8 + this.aimT * 0.3) * (st.burst && dT > 28 ? 1.15 : 1);
     if (t === p) {
       if (p.speed > 2.5) chance *= 0.6; else if (p.speed > 0.5) chance *= 0.8;
       if (p.prone) chance *= 0.5; else if (p.crouch) chance *= 0.75;
@@ -586,6 +634,17 @@ class Survivor {
     if (game.isNight && !(t === p && p.flashlight)) chance *= 0.7;
     if (Math.random() < chance) this.mgr.hitTarget(this, t, st.dmg * (0.75 + Math.random() * 0.5));
     else game.fx.impact(new THREE.Vector3(tx + (Math.random() - 0.5) * 1.5, 0.3 + Math.random() * 1.6, tz + (Math.random() - 0.5) * 1.5));
+  }
+
+  // A grenade lobbed at where they last saw you
+  throwNade(game, at) {
+    if (!game.thr) return;
+    this.nades--;
+    const from = new THREE.Vector3(this.pos.x, 1.6, this.pos.z);
+    const dx = at.x - from.x + (Math.random() - 0.5) * 2.5, dz = at.z - from.z + (Math.random() - 0.5) * 2.5, D = Math.hypot(dx, dz);
+    const v = Math.sqrt(9.8 * D * 0.95); // a 45-degree lob
+    game.thr.spawn('grenade_rgd5', from, new THREE.Vector3((dx / D) * v * 0.707, v * 0.707, (dz / D) * v * 0.707), 3.2, this);
+    this.say(pick(['Grenade!', 'Frag out!', 'Eat this!']), 1);
   }
 
   perceive(game, dP) {
@@ -605,6 +664,7 @@ class Survivor {
       if (this.target !== p && this.speechCd <= 0) { this.speechCd = 12; this.say(pick(BANDIT_LINES)); }
       // Fight the player unless a zombie is right on top of us
       this.target = bestZ && bz < 4 ? bestZ : p;
+      if (this.target === p) mgr.factions.onEngage(this, p);
       return;
     }
     if (this.aggroPlayer > 0 && seesP) { this.target = p; return; }
@@ -646,7 +706,7 @@ class Survivor {
     return {
       id: this.id, name: this.name, persona: this.persona, disp: this.disp, trust: Math.round(this.trust), met: this.met,
       hp: Math.round(this.hp), x: +this.pos.x.toFixed(2), z: +this.pos.z.toFixed(2), dir: this.dir,
-      weapon: this.weapon, melee: this.melee, reserve: this.reserve, inv: this.inv, look: this.look, order: this.order, skill: this.skill, vip: this.vip || undefined,
+      weapon: this.weapon, melee: this.melee, reserve: this.reserve, inv: this.inv, look: this.look, order: this.order, skill: this.skill, maxHp: this.maxHp > 100 ? this.maxHp : undefined, vip: this.vip || undefined, gid: this.gid || undefined, nades: this.nades || undefined,
     };
   }
 }
@@ -675,18 +735,20 @@ export class Survivors {
     this.stamp = new Int32Array(N);
     this.closed = new Int32Array(N);
     this.searchId = 0;
+    this.factions = new Factions(this);
   }
 
   // Cells covered by building doors: walkable for survivors (they open doors).
   buildDoorCells() {
-    this.doorCell = new Uint8Array(NAV_N * NAV_N);
-    for (const d of this.world.doors) {
+    this.doorCell = new Int32Array(NAV_N * NAV_N); // (which door: its place in the list, plus one)
+    for (const [di, d] of this.world.doors.entries()) {
       if (d.base) continue;
-      const b = d.box, r = 0.5;
-      for (let x = b.minX - r; x <= b.maxX + r; x += NAV_CELL / 2) {
-        for (let z = b.minZ - r; z <= b.maxZ + r; z += NAV_CELL / 2) {
+      // the doorway, and half a metre either side of it (not into the wall)
+      const b = d.box, r = 0.5, rx = d.ax === 'x' ? 0 : r, rz = d.ax === 'x' ? r : 0;
+      for (let x = b.minX - rx; x <= b.maxX + rx; x += NAV_CELL / 2) {
+        for (let z = b.minZ - rz; z <= b.maxZ + rz; z += NAV_CELL / 2) {
           const i = Math.floor((x + HALF) / NAV_CELL), j = Math.floor((z + HALF) / NAV_CELL);
-          if (i >= 0 && j >= 0 && i < NAV_N && j < NAV_N) this.doorCell[i * NAV_N + j] = 1;
+          if (i >= 0 && j >= 0 && i < NAV_N && j < NAV_N) this.doorCell[i * NAV_N + j] = di + 1;
         }
       }
     }
@@ -696,7 +758,10 @@ export class Survivors {
   passable(i, j) {
     if (i < 0 || j < 0 || i >= NAV_N || j >= NAV_N) return false;
     const k = i * NAV_N + j;
-    return !this.nav[k] || this.doorCell[k] === 1;
+    if (!this.nav[k]) return true;
+    // a shut door they'll open; a wide-open one has its panel in the way instead
+    const di = this.doorCell[k];
+    return di > 0 && (this.world.doors[di - 1].ang ?? 0) < 0.92;
   }
 
   // Straight walkable line on the nav grid (doors count as walkable).
@@ -711,7 +776,9 @@ export class Survivors {
   }
 
   // A* on the zombie nav grid with path smoothing.
+  // (undefined: no searches left this frame, try again shortly; null: no way)
   findPath(sx, sz, tx, tz) {
+    if (this.pathBudget !== undefined && this.pathBudget-- <= 0) return undefined;
     const cell = (v) => Math.floor((v + HALF) / NAV_CELL);
     let si = cell(sx), sj = cell(sz), ti = cell(tx), tj = cell(tz);
     if (!this.passable(ti, tj)) {
@@ -731,7 +798,7 @@ export class Survivors {
     this.stamp[start] = id; this.gScore[start] = 0; this.came[start] = -1;
     push(start, h(si, sj));
     let expanded = 0, found = false;
-    while (heap.length && expanded < 30000) {
+    while (heap.length && expanded < 14000) {
       const cur = pop();
       if (this.closed[cur] === id) continue;
       this.closed[cur] = id;
@@ -883,6 +950,8 @@ export class Survivors {
     if (Math.random() < 0.6) addItem(inv, makeItem(pick(['beans', 'water', 'crackers', 'soda'])));
     if (Math.random() < 0.5) addItem(inv, makeItem('bandage'));
     return {
+      skill: disp === 'hostile' ? 0.8 + Math.random() * 0.35 : 0.5 + Math.random() * 0.5,
+      nades: disp === 'hostile' && Math.random() < 0.3 ? 1 : 0,
       id: Math.random().toString(36).slice(2, 9),
       name: randomName(),
       persona: pick(Object.keys(PERSONAS)),
@@ -909,7 +978,11 @@ export class Survivors {
     return s;
   }
 
-  populate(n) { for (let i = 0; i < n; i++) this.spawn(); }
+  // A new town's survivors: gangs in their hideouts, bands in their houses, loners
+  populate() { this.factions.populate(); }
+
+  // A loud noise somewhere: gangs come to look
+  heard(x, z, r) { this.factions.heard(x, z, r); }
 
   // A survivor with fixed data (e.g. a trader); not saved with the others.
   addNPC(d) {
@@ -933,7 +1006,10 @@ export class Survivors {
   // ---------- per frame ----------
   update(dt) {
     const g = this.game;
+    this.pathBudget = 3; // route searches a frame, between all of them
     for (const s of this.list) if (!s.dead) s.update(dt, g);
+    this.pathBudget = undefined;
+    this.factions.update(dt);
     this.list = this.list.filter((s) => !s.dead);
     for (let i = this.tracers.length - 1; i >= 0; i--) {
       const t = this.tracers[i];
@@ -1017,6 +1093,11 @@ export class Survivors {
     add('Who are you?', () => this.renderDialog(s, s.line('bio')));
     add('Heard anything useful?', () => this.renderDialog(s, this.rumor(s)));
     add('Want to trade?', () => { this.closeDialog(); this.game.openTrade(s); });
+    const band = s.gid && s.disp === 'friendly' ? this.factions.members(this.factions.groupOf(s) || {}).filter((o) => o.order !== 'follow') : [];
+    if (band.length > 1) add(`Join me, all of you. (${band.length})`, () => {
+      if (s.trust >= 20) { const m = this.factions.recruitBand(s); this.game.hud.message(`${m.map((o) => o.name).join(', ')} are with you now.`, 5); this.renderDialog(s, "We talked it over. We're in. Lead the way."); }
+      else this.renderDialog(s, "We don't know you well enough. Not yet.");
+    });
     if (s.disp === 'friendly') {
       if (s.order !== 'follow') add('Come with me.', () => {
         if (s.trust >= 20) { s.order = 'follow'; this.renderDialog(s, "Alright. Lead the way — I've got your back."); }

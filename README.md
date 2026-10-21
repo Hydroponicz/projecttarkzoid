@@ -220,9 +220,14 @@ Reloads, ammo and every other "do you have it" check look through your pockets, 
   - A bullet hitting a wall makes nearby zombies come to look where it came from. So does another zombie dropping dead.
   - They can't attack through a closed door or a wall.
 - **Survivors.** Other people are trying to make it too. Each survivor has a name, a personality, a weapon with real ammo, a backpack of loot, and a disposition: **friendly** (about 45%), **wary** (30%) or **hostile** bandits (25%).
-  - **What they do:** survivors scavenge between buildings (opening doors as they go) and fight zombies. Zombies hunt them as well as you, and a survivor bitten to death may get back up.
+  - **What they do:** survivors scavenge between buildings (opening doors as they go) and fight zombies. Zombies hunt them as well as you, and a survivor bitten to death may get back up. Each kind has a purpose (see `src/factions.js`):
+    - **Bandit gangs** (two to start, three to six strong) claim a hideout (warehouse, boiler house, factory, garage, shop, police station) with a stash crate and a guard. They raid the places guns are (police, the army post, hardware, warehouses; now and then your safehouse), take guns, ammo, grenades, meds, armor and valuables out of the cupboards there, carry them home, re-arm from the stash (a better gun, more ammo, grenades), and recruit a new member every few hours while the stash has a spare gun. Lone bandits join a gang or start one. Gang members are tougher (140 HP) and better shots.
+    - **Friendly bands** (two to start, up to three each) claim a house, scavenge food, water, meds and ammo for their guns, bring it home and sleep there at night. Lone friendlies pair up into bands. Talk to a band member who trusts you to **recruit the whole band**; dipping into their stash costs you their trust.
+    - **Wary survivors** wander, as before.
+    - Hideouts and bands' houses go on the map once you've seen them (red ☠ and green ⌂).
   - **Bandits** shout, keep their distance and shoot you. They flee when badly hurt.
   - **Wary survivors** warn you off. Point a gun at them and they'll turn on you.
+  - **Fighting people:** bandits aim faster and get steadier the longer they hold on you; automatic fire is aimed bursts up close and single taps at range, with recoil spoiling the later rounds of a burst. One spotting you, or gunfire and explosions nearby, alerts the whole gang, and they converge from different sides. Lose them behind cover and they come to where they last saw you, a grenade lobbed over first if they have one; in the open they keep moving, side to side. Companions fight the same way.
   - **Lower your weapon** with **G** to show you mean no harm. A lowered gun points at the ground and nobody feels threatened by it. Talking to a survivor or trader lowers it for you. Aiming or clicking fire brings it back up (that click doesn't fire).
   - **Talking:** press **F** on a friendly or wary survivor to talk. You can ask who they are, ask for rumors about where loot is, or trade. Friendly survivors who trust you will follow you as a companion who fights alongside you; you can also tell them to wait or go their own way.
   - **Trust:** it goes up with fair trades, gifts and reassurance. Stealing during a trade, shooting them or aiming at them lowers it, and other survivors who see you shoot someone lose trust in you too. Enough trust turns a wary survivor friendly; too little turns anyone hostile.
@@ -382,6 +387,15 @@ Four or five survivors have moved into small houses, shops or gas stations aroun
 - **Finding them.** A post appears on the map once you get close, or when another survivor tells you about it.
 - **Zombies leave traders alone.** They never pick a trader as prey, and traders' gunfire doesn't draw crowds.
 - **Death.** Traders can be hurt and killed, by you or in crossfire. A dead trader's post is abandoned: no more trades or quests, but their cupboards are free to loot.
+
+## Doors
+
+Doors swing smoothly open and shut, with a panelled leaf, a lever handle on each side and a painted frame round every doorway.
+
+- **Tap F** to open or shut. **Hold F** to ease a door open a crack (and stop when you let go): enough to see and shoot through, not to walk through. Held on a wide-open door, F eases it shut. A door left part-open stays that way in the save.
+- **K kicks.** A shut door bursts open, knocking down whatever's behind it, or comes off its hinges once it's taken enough. With no door in front of you, a kick shoves a zombie back and may put it down.
+- **Breaching charges** (new: from the gunsmith at loyalty 2, in ammo boxes and military duffels) or C4: look at a shut door and the interaction list offers *Plant a breaching charge*. Five beeping seconds, then the door is blown in.
+- Several doors in reach are listed separately in the interaction list (mouse wheel to choose).
 
 ## Hits, ragdolls and gore
 
@@ -585,6 +599,8 @@ Buildings and streets are textured with generated maps: brick, wood siding, conc
 | `src/zombies.js` | Zombie spawning, perception, flow-field pathing, attacks, hit reactions, knockdowns, corpses, voices; draws the horde instanced |
 | `src/ragdoll.js` | Verlet ragdolls (death, knockdown, get-up), dropped weapons, corpse freezing |
 | `src/fx.js` | Instanced particles (blood, dust, sparks), brass, decals (bullet holes, splatter, blood pools) |
+| `src/factions.js` | Survivor groups: bandit gangs and friendly bands, hideouts and stashes, scavenging, hauling and re-arming, recruits, alerts and converging |
+| `src/groundfx.js` | Snow and wet ground in the world's materials, masked to the open by a map of the buildings |
 | `src/collision.js` | 2D spatial hash (filed by storey), circle-vs-box movement, raycasts |
 | `src/items.js` | Item definitions, loot tables, container types |
 | `src/inventory.js` / `src/invui.js` | Grid inventory logic and drag-and-drop UI |

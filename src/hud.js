@@ -269,6 +269,15 @@ export class HUD {
         ctx.fillStyle = '#ffb0a0'; ctx.strokeText(m.name, x, y + 17); ctx.fillText(m.name, x, y + 17);
       }
     }
+    // Bandit hideouts and survivors' safehouses you've come across
+    for (const m of game.survivors?.factions.mapMarkers() || []) {
+      const x = tx(m.x), y = tx(m.z);
+      ctx.lineWidth = 3; ctx.strokeStyle = '#000';
+      ctx.fillStyle = m.kind === 'gang' ? '#e0402a' : '#6ad06a';
+      ctx.fillRect(x - 6, y - 6, 12, 12); ctx.strokeRect(x - 6, y - 6, 12, 12);
+      ctx.fillStyle = '#000'; ctx.font = 'bold 10px monospace'; ctx.fillText(m.kind === 'gang' ? '☠' : '⌂', x, y + 4);
+      ctx.fillStyle = m.kind === 'gang' ? '#ffb0a0' : '#c0f0c0'; ctx.strokeText(m.name, x, y - 10); ctx.fillText(m.name, x, y - 10);
+    }
     // The contract: the LZ (where the helicopter comes back) and objectives
     for (const m of game.mission?.mapMarkers() || []) {
       const x = tx(m.x), y = tx(m.z);

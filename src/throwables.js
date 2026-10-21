@@ -200,12 +200,13 @@ export class Throwables {
   }
 
   // A live grenade loose in the world (thrown, or dropped from a drone)
-  spawn(key, pos, vel, fuse) {
+  // (by: who threw it, if it wasn't you)
+  spawn(key, pos, vel, fuse, by = null) {
     const mesh = grenadeMesh(key);
     mesh.userData.ring.visible = false;
     mesh.position.copy(pos);
     this.game.scene.add(mesh);
-    this.live.push({ key, def: ITEMS[key], mesh, pos: pos.clone(), vel: vel.clone(), fuse, spin: new THREE.Vector3(Math.random() * 12, Math.random() * 12, Math.random() * 12) });
+    this.live.push({ key, def: ITEMS[key], mesh, pos: pos.clone(), vel: vel.clone(), fuse, by, spin: new THREE.Vector3(Math.random() * 12, Math.random() * 12, Math.random() * 12) });
   }
 
   // ---------- grenades in flight ----------
@@ -252,7 +253,7 @@ export class Throwables {
       if (n.fuse <= 0) {
         g.scene.remove(n.mesh);
         this.live.splice(i, 1);
-        explode(g, pos.clone().setY(pos.y + 0.05), { radius: n.def.radius, damage: n.def.damage, frag: n.def.frag, big: n.def.big, by: 'your own grenade' });
+        explode(g, pos.clone().setY(pos.y + 0.05), { radius: n.def.radius, damage: n.def.damage, frag: n.def.frag, big: n.def.big, by: n.by ? `${n.by.met ? n.by.name : 'a bandit'}'s grenade` : 'your own grenade', byPlayer: !n.by });
       }
     }
     if ((this.hudT -= dt) <= 0) { this.hudT = 0.3; this.drawHud(); }

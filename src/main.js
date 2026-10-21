@@ -41,6 +41,8 @@ const SCREENS = ['menu', 'create', 'death'];
 const START_TIME = 9 * 60;      // day 1, 09:00
 const AUTOSAVE = 30;            // seconds
 const NIGHT = new THREE.Color(0x10141c), DAY = new THREE.Color(0x7d8a96);
+// what a door's colliders are doing: shut, passable, swung wide
+const doorState = (d) => (d.open ? 1 : 0) + (d.ang >= 0.92 ? 2 : 0);
 const smooth = (a, b, x) => { const t = Math.max(0, Math.min(1, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
 
 class Game {
@@ -474,10 +476,10 @@ class Game {
     if (w) this.zombies.restore(w.zombies);
     else this.zombies.populate(150, this.player.pos);
     this.survivors = new Survivors(this);
-    if (w?.survivors) this.survivors.restore(w.survivors);
-    else this.survivors.populate(12);
+    if (w?.survivors) { this.survivors.restore(w.survivors); this.survivors.factions.restore(w.survivorGroups); }
     this.traders = new Traders(this, w?.traders || null);
     this.traders.spawnNPCs();
+    if (!w?.survivors) this.survivors.populate(); // (after the trading posts: gangs don't move in on them)
     this.progress = new Progress(this, this.profile, !ch.player);
     this.vehicles = new Vehicles(this, w?.vehicles || null);
     if (ch.player?.vehicle != null && this.vehicles.list[ch.player.vehicle]) this.vehicles.enter(this.vehicles.list[ch.player.vehicle]);
@@ -539,6 +541,8 @@ class Game {
     ct.color = c.color;
     if (c.base) { ct.base = c.base; ct.y = (ct.y || 0) + c.base; } // on an upper floor
     if (c.type === 'drop') { ct.mesh = this.dropMesh(c.x, c.z, c.base || 0); return ct; }
+    // a gang's or a band's stash: a crate like any other
+    if (c.gid) { ct.gid = c.gid; return ct; }
     // Bodies are ragdolls: a fresh one handed over by whoever died, or one
     // rebuilt from its saved pose (older saves: dropped and settled in place).
     ct.look = c.look || { kind: 'survivor', skin: 0x8a7a6a, top: c.color ?? 0x4a4a3a, bottom: 0x2a2a2a };
@@ -584,7 +588,7 @@ class Game {
     this.save.world = {
       containers: W.slots.containers.map((c) => (c ? c.grid : null)),
       extra: W.containers.slice(W.generatedContainers).map((c) => ({
-        type: c.type, name: c.name, x: +c.x.toFixed(2), z: +c.z.toFixed(2), base: c.base || undefined, grid: c.grid, color: c.color, look: c.look,
+        type: c.type, gid: c.gid, name: c.name, x: +c.x.toFixed(2), z: +c.z.toFixed(2), base: c.base || undefined, grid: c.grid, color: c.color, look: c.look,
         pose: c.ragdoll && !c.ragdoll.dead && c.ragdoll.sleeping ? c.ragdoll.pose() : undefined,
       })),
       doors: W.slots.doors.map((d) => (d ? { open: d.open, hp: d.hp, broken: d.broken || undefined, ang: d.ang > 0.01 && d.ang < 0.99 ? +d.ang.toFixed(2) : undefined } : null)),
@@ -593,6 +597,7 @@ class Game {
       structures: this.builder.serialize(),
       zombies: this.zombies.serialize(),
       survivors: this.survivors.serialize(),
+      survivorGroups: this.survivors.factions.serialize(),
       traders: this.traders?.serialize(),
       vehicles: this.vehicles?.serialize(),
       farming: this.farming?.serialize(),
@@ -725,6 +730,7 @@ class Game {
 
   openInventory(container) {
     if (container?.grid && !container.survivor) this.progress?.event('search', container);
+    if (container?.gid) this.survivors?.factions.onStashOpened(container);
     else if (!container) this.progress?.event('inv');
     this.invOpen = true;
     this.openContainer = container || null;
@@ -989,10 +995,10 @@ class Game {
       if (held && H.t > 0.22) {
         if (!H.creep) { H.creep = true; sfx.creak(); }
         this.swinging.delete(d);
-        const was = d.open;
+        const was = doorState(d);
         setDoorAng(d, Math.max(0, Math.min(1, d.ang + H.dir * 0.42 * dt)));
         d.target = d.ang;
-        if (was !== d.open) this.zombies.updateNavRegion(d.box.minX, d.box.minZ, d.box.maxX, d.box.maxZ);
+        if (was !== doorState(d)) this.doorNav(d);
       } else if (!held) {
         if (!H.creep && !d.broken) {
           this.swingDoor(d, d.ang > 0.5 ? 0 : 1);
@@ -1007,9 +1013,9 @@ class Game {
       const step = d.speed * dt, gap = d.target - d.ang;
       // eases in and out: quick through the middle, settling at the ends
       const k = Math.abs(gap) < 0.15 ? 0.45 + Math.abs(gap) * 3.6 : 1;
-      const was = d.open;
+      const was = doorState(d);
       setDoorAng(d, Math.abs(gap) <= step * k ? d.target : d.ang + Math.sign(gap) * step * k);
-      if (was !== d.open) this.zombies.updateNavRegion(d.box.minX, d.box.minZ, d.box.maxX, d.box.maxZ);
+      if (was !== doorState(d)) this.doorNav(d);
       if (d.ang === d.target) this.swinging.delete(d);
     }
     // Breaching charges: beeping faster, then the door comes in
@@ -1026,6 +1032,13 @@ class Game {
       if (!c.door.broken) this.breakDoor(c.door, false, from.clone().addScaledVector(c.n, -2));
       explode(this, from, { radius: def.radius * (c.key === 'c4' ? 1 : 1), damage: def.damage, frag: def.frag, big: def.big, by: 'your breaching charge' });
     }
+  }
+
+  // The walking grids round a door whose colliders changed (the doorway,
+  // and the swung panel inside)
+  doorNav(d) {
+    const b = d.box, l = d.leaf || b;
+    this.zombies.updateNavRegion(Math.min(b.minX, l.minX), Math.min(b.minZ, l.minZ), Math.max(b.maxX, l.maxX), Math.max(b.maxZ, l.maxZ));
   }
 
   // The charge you'd use: a breaching charge, else C4

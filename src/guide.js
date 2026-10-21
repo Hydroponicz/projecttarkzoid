@@ -122,6 +122,15 @@ export const ARTICLES = [
 <p>Look at something within about two metres and press ${K('F')}: a door, a container, a bed, a person, a window, an elevator button, a garden plot, a well.</p>
 <p><b>Several things in reach</b> (a body lying in a doorway, a shelf beside a door): the prompt lists them all, with the one you'll use marked ▶. Turn the <b>mouse wheel</b> to choose, then press ${K('F')}. While the list is up, the wheel picks instead of changing your pace. What you picked stays picked while it's in reach.</p>
 <p>Open windows can be climbed through with ${K('Space')}; broken glass can cut you.</p>` },
+  { id: 'doors', sec: 'start', title: 'Doors: peeking, kicking, breaching', html: `
+<ul>
+<li><b>Tap</b> ${K('F')} to swing a door open or shut.</li>
+<li><b>Hold</b> ${K('F')} to ease it open a little at a time and let go to stop: a crack is enough to see and shoot through, not to walk through. Held on a wide-open door, it eases it shut.</li>
+<li>${K('K')} <b>kicks</b>. A shut door bursts open (anything standing behind it goes down) or, beaten enough, comes off its hinges. It's loud. With no door in front of you, a kick shoves a zombie back and may knock it over.</li>
+<li><b>Breaching charges</b> (from the gunsmith, or found in military kit) and C4: look at a shut door and the list offers <i>Plant a breaching charge</i>. Five beeping seconds, then the door comes in, with anything near it on the other side. Stand clear.</li>
+<li>Grenades and explosions splinter doors in range.</li>
+<li>Several doors in reach are listed separately: pick with the mouse wheel.</li>
+</ul>` },
 
   // ---------------------------------------------------------------- survive
   { id: 'health', sec: 'survive', title: 'Health and wounds', html: `
@@ -204,8 +213,11 @@ export const ARTICLES = [
   { id: 'survivors', sec: 'threats', title: 'Other survivors', html: `
 <ul>
 <li>Survivors scavenge and fight zombies too. Each one is <b>friendly</b>, <b>wary</b> or <b>hostile</b> (a bandit).</li>
-<li><b>Bandits</b> shout, keep their distance and shoot you. They flee when badly hurt.</li>
-<li><b>Wary</b> survivors warn you off; point a gun at them and they'll turn on you.</li>
+<li><b>Bandit gangs</b> hold a hideout (a warehouse, a garage block, a shop) with a stash crate in it, and someone always on guard. They go out raiding where the guns are (police, the army post, hardware stores, sometimes your safehouse), bring home guns, ammo, grenades and meds, re-arm from the stash and take in new members while there are spare guns: a gang left alone grows. Lone bandits join a gang, or find each other and start one.</li>
+<li><b>In a fight</b> bandits are good shots and get steadier the longer they hold on you. One of them spotting you, or the sound of gunfire nearby, brings the rest, and they come at you from different sides. Duck out of sight and they come looking, lobbing a grenade over your cover first if they have one. Standing in the open against a gang is how operatives die. Badly hurt, they run.</li>
+<li><b>Friendly survivors</b> scavenge food, water, meds and ammo, claim a house of their own and band together, three at most. Talk to one who trusts you and you can <b>recruit the whole band</b>. Don't help yourself to their stash.</li>
+<li>Hideouts and survivors' houses go on your map once you've come across them.</li>
+<li><b>Wary</b> survivors keep to themselves and wander; they warn you off, and point a gun at them and they'll turn on you.</li>
 <li>${K('G')} lowers your weapon so nobody feels threatened. Talking to someone lowers it for you.</li>
 <li>${K('F')} on a friendly or wary survivor to talk: ask who they are, ask for rumours about loot, trade, or have a trusted friend follow you.</li>
 <li><b>Trust</b> rises with fair trades, gifts and reassurance, and falls if you steal, aim at or shoot them. Others who see you shoot someone trust you less.</li>

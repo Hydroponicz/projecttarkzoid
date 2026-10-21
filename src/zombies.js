@@ -557,6 +557,7 @@ export class Zombies {
 
   // A noise at (x,z) with radius r draws zombies that hear it.
   noise(x, z, r, loud = false, y = 0) {
+    if (r >= 35) this.game?.survivors?.heard(x, z, r); // gangs hear the shooting too
     // Rain and wind drown out ordinary noises (not thunder or gunfire-loud ones)
     const W = this.game?.weather;
     if (W && !loud) r *= W.hearMul;
