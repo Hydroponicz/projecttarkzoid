@@ -6,6 +6,7 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { sfx } from './audio.js';
+import { ragdollParts, bodyMaterial } from './zombiemodel.js';
 
 // Joint indices
 const PEL = 0, CHE = 1, HEAD = 2, SHL = 3, ELL = 4, HAL = 5, SHR = 6, ELR = 7, HAR = 8,
@@ -176,14 +177,25 @@ class Ragdoll {
       g.add(m);
       return { m, a, b };
     };
-    this.segs = [
-      seg(0.13, 0.13, SHL, ELL, top), seg(0.11, 0.11, ELL, HAL, skin),
-      seg(0.13, 0.13, SHR, ELR, top), seg(0.11, 0.11, ELR, HAR, skin),
-      seg(0.17, 0.17, HIL, KNL, bottom), seg(0.15, 0.15, KNL, FTL, bottom),
-      seg(0.17, 0.17, HIR, KNR, bottom), seg(0.15, 0.15, KNR, FTR, bottom),
-    ];
-    this.torso = new THREE.Mesh(new THREE.BoxGeometry(0.48 * s, 0.66 * s, 0.27 * s), top);
-    this.head = new THREE.Mesh(new THREE.BoxGeometry(0.25 * s, 0.28 * s, 0.25 * s), skin);
+    if (spec.kind === 'zombie') {
+      // the same sculpted body the horde is drawn with, its own colours
+      const Z = ragdollParts(), mat = bodyMaterial(skin.color, top.color, bottom.color);
+      const part = (geo, a, b) => { const m = new THREE.Mesh(geo, mat); m.scale.setScalar(s); m.castShadow = true; g.add(m); return { m, a, b }; };
+      this.segs = [part(Z.uarm, SHL, ELL), part(Z.farm, ELL, HAL), part(Z.uarm, SHR, ELR), part(Z.farm, ELR, HAR),
+        part(Z.thigh, HIL, KNL), part(Z.shin, KNL, FTL), part(Z.thigh, HIR, KNR), part(Z.shin, KNR, FTR)];
+      this.torso = new THREE.Mesh(Z.torso, mat); this.head = new THREE.Mesh(Z.head, mat);
+      this.torso.scale.setScalar(s); this.head.scale.setScalar(s);
+      this.ownMat = mat;
+    } else {
+      this.segs = [
+        seg(0.13, 0.13, SHL, ELL, top), seg(0.11, 0.11, ELL, HAL, skin),
+        seg(0.13, 0.13, SHR, ELR, top), seg(0.11, 0.11, ELR, HAR, skin),
+        seg(0.17, 0.17, HIL, KNL, bottom), seg(0.15, 0.15, KNL, FTL, bottom),
+        seg(0.17, 0.17, HIR, KNR, bottom), seg(0.15, 0.15, KNR, FTR, bottom),
+      ];
+      this.torso = new THREE.Mesh(new THREE.BoxGeometry(0.48 * s, 0.66 * s, 0.27 * s), top);
+      this.head = new THREE.Mesh(new THREE.BoxGeometry(0.25 * s, 0.28 * s, 0.25 * s), skin);
+    }
     this.torso.castShadow = this.head.castShadow = true;
     g.add(this.torso, this.head);
     // Extras ride on the torso or head (backpack, vest, helmet, hair, eyes)
@@ -524,7 +536,7 @@ class Ragdoll {
     this.liveGroup = this.group;
     this.sys.scene.remove(this.group);
     // (its GPU buffers go; they're uploaded again if the body is disturbed)
-    this.liveGroup.traverse((o) => { if (o.isMesh) o.geometry.dispose(); });
+    this.liveGroup.traverse((o) => { if (o.isMesh && !o.geometry.userData.shared) o.geometry.dispose(); });
     const g = new THREE.Group();
     for (const [mat, geos] of byMat) { const m = new THREE.Mesh(mergeGeometries(geos), mat); m.castShadow = true; m.receiveShadow = true; g.add(m); }
     this.group = g;
@@ -550,7 +562,7 @@ class Ragdoll {
   dispose() {
     this.sys.scene.remove(this.group);
     if (this.liveGroup) this.sys.scene.remove(this.liveGroup);
-    for (const g of [this.group, this.liveGroup]) g?.traverse((o) => { if (o.isMesh) o.geometry.dispose(); });
+    for (const g of [this.group, this.liveGroup]) g?.traverse((o) => { if (o.isMesh && !o.geometry.userData.shared) o.geometry.dispose(); });
     this.dead = true;
   }
 

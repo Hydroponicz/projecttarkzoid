@@ -31,6 +31,7 @@ class Heap {
 import { HALF, TOWN } from './world.js';
 import { sfx, zombieVoice } from './audio.js';
 import { lookMats, JOINT } from './ragdoll.js';
+import { zombieParts, crowdMaterial, bodyMaterial, legProp, vestGeometry, eyeGeo as zEyeGeo, EYE_POS, ELBOW, KNEE } from './zombiemodel.js';
 
 export const NAV_CELL = 0.6;
 export const NAV_N = Math.ceil((HALF * 2) / NAV_CELL);
@@ -61,66 +62,89 @@ const deadEyeMat = new THREE.MeshStandardMaterial({ color: 0x2a2010, roughness: 
 const smooth = (t) => t * t * (3 - 2 * t);
 const eyeGeo = new THREE.BoxGeometry(0.05, 0.03, 0.02);
 const pickArr = (a) => a[Math.floor(Math.random() * a.length)];
-const gibGeo = new THREE.BoxGeometry(0.17, 0.17, 0.8); // a severed leg, along z (as props lie)
 
 const _ray = new THREE.Raycaster(), _hits = [];
 
 // The horde is drawn as one instanced mesh per body part (a few draw calls
-// for every zombie in view, instead of ten each). Each zombie keeps its own
-// group of part meshes, never drawn: it carries the pose (animation, hit
-// reactions) and is what bullets are tested against.
-const helmetGeo = new THREE.SphereGeometry(0.17, 10, 6, 0, Math.PI * 2, 0, Math.PI / 2);
+// for every zombie in view, instead of dozens each), the sculpted model up
+// close and a lighter one further off. Each zombie keeps its own group of
+// part meshes, never drawn: it carries the pose (animation, hit reactions,
+// elbows and knees) and is what bullets are tested against.
+const helmetGeo = new THREE.SphereGeometry(0.128, 14, 7, 0, Math.PI * 2, 0, Math.PI / 2).scale(1, 0.95, 1.08);
 const vestGeo = new THREE.BoxGeometry(0.52, 0.42, 0.32);
+const LOD_NEAR = 24, LOD_FAR = 60; // (metres: the full model this close; the lightest past here)
+const BODY = ['torso', 'head', 'uarm', 'farm', 'thigh', 'shin'];
 class Crowd {
   constructor(scene) {
     this.scene = scene;
-    const body = new THREE.MeshStandardMaterial({ roughness: 0.95 });
-    this.kinds = {
-      torso: [geo.torso, body, 1], head: [geo.head, body, 1], arm: [geo.arm, body, 2], leg: [geo.leg, body, 2],
-      eye: [eyeGeo, eyeMat, 2], helmet: [helmetGeo, new THREE.MeshStandardMaterial({ color: 0x3e4a30, roughness: 0.8 }), 1],
-      vest: [vestGeo, new THREE.MeshStandardMaterial({ color: 0x3a4430, roughness: 0.9 }), 1],
-    };
+    const P = zombieParts(), body = crowdMaterial();
+    this.kinds = {};
+    const per = { torso: 1, head: 1, uarm: 2, farm: 2, thigh: 2, shin: 2 };
+    for (const k of BODY) for (const L of [0, 1, 2]) this.kinds[k + L] = [P[L][k], body, per[k], true];
+    Object.assign(this.kinds, {
+      eye: [zEyeGeo, eyeMat, 2], helmet: [helmetGeo, new THREE.MeshStandardMaterial({ color: 0x3e4a30, roughness: 0.8 }), 1],
+      vest: [vestGeometry(), new THREE.MeshStandardMaterial({ color: 0x3a4430, roughness: 0.9 }), 1],
+    });
     this.meshes = {};
+    this.near = LOD_NEAR; this.far = LOD_FAR; // (adjustable from the console)
     this.grow(256);
   }
 
   grow(cap) {
     this.cap = cap;
-    for (const [k, [g, m, per]] of Object.entries(this.kinds)) {
-      if (this.meshes[k]) { this.scene.remove(this.meshes[k]); this.meshes[k].dispose(); }
-      const im = new THREE.InstancedMesh(g, m, cap * per);
+    for (const [k, [g, m, per, colored]] of Object.entries(this.kinds)) {
+      if (this.meshes[k]) { this.scene.remove(this.meshes[k]); if (colored) this.meshes[k].geometry.dispose(); this.meshes[k].dispose(); }
+      // (each its own copy of the shape: the colours ride on it per instance)
+      const geo = colored ? g.clone() : g;
+      if (colored) for (const a of ['iSkin', 'iTop', 'iBot']) geo.setAttribute(a, new THREE.InstancedBufferAttribute(new Float32Array(cap * per * 3), 3).setUsage(THREE.DynamicDrawUsage));
+      const im = new THREE.InstancedMesh(geo, m, cap * per);
       im.frustumCulled = false; // the horde moves; a box test per part is cheaper done by the GPU
-      im.castShadow = k !== 'eye'; im.receiveShadow = true;
-      if (m.color.getHex() === 0xffffff) im.setColorAt(0, new THREE.Color());
+      im.castShadow = k !== 'eye' && !k.endsWith('2'); im.receiveShadow = true; // (far off, no shadows: they'd hardly show)
       im.count = 0;
       this.scene.add(im);
       this.meshes[k] = im;
     }
   }
 
-  draw(list) {
+  draw(list, cam) {
     if (this.hold) return; // (a second pass over the same frame: keep what's drawn)
     let n = 0;
     for (const zb of list) if (zb.mesh.visible) n++;
     if (n > this.cap) this.grow(Math.ceil(n / 256) * 256);
-    const M = this.meshes, c = { torso: 0, head: 0, arm: 0, leg: 0, eye: 0, helmet: 0, vest: 0 };
-    const put = (k, obj, col) => { const im = M[k], i = c[k]++; im.setMatrixAt(i, obj.matrixWorld); if (col) im.setColorAt(i, col); };
+    const M = this.meshes, c = {};
+    for (const k in M) c[k] = 0;
+    const cx = cam?.position.x ?? 0, cz = cam?.position.z ?? 0, far2 = this.far * this.far;
+    // (a horde on top of you: the full model for the nearest forty or so, not all of them)
+    this.nearNow = Math.min(this.near, this.nearNow ?? this.near);
+    const near2 = this.nearNow * this.nearNow;
+    let close = 0;
+    let sk, tp, bt;
+    const put = (k, obj) => {
+      const im = M[k], i = c[k]++;
+      im.setMatrixAt(i, obj.matrixWorld);
+      if (sk) { const g = im.geometry.attributes; g.iSkin.setXYZ(i, sk.r, sk.g, sk.b); g.iTop.setXYZ(i, tp.r, tp.g, tp.b); g.iBot.setXYZ(i, bt.r, bt.g, bt.b); }
+    };
     for (const zb of list) {
       if (!zb.mesh.visible) continue;
-      const p = zb.parts;
-      put('torso', p.torso, p.torso.material.color);
-      put('head', p.head, p.head.material.color);
-      put('arm', p.armL, p.armL.material.color); put('arm', p.armR, p.armR.material.color);
-      if (!p.legL.userData.gone) put('leg', p.legL, p.legL.material.color);
-      if (!p.legR.userData.gone) put('leg', p.legR, p.legR.material.color);
+      const p = zb.parts, d2 = (zb.pos.x - cx) ** 2 + (zb.pos.z - cz) ** 2, L = d2 < near2 ? 0 : d2 < far2 ? 1 : 2;
+      if (!L) close++;
+      sk = p.head.material.color; tp = p.torso.material.color; bt = p.legL.material.color;
+      put('torso' + L, p.torso); put('head' + L, p.head);
+      put('uarm' + L, p.armL); put('uarm' + L, p.armR);
+      put('farm' + L, p.foreL); put('farm' + L, p.foreR);
+      if (!p.legL.userData.gone) { put('thigh' + L, p.legL); put('shin' + L, p.shinL); }
+      if (!p.legR.userData.gone) { put('thigh' + L, p.legR); put('shin' + L, p.shinR); }
+      sk = null;
       put('eye', p.eyes[0]); put('eye', p.eyes[1]);
       if (p.helmet) { put('helmet', p.helmet); put('vest', p.vest); }
     }
+    this.nearNow = close > 40 ? Math.max(6, this.nearNow * 0.9) : Math.min(this.near, this.nearNow * 1.02 + 0.05);
     for (const k in M) {
       const im = M[k];
       im.count = c[k];
       im.instanceMatrix.needsUpdate = true;
-      if (im.instanceColor) im.instanceColor.needsUpdate = true;
+      const g = im.geometry.attributes;
+      if (g.iSkin) g.iSkin.needsUpdate = g.iTop.needsUpdate = g.iBot.needsUpdate = true;
     }
   }
 }
@@ -132,7 +156,7 @@ export class Zombies {
     this.list = [];
     this.crowd = new Crowd(scene);
     // (posed every time the scene is drawn, after its matrices are updated)
-    this.drawHook = () => this.crowd.draw(this.list);
+    this.drawHook = (r, sc, cam) => this.crowd.draw(this.list, cam);
     scene.onBeforeRender = this.drawHook;
     this.buildNav();
     this.field = new Uint16Array((FIELD_R * 2 + 1) ** 2);
@@ -552,20 +576,24 @@ export class Zombies {
     const pants = t.cloth ? cloth : pickArr(clothMats);
     const torso = new THREE.Mesh(geo.torso, cloth); torso.position.y = 1.15;
     const head = new THREE.Mesh(geo.head, skin); head.position.y = 1.65;
-    const e1 = new THREE.Mesh(eyeGeo, eyeMat); e1.position.set(-0.06, 0.03, 0.135);
-    const e2 = e1.clone(); e2.position.x = 0.06;
+    const e1 = new THREE.Mesh(eyeGeo, eyeMat); e1.position.set(...EYE_POS[0]);
+    const e2 = e1.clone(); e2.position.set(...EYE_POS[1]);
     head.add(e1, e2);
     let helmet = null, vest = null;
-    const armL = new THREE.Mesh(geo.arm, skin); armL.position.set(-0.32, 1.38, 0);
-    const armR = new THREE.Mesh(geo.arm, skin); armR.position.set(0.32, 1.38, 0);
+    const armL = new THREE.Mesh(geo.arm, skin); armL.position.set(-0.255, 1.4, 0);
+    const armR = new THREE.Mesh(geo.arm, skin); armR.position.set(0.255, 1.4, 0);
     const legL = new THREE.Mesh(geo.leg, pants); legL.position.set(-0.13, 0.82, 0);
     const legR = new THREE.Mesh(geo.leg, pants); legR.position.set(0.13, 0.82, 0);
     g.add(torso, head, armL, armR, legL, legR);
+    // elbows and knees: the forearm and shin hang off the end of the upper limb
+    const foreL = new THREE.Object3D(), foreR = new THREE.Object3D(), shinL = new THREE.Object3D(), shinR = new THREE.Object3D();
+    foreL.position.z = foreR.position.z = ELBOW; armL.add(foreL); armR.add(foreR);
+    shinL.position.y = shinR.position.y = -KNEE; legL.add(shinL); legR.add(shinR);
     if (t.helmet) {
       helmet = new THREE.Mesh(helmetGeo, eyeMat);
-      helmet.position.y = 0.08; head.add(helmet);
+      helmet.position.set(0, 0.07, -0.004); head.add(helmet);
       vest = new THREE.Mesh(vestGeo, eyeMat);
-      vest.position.y = 1.2; g.add(vest);
+      vest.position.y = 0.04; torso.add(vest); // (worn: it goes where the torso goes)
     }
     // (the crowd draws it: these meshes only hold the pose and take the hits)
     g.traverse((o) => { if (o.isMesh) o.visible = false; });
@@ -574,7 +602,7 @@ export class Zombies {
     g.position.set(x, y, z);
     this.scene.add(g);
     const zb = {
-      mesh: g, parts: { head, torso, armL, armR, legL, legR, eyes: [e1, e2], helmet, vest }, type: typeName, def: t,
+      mesh: g, parts: { head, torso, armL, armR, legL, legR, foreL, foreR, shinL, shinR, eyes: [e1, e2], helmet, vest }, type: typeName, def: t,
       pos: g.position, hp: t.hp, maxHp: t.hp, state: 'wander', target: null, lastSeen: 0,
       phase: Math.random() * 10, voice: zombieVoice(typeName), attackCd: 0, losTimer: Math.random() * 0.3, canSee: false,
       groanTimer: 3 + Math.random() * 10, wanderTimer: 0, dir: Math.random() * Math.PI * 2,
@@ -728,7 +756,7 @@ export class Zombies {
       zb.mesh.updateMatrixWorld(true);
       const hip = new THREE.Vector3(), foot = new THREE.Vector3(0, -0.8, 0);
       part.getWorldPosition(hip); part.localToWorld(foot);
-      const gib = new THREE.Mesh(gibGeo, part.material); gib.castShadow = true;
+      const gib = new THREE.Mesh(legProp(), bodyMaterial(zb.parts.head.material.color, zb.parts.torso.material.color, part.material.color)); gib.castShadow = true;
       const v = (dir ? dir.clone().setY(0).normalize().multiplyScalar(2 + Math.random() * 2) : new THREE.Vector3()).add(new THREE.Vector3((Math.random() - 0.5) * 2, 2 + Math.random() * 2, (Math.random() - 0.5) * 2));
       g.ragdolls.dropProp(gib, hip, foot, v);
       g.fx.blood(hip, dir || new THREE.Vector3(0, 1, 0), { power: 1.5, exit: true });
@@ -795,8 +823,8 @@ export class Zombies {
     const look = zb.look;
     const mats = lookMats(look);
     mats.skin = zb.parts.head.material; mats.top = zb.parts.torso.material; mats.bottom = zb.parts.legL.material;
-    mats.extra.push({ size: [0.05, 0.03, 0.02], off: [-0.06, 0.03, 0.13], on: 'head', mat: extra.dead ? deadEyeMat : eyeMat },
-      { size: [0.05, 0.03, 0.02], off: [0.06, 0.03, 0.13], on: 'head', mat: extra.dead ? deadEyeMat : eyeMat });
+    mats.extra.push({ size: [0.022, 0.022, 0.022], off: EYE_POS[0], on: 'head', mat: extra.dead ? deadEyeMat : eyeMat },
+      { size: [0.022, 0.022, 0.022], off: EYE_POS[1], on: 'head', mat: extra.dead ? deadEyeMat : eyeMat });
     zb.mesh.updateMatrixWorld(true);
     return {
       matrix: zb.mesh.matrixWorld, kind: 'zombie', scale: zb.def.scale, mats, look, lost: zb.lost,
@@ -1145,6 +1173,12 @@ export class Zombies {
       part.position.set(b.x, b.y, b.z - 0.17 * crawlK); // (lying down, lifted off the floor)
       part.rotation.set(0, 0, 0);
     }
+    // elbows (negative: the hand comes up and forward) and knees (positive:
+    // the foot goes back)
+    for (const j of [p.foreL, p.foreR, p.shinL, p.shinR]) j.rotation.set(0, 0, 0);
+    p.foreL.rotation.x = p.foreR.rotation.x = -0.28;
+    // (the arms hang a little out from the body, not glued to its sides)
+    p.armL.rotation.y = -0.1; p.armR.rotation.y = 0.1;
     p.head.rotation.x = K.x;
     if (crawlK > 0) {
       // Dragging itself along on its hands; the head up, looking for you
@@ -1156,7 +1190,11 @@ export class Zombies {
       p.torso.rotation.z = pull * 0.08;
       const drag = moving ? Math.sin(t * 1.6 + 1) * 0.15 : 0;
       p.legL.rotation.x = drag; p.legR.rotation.x = -drag;
-      if (zb.attackCd > 1.0) { p.armL.rotation.x = p.armR.rotation.x = -Math.PI / 2 - 0.4; }
+      // hauling itself along: an elbow bends as that hand pulls, the other
+      // reaches out straight; the legs trail, knees loose
+      p.foreL.rotation.x = -0.15 - Math.max(0, -pull) * 1.1 * crawlK; p.foreR.rotation.x = -0.15 - Math.max(0, pull) * 1.1 * crawlK;
+      p.shinL.rotation.x = 0.25 + Math.max(0, drag) * 0.6; p.shinR.rotation.x = 0.25 + Math.max(0, -drag) * 0.6;
+      if (zb.attackCd > 1.0) { p.armL.rotation.x = p.armR.rotation.x = -Math.PI / 2 - 0.4; p.foreL.rotation.x = p.foreR.rotation.x = -0.05; }
       return;
     }
     const chase = zb.state === 'chase';
@@ -1166,9 +1204,17 @@ export class Zombies {
       const st = G.stride * (chase ? 1.25 : 1), sw = Math.sin(t) * st;
       p.legL.rotation.x = sw * (bad === 'L' ? 0.35 : 1) + (G.drag === 1 ? 0.15 : 0);
       p.legR.rotation.x = -sw * (bad === 'R' ? 0.35 : 1) + (G.drag === -1 ? 0.15 : 0);
+      // the knee folds as the leg swings through, straightens to take the weight
+      // (a bad leg barely bends; a dragged foot scuffs along)
+      const kn = (chase ? 1.1 : 0.75) * st;
+      p.shinL.rotation.x = 0.08 + kn * Math.max(0, -Math.cos(t)) * (bad === 'L' ? 0.25 : 1) + (G.drag === 1 ? 0.25 : 0);
+      p.shinR.rotation.x = 0.08 + kn * Math.max(0, Math.cos(t)) * (bad === 'R' ? 0.25 : 1) + (G.drag === -1 ? 0.25 : 0);
       const arms = chase ? -0.15 : G.arms;
       p.armL.rotation.x = arms + Math.sin(t * 0.5) * 0.15;
       p.armR.rotation.x = arms + Math.cos(t * 0.5) * 0.15;
+      // reaching for you, the hands open and close; hanging, they swing loose
+      if (chase || arms < 1) { p.foreL.rotation.x = -0.12 - 0.25 * Math.max(0, Math.sin(t * 0.9)); p.foreR.rotation.x = -0.12 - 0.25 * Math.max(0, Math.cos(t * 0.9 + 0.5)); }
+      else { p.foreL.rotation.x = -0.2 - 0.18 * Math.sin(t + 0.6); p.foreR.rotation.x = -0.2 + 0.18 * Math.sin(t + 0.6); }
       p.torso.rotation.x = chase ? 0.22 : 0.08 + (G.arms > 1 ? 0.12 : 0);
       // lurching side to side with each step, worse on a bad leg
       const roll = Math.sin(t) * (G.lurch + (bad ? 0.14 : 0)) * (bad === 'R' ? -1 : 1);
@@ -1181,17 +1227,20 @@ export class Zombies {
       p.torso.rotation.x = 0.08;
       switch (chase ? 'sway' : zb.idleKind) {
         case 'sway': p.torso.rotation.z = Math.sin(T * 0.7) * 0.1; p.head.rotation.z = Math.sin(T * 0.5) * 0.3; break;
-        case 'hunch': p.torso.rotation.x = 0.5; p.head.rotation.x = K.x + 0.45; p.armL.rotation.x = p.armR.rotation.x = 1.5 + Math.sin(T) * 0.06; p.torso.rotation.z = Math.sin(T * 0.4) * 0.05; break;
+        case 'hunch': p.torso.rotation.x = 0.5; p.head.rotation.x = K.x + 0.45; p.armL.rotation.x = p.armR.rotation.x = 1.5 + Math.sin(T) * 0.06; p.torso.rotation.z = Math.sin(T * 0.4) * 0.05; p.foreL.rotation.x = p.foreR.rotation.x = -0.45; p.shinL.rotation.x = p.shinR.rotation.x = 0.22; break;
         case 'twitch': {
           if (Math.random() < dt * 0.7) K.v += (Math.random() - 0.5) * 9;
           if (Math.random() < dt * 0.3) zb.flail = 0.25;
           p.head.rotation.z = Math.sin(T * 0.4) * 0.2; break;
         }
-        case 'scratch': { const c = Math.max(0, Math.sin(T * 0.5)); p.armR.rotation.x = hang - c * 2.6; p.armR.rotation.z = -c * 0.4; p.head.rotation.z = c * 0.3; break; }
+        case 'scratch': { const c = Math.max(0, Math.sin(T * 0.5)); p.armR.rotation.x = hang - c * 1.9; p.armR.rotation.z = -c * 0.4; p.foreR.rotation.x = -0.3 - c * 1.7 + Math.sin(T * 9) * 0.12 * c; p.head.rotation.z = c * 0.3; break; }
         case 'look': p.head.rotation.y = Math.sin(T * 0.35) * 0.7; p.torso.rotation.y = Math.sin(T * 0.35) * 0.15; break;
       }
     }
-    if (zb.attackCd > 1.0) { p.armL.rotation.x = -0.6; p.armR.rotation.x = -0.6; }
+    // standing: the knees never quite straight
+    if (!moving) { p.shinL.rotation.x = Math.max(p.shinL.rotation.x, 0.06); p.shinR.rotation.x = Math.max(p.shinR.rotation.x, 0.1); }
+    // the lunge: arms thrown out straight, then the hands clawing in
+    if (zb.attackCd > 1.0) { const c = Math.min(1, (zb.attackCd - 1.0) / 0.3); p.armL.rotation.x = -0.6; p.armR.rotation.x = -0.6; p.foreL.rotation.x = p.foreR.rotation.x = -0.05 - (1 - c) * 0.9; }
     // a stumble: pitched forward, arms out to catch itself
     if (zb.stumble > 0.2) { const k = Math.min(1, zb.stumble / 0.5); p.torso.rotation.x += 0.35 * k; p.armL.rotation.x = p.armR.rotation.x = -0.7 * k + p.armL.rotation.x * (1 - k); }
     if (zb.flail > 0) {
@@ -1200,8 +1249,9 @@ export class Zombies {
       const k = Math.max(0, zb.flail / 0.6);
       p.armL.rotation.x -= k * 0.9; p.armR.rotation.x -= k * 0.7;
       p.armL.rotation.z = k * 0.6; p.armR.rotation.z = -k * 0.5;
+      p.foreL.rotation.x -= k * 0.5; p.foreR.rotation.x -= k * 0.3;
     }
-    if (zb.rise > 0.3) { p.armL.rotation.x = p.armR.rotation.x = 1.2; p.legL.rotation.x = p.legR.rotation.x = 0; }
+    if (zb.rise > 0.3) { p.armL.rotation.x = p.armR.rotation.x = 1.2; p.legL.rotation.x = p.legR.rotation.x = 0; p.foreL.rotation.x = p.foreR.rotation.x = -0.9; p.shinL.rotation.x = p.shinR.rotation.x = 0.6; }
   }
 
   // An open doorway close by (to line up on, rather than grind on its frame)

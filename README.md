@@ -214,6 +214,8 @@ Reloads, ammo and every other "do you have it" check look through your pockets, 
   - Chasing zombies follow a flow field around you (60 m). It routes them to doors, which they bash down if closed. Anything you build blocks them too, and brutes do triple damage when they bash.
   - Zombies further out, and zombies heading for a noise, use A* paths around walls and through doorways.
   - A zombie stuck on a wall sidesteps and finds a new route.
+  - They come as a crowd, not a queue: over open ground each closes in from its own side and they wrap around you; on a route each keeps to its own side of the street and goes round the one in front. Shut doors cost them a little extra, so they go round if it isn't far. Parked cars are on their map.
+- **Zombie models.** Sculpted, not boxes: a starved body in torn, bloodied clothes (ribs and spine showing through the holes, rags hanging off the hem and sleeves), a head with sunken glowing eyes, cheekbones, a rotted nose and a hanging jaw full of teeth, clawed hands with black nails, elbows and knees that bend as they walk and reach. A shader adds pores, wrinkles, cloth weave and wet blood. Three levels of detail (full up close, lighter past 24 m and 60 m; the nearest forty or so in full when a horde is on you), and the bodies they leave are the same models.
 
   How they react:
   - Shooting a zombie from any distance makes it flinch, then come for you.
