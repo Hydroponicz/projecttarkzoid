@@ -157,6 +157,8 @@ class Survivor {
   }
 
   say(text, vol = 1) {
+    // (a word, not a shout, with zombies about)
+    if (this.lurker && !this.lurker.dead && this.pos.distanceTo(this.lurker.pos) < 12) vol *= 0.4;
     this.say_ = text;
     this.sayT = 3.5;
     const d = this.mgr.distToPlayer(this);
@@ -401,6 +403,10 @@ class Survivor {
       const fleeHp = this.order === 'follow' ? 25 : 45;
       // a crowd closing in on someone with no gun (or no rounds): get out
       if (!this.crowdT || (this.crowdT -= dt) <= 0) { this.crowdT = 0.5; this.crowd = !hasAmmo && t.def ? game.zombies.list.filter((z) => Math.abs(z.pos.x - this.pos.x) < 7 && Math.abs(z.pos.z - this.pos.z) < 7).length : 0; }
+      // a pack on our trail: slip away before it's on top of us (shooting
+      // as we go only if one gets close); a lone one or two get a blade
+      const pack = t.def && this.hunters >= 4 && this.order !== 'wait';
+      const quiet = t.def && this.melee && this.hunters <= 2 && t.type !== 'brute' && this.hp > 70;
       if (this.hp < fleeHp || this.crowd >= 3) {
         // Run away from the threat
         if (!this.fleeing) { this.fleeing = true; this.say(pick(FLEE_LINES)); }
@@ -408,7 +414,19 @@ class Survivor {
         const ax = this.pos.x - tp.x, az = this.pos.z - tp.z, al = Math.hypot(ax, az) || 1;
         moveTo = { x: this.pos.x + (ax / al) * 10, z: this.pos.z + (az / al) * 10 };
         run = true;
-      } else if (hasAmmo && gunStats) {
+      } else if (pack) {
+        this.state = 'evade';
+        let cx = 0, cz = 0, n = 0;
+        for (const z of game.zombies.list) if (z.prey === this && z.state === 'chase') { cx += z.pos.x; cz += z.pos.z; n++; }
+        cx = n ? cx / n : tp.x; cz = n ? cz / n : tp.z;
+        let ax = this.pos.x - cx, az = this.pos.z - cz;
+        const home = this.home || this.mgr.factions?.groupOf(this)?.base; // (back toward their own place, if that's away from the pack)
+        if (home) { const hx = home.x - this.pos.x, hz = home.z - this.pos.z, hl = Math.hypot(hx, hz) || 1, al = Math.hypot(ax, az) || 1; if ((hx * ax + hz * az) / (hl * al) > -0.3) { ax = ax / al + hx / hl; az = az / al + hz / hl; } }
+        const al = Math.hypot(ax, az) || 1;
+        moveTo = { x: this.pos.x + (ax / al) * 12, z: this.pos.z + (az / al) * 12 };
+        run = dT < 8;
+        if (hasAmmo && gunStats && dT < 4) { face = tp; this.combatShoot(dt, game, t, dT, gunStats); }
+      } else if (hasAmmo && gunStats && !quiet) {
         face = tp;
         const isZombie = !!t.def;
         const want = isZombie ? 7 : Math.min(gunStats.range * 0.5, 14);
@@ -505,7 +523,12 @@ class Survivor {
     if (this.mgr.dialogFor === this || game.openContainer?.survivor === this || (this.trader && game.traders?.open === this.trader)) { moveTo = null; this.path = []; face = p.pos; }
 
     // --- movement ---
-    const speed = run ? 3.6 : 1.45;
+    // Creeping past a zombie that hasn't noticed us: slow, no running, giving
+    // it a wide berth (and harder to spot doing it)
+    const lk = this.lurker;
+    this.sneak = !t && !!lk && !lk.dead && lk.state !== 'chase' && Math.hypot(lk.pos.x - this.pos.x, lk.pos.z - this.pos.z) < 10 && this.state !== 'follow';
+    if (this.sneak) run = false;
+    const speed = run ? 3.6 : this.sneak ? 1.0 : 1.45;
     let mx = 0, mz = 0;
     if (moveTo) {
       // Direct if there's a clear line, otherwise pathfind there.
@@ -523,6 +546,11 @@ class Survivor {
       this.mgr.openDoorsAhead(this);
     }
     if (this.sidestep) { mx = this.sidestep.x; mz = this.sidestep.z; this.sidestep.t -= dt; if (this.sidestep.t <= 0) this.sidestep = null; }
+    if (this.sneak && !this.sidestep) {
+      const lx = this.pos.x - lk.pos.x, lz = this.pos.z - lk.pos.z, ll = Math.hypot(lx, lz) || 1, m0 = Math.hypot(mx, mz);
+      if (m0 > 0.3) { const k = 0.8 * (1 - ll / 10); const nx = mx / m0 + (lx / ll) * k, nz = mz / m0 + (lz / ll) * k, nl = Math.hypot(nx, nz) || 1; mx = (nx / nl) * m0; mz = (nz / nl) * m0; }
+    }
+    this.running = run;
     const ml = Math.hypot(mx, mz);
     let moved = 0;
     if (ml > 0.3 && !(this.state === 'follow' && !this.path.length && ml < 3.5)) {
@@ -606,7 +634,7 @@ class Survivor {
       return;
     }
     if (this.roundsLoaded() <= 0) {
-      if (this.reserve > 0) { this.reloadT = 2.6; if (this.mgr.distToPlayer(this) < 25) sfx.magOut(this.weapon?.key); if (Math.random() < 0.4) this.say('Reloading!', 0.5); }
+      if (this.reserve > 0) { this.reloadT = 2.6; if (this.mgr.distToPlayer(this) < 25) sfx.magOut(this.weapon?.key); if (!t.def && Math.random() < 0.4) this.say('Reloading!', 0.5); }
       return;
     }
     // Need line of sight, a moment to aim, and to be roughly facing the target.
@@ -616,8 +644,13 @@ class Survivor {
     if (Math.abs(Math.atan2(Math.sin(ang - this.dir), Math.cos(ang - this.dir))) > 0.25) return;
     this.aimT += dt;
     const sharp = this.disp === 'hostile' || this.order === 'follow';
-    if (this.aimT < (sharp ? 0.35 : 0.6) / this.skill || this.fireCd > 0) return;
-    if (st.burst && dT > 28) this.fireCd = st.rate * 3.5; // (taps at range)
+    // At zombies: aimed single shots, for the head, and only when it's close
+    // enough to matter (every shot is heard streets away)
+    const zed = !!t.def;
+    if (zed && dT > 14) { this.aimT = 0; return; }
+    if (this.aimT < (zed ? 0.7 : sharp ? 0.35 : 0.6) / this.skill || this.fireCd > 0) return;
+    if (zed) this.fireCd = Math.max(st.rate, 0.55) * (0.9 + Math.random() * 0.4);
+    else if (st.burst && dT > 28) this.fireCd = st.rate * 3.5; // (taps at range)
     else if (st.burst) {
       if (this.burst <= 0) { this.burst = 2 + Math.floor(Math.random() * st.burst); this.burstN = 0; }
       this.burst--; this.burstN = (this.burstN || 0) + 1;
@@ -635,7 +668,7 @@ class Survivor {
       if (p.prone) chance *= 0.5; else if (p.crouch) chance *= 0.75;
     }
     if (game.isNight && !(t === p && p.flashlight)) chance *= 0.7;
-    if (Math.random() < chance) this.mgr.hitTarget(this, t, st.dmg * (0.75 + Math.random() * 0.5));
+    if (Math.random() < chance) this.mgr.hitTarget(this, t, st.dmg * (0.75 + Math.random() * 0.5), false, zed ? 0.3 + 0.15 * this.skill : 0.12);
     else game.fx.impact(new THREE.Vector3(tx + (Math.random() - 0.5) * 1.5, 0.3 + Math.random() * 1.6, tz + (Math.random() - 0.5) * 1.5));
   }
 
@@ -654,12 +687,21 @@ class Survivor {
     const p = game.player;
     const mgr = this.mgr;
     const range = game.isNight ? 18 : 32;
-    // Zombies
-    let bestZ = null, bz = this.disp === 'hostile' ? 9 : 16;
+    // Zombies: only the ones that are a danger get dealt with: one coming for
+    // us (or for the player we're with), or about to walk into us. One that
+    // hasn't noticed us is left alone and crept past: a shot at it would
+    // only bring the rest of the street
+    let bestZ = null, bz = this.disp === 'hostile' ? 9 : 16, lurk = null, ld = 12, hunters = 0;
     for (const z of game.zombies.list) {
+      if (Math.abs(z.pos.x - this.pos.x) > 20 || Math.abs(z.pos.z - this.pos.z) > 20) continue;
       const d = this.pos.distanceTo(z.pos);
-      if (d < bz && (d < 4 || hasLOS(mgr.world.hash, this.pos.x, this.pos.z, z.pos.x, z.pos.z))) { bz = d; bestZ = z; }
+      const onUs = z.prey === this && z.state === 'chase';
+      if (onUs && d < 25) hunters++;
+      const danger = onUs || d < 3.5 || (d < 6 && z.state === 'chase') || (this.order === 'follow' && z.state === 'chase' && !z.prey && d < 14);
+      if (danger) { if (d < bz && (d < 4 || hasLOS(mgr.world.hash, this.pos.x, this.pos.z, z.pos.x, z.pos.z))) { bz = d; bestZ = z; } }
+      else if (d < ld) { ld = d; lurk = z; }
     }
+    this.hunters = hunters; this.lurker = lurk;
     // The player
     const seesP = dP < range && mgr.canSeePlayer(this);
     if (seesP && this.disp === 'hostile' && !game.dev?.invisible) {
@@ -687,15 +729,22 @@ class Survivor {
   }
 
   pickGoal(game) {
-    // Wander to a random building (scavenging) or a random street spot.
+    // Wander to a random building (scavenging) or a random street spot:
+    // of a few, the one with the fewest zombies about
     const W = this.mgr.world;
-    let tx, tz;
-    if (Math.random() < 0.75 && W.buildings.length) {
-      const b = pick(W.buildings);
-      tx = (b.x0 + b.x1) / 2 + (Math.random() - 0.5) * (b.x1 - b.x0) * 0.5;
-      tz = (b.z0 + b.z1) / 2 + (Math.random() - 0.5) * (b.z1 - b.z0) * 0.5;
-    } else {
-      tx = this.pos.x + (Math.random() - 0.5) * 60; tz = this.pos.z + (Math.random() - 0.5) * 60;
+    let tx, tz, best = Infinity;
+    for (let k = 0; k < 4 && best > 0; k++) {
+      let x, z;
+      if (Math.random() < 0.75 && W.buildings.length) {
+        const b = pick(W.buildings);
+        x = (b.x0 + b.x1) / 2 + (Math.random() - 0.5) * (b.x1 - b.x0) * 0.5;
+        z = (b.z0 + b.z1) / 2 + (Math.random() - 0.5) * (b.z1 - b.z0) * 0.5;
+      } else {
+        x = this.pos.x + (Math.random() - 0.5) * 60; z = this.pos.z + (Math.random() - 0.5) * 60;
+      }
+      let n = 0;
+      for (const zb of game.zombies.list) if (Math.abs(zb.pos.x - x) < 15 && Math.abs(zb.pos.z - z) < 15) n++;
+      if (n < best) { best = n; tx = x; tz = z; }
     }
     // Hostiles keep away from the player's safehouse less; others avoid wandering into it.
     const sh = game.safehouse;
@@ -872,15 +921,16 @@ export class Survivors {
       if (s.dead || s.trader) continue; // traders are left alone
       if (s.vip && s.order === 'wait') continue; // (a scientist lying low, holed up)
       const d = s.pos.distanceTo(pos);
-      if (d < bd && hasLOS(this.world.hash, pos.x, pos.z, s.pos.x, s.pos.z)) { bd = d; best = s; }
+      // (seen sooner running about, later creeping)
+      if (d < bd && d < range * (s.sneak ? 0.55 : s.running ? 1.2 : 1) && hasLOS(this.world.hash, pos.x, pos.z, s.pos.x, s.pos.z)) { bd = d; best = s; }
     }
     return best ? { s: best, d: bd } : null;
   }
 
-  hitTarget(from, t, dmg, melee = false) {
+  hitTarget(from, t, dmg, melee = false, headChance = 0.12) {
     const g = this.game;
     if (t === g.player) { g.player.takeBulletHit(dmg, from.met ? from.name : 'a survivor'); return; }
-    const head = !melee && Math.random() < 0.12;
+    const head = !melee && Math.random() < headChance;
     const point = new THREE.Vector3(t.pos.x, head ? 1.62 : 0.6 + Math.random() * 0.8, t.pos.z);
     const dir = new THREE.Vector3(t.pos.x - from.pos.x, (point.y - 1.35) * 0.2, t.pos.z - from.pos.z).normalize();
     const hit = { point, dir, force: Math.min(6, dmg * 0.075) };

@@ -889,6 +889,12 @@ export class GunController {
     if (parts.flash.visible) { parts.flash.rotation.z = Math.random() * 6; parts.flash.scale.setScalar(0.7 + Math.random() * 0.6); }
 
     // --- input: fire mode, mag check, reload, trigger ---
+    // Y: the laser on or off
+    if (input.laser && w.mods?.tactical && ITEMS[w.mods.tactical.key]?.hip) {
+      w.laserOn = w.laserOn === false;
+      sfx.click(2600, 0.1);
+      p.game.hud.message(`Laser ${w.laserOn ? 'on' : 'off'}`, 1.2);
+    }
     if (input.fireMode && def.auto && !this.busy) {
       w.mode = w.mode === 'auto' ? 'semi' : 'auto';
       sfx.selector(w.key); this.play('mode', 0.25);
@@ -921,6 +927,7 @@ export class GunController {
   // ---------- animation ----------
   updateAnim(dt, w, def, cfg, parts, input) {
     const a = this.anim;
+    if (this.chamberRound && a?.type !== 'chamber') this.chamberRound.visible = false;
     if (!a) return;
     if (a.type === 'reload') return this.updateReload(dt, a, w, cfg, parts);
     a.t += dt / a.dur;
@@ -940,15 +947,34 @@ export class GunController {
       if (def.tube && parts.pump) parts.pump.position.z += 0.03 * bump(0.25, 0.4, 0.6, 0.75, t);
       if (L && w.mag) L.position.lerpVectors(L0, parts.magRoot.position.clone().add(new THREE.Vector3(-0.02, -0.06, 0)), bump(0.1, 0.25, 0.75, 0.9, t));
     } else if (a.type === 'chamber') {
-      // Rolled over to look into the ejection port; the bolt (or slide, or the
-      // pump) eased back just far enough to see brass, then let go
+      // Brought in and turned so the ejection port faces you (the right side
+      // of the gun toward the eye, rolled up a little), the bolt (or slide,
+      // or the pump) eased back just far enough to see brass, then let go
       const k = bump(0, 0.22, 0.75, 1, t), pull = bump(0.2, 0.38, 0.62, 0.78, t);
-      pose.rotation.z += 0.75 * k; pose.rotation.x += 0.18 * k; pose.position.x += 0.03 * k; pose.position.y += 0.03 * k;
+      pose.rotation.y -= 0.5 * k; pose.rotation.z += 0.95 * k; pose.rotation.x += 0.2 * k;
+      pose.position.x -= 0.08 * k; pose.position.y += 0.08 * k; pose.position.z -= 0.06 * k;
+      // the round in the chamber, showing through the port (or nothing)
+      if (parts.eject) {
+        let r = this.chamberRound;
+        if (!r || r.parent !== parts.eject.parent) {
+          r?.parent?.remove(r);
+          r = this.chamberRound = new THREE.Group();
+          const shell = !!def.tube;
+          C(r, shell ? 0.0095 : 0.0055, shell ? 0.045 : 0.024, shell ? MAT.shell : MAT.brass, 0, 0, 0.004, 10);
+          if (!shell) C(r, 0.0038, 0.012, new THREE.MeshStandardMaterial({ color: 0xb06a3a, metalness: 0.8, roughness: 0.35 }), 0, 0, -0.014, 10);
+          else C(r, 0.0102, 0.012, MAT.brass, 0, 0, 0.028, 10);
+          r.traverse((o) => o.layers.set(VM_LAYER));
+          parts.eject.parent.add(r);
+        }
+        r.position.copy(parts.eject.position).add(new THREE.Vector3(-0.002, 0.004, -0.012));
+        r.visible = !!w.chamber && pull > 0.25;
+      }
       const travel = cfg.boltTravel || 0.05;
       if (parts.slide) parts.slide.position.z = travel * 0.45 * pull;
       else if (parts.bolt) parts.bolt.position.z = travel * 0.45 * pull;
       if (def.tube && parts.pump) parts.pump.position.z = 0.035 * pull;
-      if (L && (parts.bolt || parts.slide)) L.position.lerpVectors(L0, (parts.bolt || parts.slide).position.clone().add(new THREE.Vector3(0.03, 0.01, 0.02)), bump(0.08, 0.22, 0.78, 0.92, t));
+      // (the hand on the handle from behind and below, clear of the port)
+      if (L && (parts.bolt || parts.slide)) L.position.lerpVectors(L0, (parts.bolt || parts.slide).position.clone().add(new THREE.Vector3(0.02, -0.08, 0.14)), bump(0.08, 0.22, 0.78, 0.92, t));
       if (t >= 0.3 && !a.clacked) { a.clacked = true; sfx.chamber(w.key); } // (halfway back)
     } else if (a.type === 'shell') {
       // A shell in the fingers, pushed up into the loading port
@@ -1337,7 +1363,7 @@ export class GunController {
     const armsBroken = (p.hp.armL <= 0 || p.hp.armR <= 0) && p.painkiller <= 0;
     // Hip fire is as accurate as aiming once your Guns skill is maxed
     const gunsK = Math.min(1, (p.skill.guns || 0) / 8), steady = Math.max(this.ads, gunsK);
-    const laser = w.mods.tactical ? ITEMS[w.mods.tactical.key].hip || 1 : 1;
+    const laser = w.mods.tactical && w.laserOn !== false ? ITEMS[w.mods.tactical.key].hip || 1 : 1; // (switched off it's no help)
     let spread = cfg.accuracy + (1 - this.ads) * cfg.hipSpread * (1 - gunsK) * laser;
     if (ctx.moving) spread += 0.012 * (1 - steady * 0.6);
     if (armsBroken) spread += 0.05;
@@ -1480,16 +1506,25 @@ export class GunController {
       this.laserDot.visible = this.laserBeam.visible = false;
       scene.add(this.laserDot, this.laserBeam);
     }
-    const on = this.root.visible && w?.mods?.tactical && parts?.laser && !this.lowered && !this.p.dead;
+    const on = this.root.visible && w?.mods?.tactical && parts?.laser && w.laserOn !== false && !this.p.dead;
     if (!on) { this.laserDot.visible = this.laserBeam.visible = false; return; }
-    const g = this.p.game, o = this.camera.getWorldPosition(new THREE.Vector3());
+    const g = this.p.game, from = parts.laser.getWorldPosition(new THREE.Vector3());
+    // Shouldered, the dot is where the bullets go. Carried low, at a run, or
+    // mid-reload it points wherever the barrel does
+    const free = Math.min(1, Math.max(this.sprintBlend || 0, this.lowerK || 0, (this.retract || 0) * 1.5, this.busy && this.anim?.type !== 'mode' ? 1 : 0));
+    this.laserFree = (this.laserFree || 0) + (free - (this.laserFree || 0)) * 0.25;
+    const k = this.laserFree;
     const q = new THREE.Quaternion().setFromEuler(_scopeEuler.set(this.p.pitch + this.offPitch, this.p.yaw + this.offYaw, 0, 'YXZ'));
     const dir = new THREE.Vector3(0, 0, -1).applyQuaternion(q);
+    if (k > 0.01) {
+      const barrel = new THREE.Vector3(0, 0, -1).applyQuaternion(parts.laser.getWorldQuaternion(new THREE.Quaternion()));
+      dir.lerp(barrel, k).normalize();
+    }
+    const o = k < 0.5 ? this.camera.getWorldPosition(new THREE.Vector3()) : from;
     const hit = g.air?.cast(o, dir, 160);
     const end = hit || o.clone().addScaledVector(dir, 160);
     this.laserDot.visible = !!hit;
     if (hit) { this.laserDot.position.copy(hit).addScaledVector(dir, -0.03); this.laserDot.scale.setScalar(Math.max(0.025, o.distanceTo(hit) * 0.004)); }
-    const from = parts.laser.getWorldPosition(new THREE.Vector3());
     this.laserBeam.geometry.setFromPoints([from, end]);
     this.laserBeam.visible = true;
   }

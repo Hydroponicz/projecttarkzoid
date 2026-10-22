@@ -110,6 +110,7 @@ export const ARTICLES = [
 <tr><td>${K('Tab')} or ${K('I')}</td><td>Inventory</td></tr>
 <tr><td>${K('H')}</td><td>Quick-heal (bandage if bleeding, otherwise a medkit)</td></tr>
 <tr><td>${K('L')}</td><td>Flashlight (headlights in a car)</td></tr>
+<tr><td>${K('Y')}</td><td>Laser on / off (with a laser module fitted)</td></tr>
 <tr><td>${K('M')}</td><td>Map</td></tr>
 <tr><td>${K('B')}</td><td>Build mode</td></tr>
 <tr><td>${K('V')}</td><td>Claim a safehouse</td></tr>

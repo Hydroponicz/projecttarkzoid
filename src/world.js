@@ -1846,7 +1846,7 @@ export function setDoorAng(d, a) {
   d.box.noCollide = !shut && !!d.segs;
   if (!d.segs) d.box.noCollide = d.open;
   d.box.blocksShot = d.box.blocksSight = shut || (!d.segs && a < 0.06);
-  d.mesh.rotation.y = d.baseRot + a * (Math.PI / 2);
+  d.mesh.rotation.y = d.baseRot + a * (Math.PI / 2) * (d.swing || 1); // (swing: which way it opens, -1 = the other way)
   if (d.segs && !d.broken) {
     const r = d.mesh.rotation.y, cx = Math.cos(r), cz = -Math.sin(r), px = d.mesh.position.x, pz = d.mesh.position.z;
     const n = d.segs.length, L = d.w - 0.04, seg = L / n;

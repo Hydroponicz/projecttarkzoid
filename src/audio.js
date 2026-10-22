@@ -671,7 +671,7 @@ export const sfx = {
   },
   pickup() { tone(500, 0.06, 0.12, 'triangle'); },
   hammer() { for (let i = 0; i < 3; i++) { tick(i * 0.16, 1800, 0.55, 2); ring(i * 0.16, 900, 0.06, 0.1); } },
-  bash() { noise(0.25, 250, 1, 0.7, 'lowpass', 0.25, { buf: brown, wet: 0.25 }); tone(60, 0.2, 0.4); },
+  bash(vol = 1) { noise(0.25, 250, 1, 0.7 * vol, 'lowpass', 0.25, { buf: brown, wet: 0.25 }); tone(60, 0.2, 0.4 * vol); },
   door(vol = 1) { if (!ctx) return; scrape(0, 300, 180, 0.25, 0.1 * vol); tick(0.2, 1500, 0.15 * vol, 2); },
   // a door eased open: a long low creak
   creak(vol = 1) { if (!ctx) return; scrape(0, 520, 340, 0.9, 0.06 * vol); scrape(0.35, 430, 610, 0.6, 0.04 * vol); },

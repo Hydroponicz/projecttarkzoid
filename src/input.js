@@ -93,7 +93,7 @@ export class Input {
       slot1: p('Digit1'), slot2: p('Digit2'),
       hot: [p('Digit3'), p('Digit4'), p('Digit5'), p('Digit6')],
       check: p('KeyT'), fireMode: p('KeyZ'),
-      flashlight: p('KeyL'),
+      flashlight: p('KeyL'), laser: p('KeyY'),
       inventory: p('Tab') || p('KeyI'), map: p('KeyM'),
       heal: p('KeyH'), lower: p('KeyG'), designate: p('KeyN'),
       mdx: live ? this.mdx : 0, mdy: live ? this.mdy : 0,

@@ -447,6 +447,7 @@ class Game {
         const door = slots.doors[i];
         if (!door || !d) return;
         door.hp = d.hp;
+        if (d.swing === -1) door.swing = -1;
         if (d.broken) this.breakDoor(door, true); else { if (d.ang != null) setDoorAng(door, d.ang); else setDoor(door, d.open); door.target = door.ang; this.doorTint(door); }
       });
       for (const i of w.felled) this.world.fellTree(i);
@@ -595,7 +596,7 @@ class Game {
         type: c.type, gid: c.gid, name: c.name, x: +c.x.toFixed(2), z: +c.z.toFixed(2), base: c.base || undefined, grid: c.grid, color: c.color, look: c.look,
         pose: c.ragdoll && !c.ragdoll.dead && c.ragdoll.sleeping ? c.ragdoll.pose() : undefined,
       })),
-      doors: W.slots.doors.map((d) => (d ? { open: d.open, hp: d.hp, broken: d.broken || undefined, ang: d.ang > 0.01 && d.ang < 0.99 ? +d.ang.toFixed(2) : undefined } : null)),
+      doors: W.slots.doors.map((d) => (d ? { open: d.open, hp: d.hp, broken: d.broken || undefined, ang: d.ang > 0.01 && d.ang < 0.99 ? +d.ang.toFixed(2) : undefined, swing: d.swing === -1 ? -1 : undefined } : null)),
       felled: [...W.felled],
       windows: W.slots.windows.map((wn) => (wn && wn.state === 'open' ? 1 : wn && wn.state === 'broken' ? 2 : 0)),
       structures: this.builder.serialize(),
@@ -1106,7 +1107,16 @@ class Game {
     this.zombies.noise(d.x, d.z, 22, false, d.base || 0);
     this.damageStructure(d, 70 + 18 * str + Math.random() * 40, p.pos);
     if (d.broken) return;
-    // not off its hinges: it slams open, and anyone behind it takes the edge
+    // not off its hinges: it slams open, away from you (whichever way it
+    // usually opens), and anyone behind it takes the edge
+    if ((d.ang || 0) < 0.1) {
+      const tx = d.x - p.pos.x, tz = d.z - p.pos.z;
+      // the open leaf lies along (cos r, -sin r) from the hinge: pick the way that points it away
+      const away = (sg) => Math.cos(d.baseRot + sg * Math.PI / 2) * tx - Math.sin(d.baseRot + sg * Math.PI / 2) * tz;
+      const was = d.swing || 1;
+      d.swing = away(1) >= away(-1) ? 1 : -1;
+      if (d.swing !== was && d.ang) setDoorAng(d, d.ang);
+    }
     this.swingDoor(d, 1, 7);
     sfx.doorBreak?.(0.35);
     for (const zb of this.zombies.list) {
@@ -1205,19 +1215,28 @@ class Game {
     this.hud.message('Timber! Two logs dropped at your feet. Saw them into planks.', 4);
   }
 
+  // How loud a knock or crash at (x, z) is where you stand: fading with
+  // distance and gone past R metres, quieter through a floor
+  heardAt(x, z, R, y = 0) {
+    const p = this.player, d = Math.hypot(x - p.pos.x, z - p.pos.z);
+    if (d >= R) return 0;
+    return (1 - d / R) ** 1.6 * (Math.abs(y - (p.floorY || 0)) > 1.2 ? 0.45 : 1);
+  }
+
   // from: who's hitting it (for which way splinters and planks fly)
   damageStructure(s, dmg, from) {
     if (s.kind === 'window') {
       if (s.state !== 'closed') return;
       s.hp -= dmg;
-      sfx.glassHit(this.player.pos.distanceTo(new THREE.Vector3(s.x, 0, s.z)) < 25 ? 1 : 0.3);
+      const v = this.heardAt(s.x, s.z, 22, s.base || 0);
+      if (v > 0.02) sfx.glassHit(v);
       if (s.hp <= 0) this.breakWindow(s, new THREE.Vector3(s.x, (s.sill + s.top) / 2, s.z), from ? new THREE.Vector3(s.x - from.x, 0, s.z - from.z).normalize() : null);
       return;
     }
     s.hp -= dmg;
     const p = this.player.pos;
-    const near = Math.hypot(s.x - p.x, s.z - p.z) < 30;
-    if (near) sfx.bash();
+    const near = Math.hypot(s.x - p.x, s.z - p.z) < 30, v = this.heardAt(s.x, s.z, 26, s.base || 0);
+    if (v > 0.02) sfx.bash(v);
     if (s.kind === 'door') {
       // The door shakes, splinters and darkens as it's beaten
       s.shake = 0.3;
@@ -1243,8 +1262,8 @@ class Game {
   breakWindow(w, point, dir) {
     if (w.state === 'broken') return;
     setWindow(w, 'broken');
-    const d = this.player.pos.distanceTo(new THREE.Vector3(w.x, 0, w.z));
-    sfx.glass(Math.max(0.15, 1 - d / 40));
+    const v = this.heardAt(w.x, w.z, 40, w.base || 0);
+    if (v > 0.02) sfx.glass(v);
     const p = point || new THREE.Vector3(w.x, (w.sill + w.top) / 2, w.z);
     const glass = new THREE.Color(0xc8e0e8);
     for (let i = 0; i < 26; i++) {
@@ -1261,7 +1280,8 @@ class Game {
     this.shaking.delete(d);
     if (!silent && this.ragdolls) {
       // It bursts: planks fly away from whoever broke it
-      sfx.doorBreak(Math.max(0.2, 1 - this.player.pos.distanceTo(new THREE.Vector3(d.x, 0, d.z)) / 40));
+      const v = this.heardAt(d.x, d.z, 40, d.base || 0);
+      if (v > 0.02) sfx.doorBreak(v);
       const dir = from ? new THREE.Vector3(d.x - from.x, 0, d.z - from.z).normalize() : new THREE.Vector3();
       const along = d.ax === 'x' ? new THREE.Vector3(1, 0, 0) : new THREE.Vector3(0, 0, 1);
       const mat = new THREE.MeshStandardMaterial({ color: 0x5a3a22, roughness: 0.8 });
@@ -1442,7 +1462,7 @@ class Game {
     this.updateDoors(dt);
     for (const d of this.shaking) {
       d.shake -= dt;
-      const base = d.baseRot + (d.ang ?? (d.open ? 1 : 0)) * (Math.PI / 2);
+      const base = d.baseRot + (d.ang ?? (d.open ? 1 : 0)) * (Math.PI / 2) * (d.swing || 1);
       d.mesh.rotation.y = base + (d.shake > 0 ? Math.sin(d.shake * 70) * 0.025 * (d.shake / 0.3) : 0);
       d.sync?.();
       if (d.shake <= 0) this.shaking.delete(d);

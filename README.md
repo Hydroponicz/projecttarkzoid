@@ -436,6 +436,7 @@ Zombies and survivors react physically to what hits them.
 | Tab or I | Inventory. Close it with Esc, Tab, F, the Close button, a click outside, or by walking off. |
 | H | Quick-heal (bandage if bleeding, otherwise a medkit) |
 | L | Flashlight |
+| Y | Laser on / off |
 | M | Map (your safehouse is outlined in yellow) |
 | B | Build mode: 1–8 select a piece (7 = rain barrel, 8 = garden plot), R rotate, LMB build, X dismantle |
 | N | Raise / lower the laser designator (if you carry one): hold LMB to lase, wheel to zoom |
