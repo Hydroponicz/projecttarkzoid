@@ -1427,7 +1427,7 @@ class Game {
     }
 
     // Flying a drone: it has the controls
-    if (this.drone.flying) this.drone.input(inp);
+    if (this.drone.flying || this.drone.after) this.drone.input(inp);
     // The laser designator: N raises and lowers it; while it's up it has the mouse
     if (inp.designate && !this.invOpen && !this.dialogOpen) this.air.toggle();
     if (this.air.active) this.air.input(inp);

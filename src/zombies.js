@@ -574,6 +574,25 @@ export class Zombies {
     return null;
   }
 
+  // A point between rMin and rMax metres from c, on open ground, that can't
+  // be seen from c (round a corner, behind a building), never within 40 m of
+  // you; null if there's none
+  spawnAround(c, rMin, rMax, avoid, you) {
+    const hash = this.world.hash;
+    for (let i = 0; i < 24; i++) {
+      const a = Math.random() * Math.PI * 2, d = rMin + Math.random() * (rMax - rMin);
+      const x = c.x + Math.sin(a) * d, z = c.z + Math.cos(a) * d;
+      if (Math.abs(x) > HALF - 4 || Math.abs(z) > HALF - 4 || !this.cellOpen(x, z)) continue;
+      if (you && Math.hypot(x - you.x, z - you.z) < 40) continue;
+      if (avoid && x > avoid.x0 - 15 && x < avoid.x1 + 15 && z > avoid.z0 - 15 && z < avoid.z1 + 15) continue;
+      if (this.noSpawn.some((q) => x > q.x0 && x < q.x1 && z > q.z0 && z < q.z1)) continue;
+      if (this.world.buildingAt?.(x, z)) continue;
+      if (hasLOS(hash, c.x, c.z, x, z, 0)) continue;
+      return { x, z };
+    }
+    return null;
+  }
+
   spawn(x, z, typeName, y = 0) {
     if (!typeName) {
       const r = Math.random() * 100;
@@ -718,10 +737,13 @@ export class Zombies {
     zb.hp -= amount;
     zb.stagger = 0.35;
     if (zb.hp > 0 && Math.random() < 0.6) this.vocal(zb, 'hurt', 35, 0.9);
-    // Shot from anywhere: it knows where you are now and comes for you.
-    zb.state = 'chase';
-    zb.prey = null;
-    zb.lastSeen = 6;
+    // Hit by you (shot from anywhere, or in arm's reach): it knows where you
+    // are now and comes for you. By something else (your drone's charge, a
+    // grenade going off far from you, someone else's gun) it doesn't: it goes
+    // to look where that came from, unless it's already after someone.
+    const P = this.game?.player;
+    if (!P || Math.hypot(fromX - P.pos.x, fromZ - P.pos.z) < 3) { zb.state = 'chase'; zb.prey = null; zb.lastSeen = 6; }
+    else if (zb.state !== 'chase') { zb.state = 'investigate'; zb.target = { x: fromX, z: fromZ, y: zb.pos.y }; zb.hurry = 1; zb.path = null; }
     zb.flail = 0.6;
     if (hit && !head) this.legHit(zb, amount, hit);
     if (zb.hp <= 0) {
@@ -921,18 +943,27 @@ export class Zombies {
     if (this.fieldTimer <= 0) { this.fieldTimer = 0.35; this.updateField(px, pz); }
 
     // Trickle spawns keep the town alive; more over time.
+    // Where things are watched from: you, and a drone you're flying (the
+    // zombies round it are drawn and keep moving, as round you)
+    const dr = game.drone?.flying?.pos || game.drone?.after?.look;
+    // (most of them a street or two from you, or from the drone you're
+    // flying, out of sight, so there are always some about; the rest
+    // anywhere in town)
     this.spawnTimer -= dt;
     const cap = 230 + Math.min(160, game.day * 16);
     if (this.spawnTimer <= 0) {
-      this.spawnTimer = game.isNight ? 5 : 10;
+      this.spawnTimer = (game.isNight ? 4 : 7) * (dr ? 0.6 : 1);
       if (this.list.length < cap) {
-        const p = this.randomOpenPoint(player.pos, 45, game.safehouse);
-        if (p) { const z = this.spawn(p.x, p.z); if (Math.random() < 0.5) { z.state = 'investigate'; z.target = { x: px, z: pz }; } }
+        const r = Math.random();
+        const c = dr && r < 0.7 ? dr : r < 0.6 ? player.pos : null;
+        const p = c ? this.spawnAround(c, c === dr ? 35 : 60, c === dr ? 85 : 150, game.safehouse, player.pos) : this.randomOpenPoint(player.pos, 45, game.safehouse);
+        if (p) { const z = this.spawn(p.x, p.z); if (!c && Math.random() < 0.5) { z.state = 'investigate'; z.target = { x: px, z: pz }; } }
       }
     }
 
     let nearest = Infinity;
     this.pathBudget = 3; // A* searches allowed this frame
+    const fx2 = dr ? dr.x : px, fz2 = dr ? dr.z : pz;
     // Who's near whom, by 1 m cell (for keeping out of each other's way)
     const sep = this.sepGrid || (this.sepGrid = new Map());
     sep.clear();
@@ -946,8 +977,8 @@ export class Zombies {
       // Level of detail: the further from you, the less often a zombie thinks
       // and moves (in bigger steps): every frame close in, every other
       // frame past 35 m, every fourth past 80 m
-      const pd0 = Math.hypot(px - zb.pos.x, pz - zb.pos.z);
-      nearest = Math.min(nearest, pd0);
+      const pdYou = Math.hypot(px - zb.pos.x, pz - zb.pos.z), pd0 = Math.min(pdYou, Math.hypot(fx2 - zb.pos.x, fz2 - zb.pos.z));
+      nearest = Math.min(nearest, pdYou);
       const every = pd0 < 35 ? 1 : pd0 < 80 ? 2 : 4;
       zb.lodAcc = (zb.lodAcc || 0) + frameDt;
       zb.lodSlot ??= Math.floor(Math.random() * 4);
@@ -965,9 +996,9 @@ export class Zombies {
 
       // Hidden beyond what the fog lets you see (saves draw calls); in clear
       // daylight that's far enough to pick them off through a scope.
-      zb.mesh.visible = pdist < Math.min(game.camera.far, night ? 80 : 200);
+      zb.mesh.visible = pd0 < Math.min(game.camera.far, night ? 80 : 200);
       // Too far away: cheap sleep update.
-      if (pdist > 70 && !prey && zb.state === 'wander') continue;
+      if (pd0 > 70 && !prey && zb.state === 'wander') continue;
 
       // Perception (staggered)
       zb.losTimer -= dt;

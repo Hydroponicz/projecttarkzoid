@@ -390,7 +390,7 @@ export class Player {
     if (input.slot1) this.setActive('gun');
     if (input.slot2) this.setActive('melee');
 
-    if (g.drone?.flying) {
+    if (g.drone?.flying || g.drone?.after) {
       // Flying a drone: the controller in your hands, the view is the drone's
       this.gun.setVisible(false);
       this.vm.visible = false;

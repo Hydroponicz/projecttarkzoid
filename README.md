@@ -459,8 +459,8 @@ Browser shortcuts that are easy to hit with Ctrl held (Ctrl+W, Ctrl+D, Ctrl+S…
 An **FPV drone** with something hung under it scouts and kills from a distance.
 
 - **Arming it.** Drag a grenade, a block of **C4** or a **PG-7V** RPG warhead onto the drone in the inventory (right-click → **Remove** takes it off again). Right-click → **Fly**, or put it on the hotbar.
-- **Flying.** You see through its camera, with the OSD and the static of a real feed: **WASD** to fly, the mouse to turn and tilt, **Space**/**C** (or **E**/**Q**) to climb and drop, **Shift** for speed. Your body stays where you stood; if anything hurts it, you snap back.
-- **Payloads.** A grenade drops on the left mouse button (with a short fuse, so it bursts on landing). C4 or an RPG warhead makes it a kamikaze: it goes off when it hits something, or when you click.
+- **Flying.** You see through its camera, with the OSD and the static of a real feed: **WASD** to fly, the mouse to turn and tilt, **Space**/**C** (or **E**/**Q**) to climb and drop, **Shift** for speed. Your body stays where you stood, head down over the controller, and zombies that come along find it there: if anything hurts it, you snap back. Fly from somewhere safe. Zombies round the drone keep moving (and turn up) as they would round you.
+- **Payloads.** A grenade drops on the left mouse button (with a short fuse, so it bursts on landing). C4 or an RPG warhead makes it a kamikaze: it goes off when it hits something, or when you click. The view then stays on the blast for a few seconds, from just back along the way the drone came, before cutting back to you (a click cuts back sooner). Zombies hurt by it don't know where you are: they go to look where the blast was.
 - **Coming back.** Right-click sets it down where it is, to be picked up again. The battery lasts about six minutes; past 300 m the signal breaks up and it drops out of the sky.
 - **Finding them.** Military crates and the gunsmith. `kit Drones` gives you two with payloads.
 

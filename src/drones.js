@@ -6,17 +6,23 @@
 // C4 or an RPG warhead makes it a kamikaze that goes off when it hits
 // something or when you click. Right-click sets it down where it is, to be
 // picked up again. The battery runs for about six minutes; past 300 m the
-// signal breaks up and it falls out of the sky.
+// signal breaks up and it falls out of the sky. You're still there while
+// you fly: your body stands where you left it, controller in hand, for
+// anything that comes along. When a charge goes off the view stays on the
+// blast for a few seconds, from just back along the way the drone came.
 import * as THREE from 'three';
 import { ITEMS, makeItem } from './items.js';
 import { addItem, removeItem, makeGrid } from './inventory.js';
 import { explode } from './explosives.js';
 import { droneSound } from './audio.js';
 import { LH, WALL_H } from './levels.js';
+import { buildFigure } from './paperdoll.js';
+import { hasLOS } from './collision.js';
 
 const BATTERY = 360;   // seconds of flight on a charge
 const RANGE = 300;     // m before the link is lost
 const SPEED = 16, BOOST = 26, CLIMB = 6;
+const AFTER = 3.5; // seconds the view stays on a blast
 
 function droneMesh() {
   const g = new THREE.Group();
@@ -108,12 +114,41 @@ export class Drones {
     this.el.style.display = 'block';
     document.body.classList.add('fpv-on');
     g.hud.message('Drone up. WASD fly · mouse steer · Space/C climb/drop · Shift fast · LMB drop/detonate · RMB set down', 5);
+    this.showBody();
     this.buzz = droneSound();
     p.hurtFlash = 0;
   }
 
+  // You, where you stand: head down over the controller in both hands
+  showBody() {
+    const g = this.game, p = g.player;
+    this.hideBody();
+    try {
+      const f = buildFigure(g.profile || { name: '', equip: {} });
+      const u = f.userData;
+      for (const a of u.arms || []) a.j.rotation.x = -1.05;
+      if (u.head) u.head.rotation.x = 0.45;
+      if (u.torso) u.torso.rotation.x = 0.12;
+      const pad = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.05, 0.11), new THREE.MeshStandardMaterial({ color: 0x1a1a1a, roughness: 0.6 }));
+      pad.position.set(0, 1.2, 0.42); pad.rotation.x = -0.6; f.add(pad);
+      f.position.set(p.pos.x, p.floorY, p.pos.z);
+      f.rotation.y = p.yaw + Math.PI;
+      f.traverse((o) => { if (o.isMesh) o.castShadow = true; });
+      g.scene.add(f);
+      this.body = f;
+    } catch { this.body = null; }
+  }
+  hideBody() { if (this.body) { this.game.scene.remove(this.body); this.body = null; } }
+
   // Takes the frame's input (your body stands still meanwhile)
   input(inp) {
+    if (this.after) {
+      // watching the blast: a click (or Space) cuts back to you
+      if (inp.firePressed || inp.jump || inp.aim) this.after.t = Math.min(this.after.t, 0.01);
+      for (const k of Object.keys(inp)) if (typeof inp[k] === 'boolean') inp[k] = false; else if (typeof inp[k] === 'number') inp[k] = 0;
+      inp.hot = [false, false, false, false];
+      return;
+    }
     const D = this.flying, keys = this.game.input.keys;
     D.ctl = {
       f: inp.f - inp.b, s: inp.r - inp.l,
@@ -135,8 +170,12 @@ export class Drones {
   }
 
   update(dt) {
+    if (this.after) return this.updateAfter(dt);
     const D = this.flying;
     if (!D) return;
+    // where it's been (for a place to watch the blast from)
+    D.trailT = (D.trailT || 0) - dt;
+    if (D.trailT <= 0) { D.trailT = 0.1; (D.trail ||= []).push(D.pos.clone()); if (D.trail.length > 40) D.trail.shift(); }
     const g = this.game, p = g.player, c = D.ctl || { f: 0, s: 0, up: 0, mdx: 0, mdy: 0 };
     D.t += dt;
     // hurt at home: you drop the controller
@@ -235,9 +274,39 @@ export class Drones {
   detonate() {
     const D = this.flying, g = this.game, def = ITEMS[D.it.payload.key];
     const at = D.pos.clone();
-    this.end();
+    // a place to watch it from: back along the way the drone came, a little
+    // higher, with a clear view of the spot
+    const trail = D.trail || [];
+    let from = null;
+    for (let i = trail.length - 1; i >= 0; i--) if (trail[i].distanceTo(at) >= 7) { from = trail[i].clone(); break; }
+    if (!from) from = (trail[0] || at.clone().add(new THREE.Vector3(Math.sin(D.yaw) * 6, 0, Math.cos(D.yaw) * 6))).clone();
+    const B = g.world.levels.buildingAt(from.x, from.z), floor = this.floorBelow(from.x, from.z, from.y);
+    const lift = B && from.y < (B.top + 1) * LH - 0.2 ? Math.max(0, (Math.floor((floor + 0.1) / LH) + 1) * LH - 0.5 - from.y) : 2;
+    from.y += Math.min(1.5, lift);
+    if (!hasLOS(g.world.hash, from.x, from.z, at.x, at.z, Math.min(from.y, at.y))) from = trail[trail.length - 1]?.clone() || from;
+    this.end(true);
     explode(g, at, { radius: def.radius, damage: def.damage, frag: def.frag, big: def.big, by: 'your own drone' });
+    this.after = { from, look: at, t: AFTER };
+    document.body.classList.add('fpv-after');
     g.hud.message('Detonation. Signal lost.', 2.5);
+  }
+
+  // The view on the blast, then back to you
+  updateAfter(dt) {
+    const A = this.after, g = this.game, cam = g.camera;
+    A.t -= dt;
+    // (drifting in a little, as if the camera were still settling)
+    const k = 1 - A.t / AFTER, pos = A.from.clone().lerp(A.look, 0.12 * k);
+    cam.position.copy(pos);
+    cam.lookAt(A.look.x, A.look.y + 0.4, A.look.z);
+    if (Math.abs(cam.fov - 70) > 0.1) { cam.fov = 70; cam.updateProjectionMatrix(); }
+    // (hurt meanwhile, you're back at once; but not by your own blast going off)
+    if (A.t <= 0 || g.player.dead || (g.player.hurtFlash > 0.9 && A.t < AFTER - 0.6)) {
+      this.after = null;
+      document.body.classList.remove('fpv-after');
+      this.hideBody();
+      g.player.buildViewmodel();
+    }
   }
 
   crash() {
@@ -269,7 +338,8 @@ export class Drones {
     g.hud.message(falling ? 'The drone comes down where it was. Go and get it.' : 'Drone set down. Walk over to pick it up.', 3);
   }
 
-  end() {
+  // keepBody: the view's going to the blast first (see updateAfter)
+  end(keepBody) {
     const D = this.flying, g = this.game;
     if (!D) return;
     g.scene.remove(D.mesh);
@@ -277,8 +347,10 @@ export class Drones {
     this.buzz?.stop(); this.buzz = null;
     this.el.style.display = 'none';
     document.body.classList.remove('fpv-on');
+    if (keepBody) return;
+    this.hideBody();
     g.player.buildViewmodel();
   }
 
-  dispose() { this.end(); this.el.remove(); }
+  dispose() { this.end(); this.after = null; this.hideBody(); document.body.classList.remove('fpv-after'); this.el.remove(); }
 }
