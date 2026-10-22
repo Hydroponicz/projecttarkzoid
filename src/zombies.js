@@ -163,16 +163,18 @@ export class Zombies {
       for (let j = j0; j <= j1; j++) {
         const x = -HALF + (i + 0.5) * NAV_CELL, z = -HALF + (j + 0.5) * NAV_CELL;
         const boxes = this.world.hash.query(x - r, z - r, x + r, z + r, tmp, 0, 1.6);
-        let b = 0, win = false;
+        let b = 0, win = false, door = false;
         for (const box of boxes) {
-          // Doors count as walkable: zombies head for them and bash them down.
-          if (box.noCollide || box.door || !atHeight(box, 0)) continue;
+          if (box.noCollide || !atHeight(box, 0)) continue;
           if (!(x > box.minX - r && x < box.maxX + r && z > box.minZ - r && z < box.maxZ + r)) continue;
+          // Shut doors count as walkable (3): zombies head for them and bash
+          // them down, but would rather go round if that's not much further
+          if (box.door) { door = true; continue; }
           // Low windows too (2 = zombies only: they smash and climb through)
           if (box.window && box.window.sill < 1.2) { win = true; continue; }
           b = 1; break;
         }
-        this.blocked[i * NAV_N + j] = b ? 1 : win ? 2 : 0;
+        this.blocked[i * NAV_N + j] = b ? 1 : win ? 2 : door ? 3 : 0;
       }
     }
     this.fieldTimer = 0;
@@ -297,60 +299,128 @@ export class Zombies {
     return [dx / l, dz / l];
   }
 
-  // BFS distance field over a window centered on the target.
+  // Distance field over a window centred on the target: how far it is to
+  // walk from each cell (a step costs 10 straight, 14 on the diagonal; a shut
+  // door or a window to smash through costs more). A bucket queue (Dial's
+  // algorithm): steps never cost more than the number of buckets.
   updateField(tx, tz) {
     const ci = Math.floor((tx + HALF) / NAV_CELL), cj = Math.floor((tz + HALF) / NAV_CELL);
-    const W = FIELD_R * 2 + 1;
-    const f = this.field;
+    const W = FIELD_R * 2 + 1, NB = 64;
+    const f = this.field, B = this.blocked;
     f.fill(65535);
     this.fieldOrigin = [ci - FIELD_R, cj - FIELD_R];
-    const q = new Int32Array(W * W);
-    let qh = 0, qt = 0;
-    const start = FIELD_R * W + FIELD_R;
-    f[start] = 0; q[qt++] = start;
     const [oi, oj] = this.fieldOrigin;
-    while (qh < qt) {
-      const cur = q[qh++];
-      const li = Math.floor(cur / W), lj = cur % W;
-      const d = f[cur] + 1;
-      for (let k = 0; k < 4; k++) {
-        const ni = li + (k === 0 ? 1 : k === 1 ? -1 : 0), nj = lj + (k === 2 ? 1 : k === 3 ? -1 : 0);
-        if (ni < 0 || nj < 0 || ni >= W || nj >= W) continue;
-        const idx = ni * W + nj;
-        if (f[idx] !== 65535) continue;
-        const gi = oi + ni, gj = oj + nj;
-        if (gi < 0 || gj < 0 || gi >= NAV_N || gj >= NAV_N || this.blocked[gi * NAV_N + gj] === 1) continue;
-        f[idx] = d;
-        q[qt++] = idx;
+    // the window's cells, with a border of walls so the edges need no checks
+    // (what each costs to step into: 0 = can't)
+    const P = W + 2, cost = this.fieldCost || (this.fieldCost = new Uint8Array(P * P));
+    cost.fill(0);
+    for (let li = 0; li < W; li++) {
+      const gi = oi + li;
+      if (gi < 0 || gi >= NAV_N) continue;
+      for (let lj = 0; lj < W; lj++) {
+        const gj = oj + lj;
+        if (gj < 0 || gj >= NAV_N) continue;
+        const k = B[gi * NAV_N + gj];
+        cost[(li + 1) * P + lj + 1] = k === 1 ? 0 : k === 3 ? 26 : k === 2 ? 41 : 1;
       }
     }
+    const dist = this.fieldDist || (this.fieldDist = new Uint16Array(P * P));
+    dist.fill(65535);
+    const bk = this.buckets || (this.buckets = Array.from({ length: NB }, () => []));
+    for (const b of bk) b.length = 0;
+    const start = (FIELD_R + 1) * P + FIELD_R + 1;
+    dist[start] = 0; bk[0].push(start);
+    const STEP = [1, -1, P, -P, P + 1, P - 1, -P + 1, -P - 1];
+    let pending = 1;
+    for (let cur = 0; pending > 0; cur++) {
+      const b = bk[cur % NB];
+      while (b.length) {
+        const idx = b.pop(); pending--;
+        if (dist[idx] !== cur) continue; // (a cheaper way here was found)
+        for (let s = 0; s < 8; s++) {
+          const n = idx + STEP[s], c = cost[n];
+          if (!c) continue;
+          let nd;
+          if (s < 4) nd = cur + 9 + c;
+          else {
+            // diagonal: no cutting the corner of a wall
+            if (!cost[idx + STEP[s] - (s & 1 ? -1 : 1)] || !cost[idx + (s & 1 ? -1 : 1)]) continue;
+            nd = cur + 13 + c;
+          }
+          if (nd < dist[n]) { dist[n] = nd; bk[nd % NB].push(n); pending++; }
+        }
+      }
+    }
+    for (let li = 0; li < W; li++) f.set(dist.subarray((li + 1) * P + 1, (li + 1) * P + 1 + W), li * W);
   }
 
-  // Direction to step along the flow field, or null if outside it.
+  // Which way to go from (x, z) down the field: the slope over all the
+  // neighbouring cells that are nearer, not just the one best step (which
+  // runs everybody along the same row of cells), or null outside it.
   flowDir(x, z) {
-    const W = FIELD_R * 2 + 1;
+    const W = FIELD_R * 2 + 1, f = this.field;
     const [oi, oj] = this.fieldOrigin;
     const li = Math.floor((x + HALF) / NAV_CELL) - oi, lj = Math.floor((z + HALF) / NAV_CELL) - oj;
     if (li < 1 || lj < 1 || li >= W - 1 || lj >= W - 1) return null;
-    let best = this.field[li * W + lj], bi = 0, bj = 0;
-    if (best === 65535) {
-      // Standing in a "blocked" cell (hugging a wall) — use neighbors anyway.
-      best = 65534;
-    }
+    const here = f[li * W + lj];
+    let gx = 0, gz = 0, best = 65535, bi = 0, bj = 0;
     for (let di = -1; di <= 1; di++) {
       for (let dj = -1; dj <= 1; dj++) {
         if (!di && !dj) continue;
-        // no corner cutting
-        if (di && dj && (this.field[(li + di) * W + lj] === 65535 || this.field[li * W + lj + dj] === 65535)) continue;
-        const v = this.field[(li + di) * W + lj + dj];
+        const diag = di && dj;
+        if (diag && (f[(li + di) * W + lj] === 65535 || f[li * W + lj + dj] === 65535)) continue;
+        const v = f[(li + di) * W + lj + dj];
+        if (v === 65535) continue;
         if (v < best) { best = v; bi = di; bj = dj; }
+        if (here === 65535 || v >= here) continue;
+        const w = (here - v) / (diag ? 14 * 1.414 : 10); // (slope, along a unit step)
+        gx += di * w; gz += dj * w;
       }
     }
-    if (!bi && !bj) return null;
-    const tx = -HALF + (oi + li + bi + 0.5) * NAV_CELL, tz = -HALF + (oj + lj + bj + 0.5) * NAV_CELL;
-    const dx = tx - x, dz = tz - z;
-    const l = Math.hypot(dx, dz) || 1;
+    // standing in a blocked cell (hugging a wall): just step to the best neighbour
+    if (here === 65535 || (!gx && !gz)) { gx = bi; gz = bj; }
+    if (!gx && !gz) return null;
+    const l = Math.hypot(gx, gz);
+    return [gx / l, gz / l];
+  }
+
+  // Can it walk straight from one point to the other (no wall, shut door or
+  // window on the way)? Checked along the nav grid
+  navClear(x0, z0, x1, z1) {
+    const dx = x1 - x0, dz = z1 - z0, L = Math.hypot(dx, dz), n = Math.ceil(L / 0.3);
+    for (let k = 1; k <= n; k++) {
+      const x = x0 + (dx * k) / n, z = z0 + (dz * k) / n;
+      const i = Math.floor((x + HALF) / NAV_CELL), j = Math.floor((z + HALF) / NAV_CELL);
+      if (i < 0 || j < 0 || i >= NAV_N || j >= NAV_N || this.blocked[i * NAV_N + j]) return false;
+    }
+    return true;
+  }
+  cellOpen(x, z) {
+    const i = Math.floor((x + HALF) / NAV_CELL), j = Math.floor((z + HALF) / NAV_CELL);
+    return i >= 0 && j >= 0 && i < NAV_N && j < NAV_N && !this.blocked[i * NAV_N + j];
+  }
+
+  // Closing in over open ground: not in a file behind the one in front, but
+  // each from its own side, swinging out wide at first and in at the end, so
+  // a crowd comes at you as a crowd and wraps around you
+  closeIn(zb, tx, tz, dist) {
+    const swing = zb.lane * 0.85 * Math.min(1, Math.max(0, (dist - 1.2) / 5));
+    if (!swing) return [(tx - zb.pos.x) / dist, (tz - zb.pos.z) / dist];
+    const a = Math.atan2(zb.pos.x - tx, zb.pos.z - tz) + swing, r = dist * 0.55;
+    let gx = tx + Math.sin(a) * r, gz = tz + Math.cos(a) * r;
+    if (!this.cellOpen(gx, gz) || !this.navClear(zb.pos.x, zb.pos.z, gx, gz)) { gx = tx; gz = tz; }
+    const dx = gx - zb.pos.x, dz = gz - zb.pos.z, l = Math.hypot(dx, dz) || 1;
     return [dx / l, dz / l];
+  }
+
+  // Following a route: each keeps a little to its own side of it where
+  // there's room, so a crowd fills the street instead of walking its middle
+  spread(zb, dir, dist) {
+    if (dist < 5) return dir;
+    const s = zb.lane * 0.4, px = -dir[1], pz = dir[0], side = Math.sign(s) || 1;
+    if (!this.cellOpen(zb.pos.x + px * side * 1.2, zb.pos.z + pz * side * 1.2) || !this.cellOpen(zb.pos.x + px * side * 1.2 + dir[0], zb.pos.z + pz * side * 1.2 + dir[1])) return dir;
+    const x = dir[0] + px * s, z = dir[1] + pz * s, l = Math.hypot(x, z);
+    return [x / l, z / l];
   }
 
   // A* over the nav grid (8-way, no corner cutting). Returns waypoints, or a
@@ -392,7 +462,7 @@ export class Zombies {
           const nIdx = ni * N + nj;
           if (B[nIdx] === 1 && nIdx !== start) continue;
           if (di && dj && (B[ci * N + nj] === 1 || B[ni * N + cj] === 1)) continue;
-          const ng = gc + (di && dj ? 1.414 : 1) + (B[nIdx] === 2 ? 4 : 0); // prefer doors to windows
+          const ng = gc + (di && dj ? 1.414 : 1) + (B[nIdx] === 2 ? 4 : B[nIdx] === 3 ? 2.5 : 0); // round, if it's not far, rather than through a shut door; a door rather than a window
           if (st[nIdx] === id && g[nIdx] <= ng) continue;
           st[nIdx] = id; g[nIdx] = ng; came[nIdx] = cur;
           heap.push(nIdx, ng + h(ni, nj));
@@ -430,6 +500,10 @@ export class Zombies {
     const path = zb.path;
     if (!path?.length) return null;
     while (path.length > 1 && Math.hypot(path[0].x - zb.pos.x, path[0].z - zb.pos.z) < 0.45) path.shift();
+    // a waypoint further on in plain view: head straight for it (no
+    // zig-zagging from cell to cell round every corner)
+    zb.cutT = (zb.cutT ?? 0) - dt;
+    if (zb.cutT <= 0) { zb.cutT = 0.3; for (let k = 0; k < 3 && path.length > 1 && this.navClear(zb.pos.x, zb.pos.z, path[1].x, path[1].z); k++) path.shift(); }
     const w = path[0];
     const dx = w.x - zb.pos.x, dz = w.z - zb.pos.z, l = Math.hypot(dx, dz);
     if (l < 0.2) { path.shift(); return null; }
@@ -516,6 +590,7 @@ export class Zombies {
       // Legs: wounds (a limp), and gone altogether (it crawls)
       legDmg: { L: 0, R: 0 }, legBurst: 0, lost: null, crawl: false, fall: 0,
       suppress: 0, stumble: 0, dodge: null, funnel: null,
+      lane: Math.random() * 2 - 1, // (which side of the crowd it keeps to)
     };
     for (const k of ['torso', 'head', 'armL', 'armR', 'legL', 'legR']) zb.parts[k].userData.base = zb.parts[k].position.clone();
     this.list.push(zb);
@@ -877,6 +952,7 @@ export class Zombies {
           zb.prey = surv.s; zb.state = 'chase'; zb.lastSeen = 4;
         }
         zb.canSee = zb.prey ? !!surv && surv.s === zb.prey : seesPlayer;
+        zb.clear = zb.state === 'chase' && sameFloor && zy < 0.5 && dist < 22 && this.navClear(zb.pos.x, zb.pos.z, tx0, tz0);
       }
 
       let mx = 0, mz = 0, speed = 0;
@@ -889,7 +965,12 @@ export class Zombies {
         const direct = !zb.climb && sameFloor && zb.canSee && dist < 6 && hasLOS(hash, zb.pos.x, zb.pos.z, tx0, tz0, zy);
         let dir = null;
         if (zb.climb || !sameFloor) dir = this.climbDir(zb, tx0, tz0, ty0, dt);
-        else if (!direct) dir = zy > 0.5 ? this.sheetDir(zb, tx0, tz0, dt) : (!prey && player.floorY < 0.5 && this.flowDir(zb.pos.x, zb.pos.z)) || this.pathDir(zb, tx0, tz0, dt);
+        else if (zy > 0.5) dir = direct ? null : this.sheetDir(zb, tx0, tz0, dt);
+        else if (zb.clear && dist > 0.05) dir = this.closeIn(zb, tx0, tz0, dist);
+        else if (!direct) {
+          dir = (!prey && player.floorY < 0.5 && this.flowDir(zb.pos.x, zb.pos.z)) || this.pathDir(zb, tx0, tz0, dt);
+          if (dir) dir = this.spread(zb, dir, dist);
+        }
         if (dir) { mx = dir[0]; mz = dir[1]; }
         else if (sameFloor) { mx = dx / (dist || 1); mz = dz / (dist || 1); }
       } else if (zb.state === 'investigate') {
@@ -931,17 +1012,31 @@ export class Zombies {
       if (zb.rise > 0) { zb.rise -= dt / 1.4; speed = 0; }
 
       // Separation from other zombies (only nearby ones matter)
+      // and from the one in front: it goes round them, to the side they're
+      // not on (or its own side of the crowd), instead of falling in behind
       if (speed > 0) {
+        const hl = Math.hypot(mx, mz), hx = hl > 0.01 ? mx / hl : 0, hz = hl > 0.01 ? mz / hl : 0;
         const ci = Math.floor(zb.pos.x), cj = Math.floor(zb.pos.z);
+        let sx = 0, sz = 0;
         for (let a = -1; a <= 1; a++) for (let b = -1; b <= 1; b++) {
           const cell = sep.get((ci + a + 2048) * 4096 + cj + b + 2048);
           if (cell) for (const o of cell) {
             if (o === zb || Math.abs(o.pos.y - zy) > 1) continue;
             const ox = zb.pos.x - o.pos.x, oz = zb.pos.z - o.pos.z;
             const d2 = ox * ox + oz * oz;
-            if (d2 < 0.5 && d2 > 1e-6) { const d = Math.sqrt(d2); mx += (ox / d) * 0.8; mz += (oz / d) * 0.8; }
+            if (d2 < 1e-6 || d2 > 2) continue;
+            const d = Math.sqrt(d2);
+            if (d2 < 0.5) { sx += (ox / d) * 0.8; sz += (oz / d) * 0.8; continue; }
+            if (!hl || dist < 1.8) continue;
+            const fx = -ox / d, fz = -oz / d, ahead = fx * hx + fz * hz;
+            if (ahead < 0.75) continue;
+            let qx = -(fx - ahead * hx), qz = -(fz - ahead * hz), ql = Math.hypot(qx, qz);
+            if (ql < 0.05) { qx = -hz * (zb.lane < 0 ? -1 : 1); qz = hx * (zb.lane < 0 ? -1 : 1); ql = 1; }
+            const k = 0.7 * Math.min(1, (1.42 - d) / 0.7);
+            sx += (qx / ql) * k; sz += (qz / ql) * k;
           }
         }
+        mx += sx; mz += sz;
       }
 
       // Attack

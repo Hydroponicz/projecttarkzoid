@@ -484,6 +484,8 @@ class Game {
     if (!w?.survivors) this.survivors.populate(); // (after the trading posts: gangs don't move in on them)
     this.progress = new Progress(this, this.profile, !ch.player);
     this.vehicles = new Vehicles(this, w?.vehicles || null);
+    // (parked cars go on the zombies' map too: they're placed after it's drawn up)
+    for (const v of this.vehicles.list) if (v.boxes?.length) this.zombies.updateNavRegion(v.x - v.def.L, v.z - v.def.L, v.x + v.def.L, v.z + v.def.L);
     if (ch.player?.vehicle != null && this.vehicles.list[ch.player.vehicle]) this.vehicles.enter(this.vehicles.list[ch.player.vehicle]);
     this.farming = new Farming(this, w?.farming || null);
     this.mission = s.raid ? new Mission(this, s.raid) : null;

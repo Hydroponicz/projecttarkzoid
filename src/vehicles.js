@@ -191,6 +191,7 @@ export class Vehicles {
     const v = new Vehicle(this, spec, this.list.length, state);
     v.extraSpec = spec;
     this.list.push(v);
+    if (v.boxes?.length) this.game.zombies?.updateNavRegion(v.x - v.def.L, v.z - v.def.L, v.x + v.def.L, v.z + v.def.L);
     return v;
   }
 
