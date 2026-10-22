@@ -229,12 +229,12 @@ async function loadSamples() {
     const res = await fetch('sounds/manifest.json');
     if (!res.ok) return;
     const man = await res.json();
-    for (const [name, files] of Object.entries(man)) {
-      samples[name] = [];
-      for (const f of files) {
-        try { const buf = await (await fetch(`sounds/${f}`)).arrayBuffer(); samples[name].push(await ctx.decodeAudioData(buf)); } catch { /* skip a bad file */ }
-      }
-    }
+    // (one file can serve several names: e.g. one magazine for many guns)
+    const decoded = {};
+    const get = (f) => (decoded[f] ??= fetch(`sounds/${f}`).then((r) => r.arrayBuffer()).then((b) => ctx.decodeAudioData(b)).catch(() => null));
+    await Promise.all(Object.entries(man).map(async ([name, files]) => {
+      samples[name] = (await Promise.all(files.map(get))).filter(Boolean);
+    }));
   } catch { /* no samples: synthesized sound only */ }
 }
 // opts: at (start time), rate, pick (which of the files), via (a node to play
@@ -351,7 +351,9 @@ function gunshot(kind, suppressed, vol, pan = 0, dist = 0) {
 // the ring of the one before, so the tail of the last one rings out.
 const ringing = {};
 const SHOT_GAIN = 0.43; // (level with the synthesized rifles)
-const SHOT_TRIM = { shot_sks: 1.75 }; // (recordings that came out quieter than they should)
+// (recordings that came out quieter than they should: the rifles level with
+// the AK, the M14 and the shotgun a little louder, pistols and the MP5 softer)
+const SHOT_TRIM = { shot_sks: 1.75, shot_m4a1: 1.2, shot_m249: 1.45, shot_m14: 1.95, shot_m870: 1.85, shot_mp5: 1.4, shot_glock17: 1.55, shot_m1911: 1.35 };
 function recordedShot(name, k, t, vol, pan, suppressed, rapid, nth, crowded) {
   const far = 1 - vol, muffled = env === 'in' && far > 0.15;
   const bus = ctx.createGain(); bus.gain.value = vol * SHOT_GAIN * (SHOT_TRIM[name] ?? 1);

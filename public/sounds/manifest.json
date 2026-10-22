@@ -48,5 +48,194 @@
   ],
   "dry_sks": [
     "ak/dry.wav"
+  ],
+  "shot_m4a1": [
+    "nato/shot_m4a1.wav"
+  ],
+  "shot_m249": [
+    "nato/shot_m249.wav"
+  ],
+  "shot_m14": [
+    "nato/shot_m14.wav"
+  ],
+  "shot_mp5": [
+    "nato/shot_mp5.wav"
+  ],
+  "shot_glock17": [
+    "nato/shot_glock17.wav"
+  ],
+  "shot_m1911": [
+    "nato/shot_m1911.wav"
+  ],
+  "shot_m870": [
+    "nato/shot_m870.wav"
+  ],
+  "mag_out_m4a1": [
+    "nato/magout1.wav",
+    "nato/magout2.wav",
+    "nato/magout3.wav"
+  ],
+  "mag_in_m4a1": [
+    "nato/magin1.wav",
+    "nato/magin2.wav",
+    "nato/magin3.wav",
+    "nato/magin4.wav"
+  ],
+  "bolt_back_m4a1": [
+    "nato/boltback1.wav",
+    "nato/boltback2.wav",
+    "nato/boltback3.wav",
+    "nato/boltback4.wav"
+  ],
+  "bolt_fwd_m4a1": [
+    "nato/boltfwd1.wav",
+    "nato/boltfwd2.wav",
+    "nato/boltfwd3.wav",
+    "nato/boltfwd4.wav"
+  ],
+  "chamber_m4a1": [
+    "nato/cover1.wav",
+    "nato/cover2.wav",
+    "nato/cover3.wav"
+  ],
+  "mag_out_m249": [
+    "nato/magout1.wav",
+    "nato/magout2.wav",
+    "nato/magout3.wav"
+  ],
+  "mag_in_m249": [
+    "nato/magin1.wav",
+    "nato/magin2.wav",
+    "nato/magin3.wav",
+    "nato/magin4.wav"
+  ],
+  "bolt_back_m249": [
+    "nato/boltback1.wav",
+    "nato/boltback2.wav",
+    "nato/boltback3.wav",
+    "nato/boltback4.wav"
+  ],
+  "bolt_fwd_m249": [
+    "nato/boltfwd1.wav",
+    "nato/boltfwd2.wav",
+    "nato/boltfwd3.wav",
+    "nato/boltfwd4.wav"
+  ],
+  "chamber_m249": [
+    "nato/cover1.wav",
+    "nato/cover2.wav",
+    "nato/cover3.wav"
+  ],
+  "mag_out_m14": [
+    "nato/magout1.wav",
+    "nato/magout2.wav",
+    "nato/magout3.wav"
+  ],
+  "mag_in_m14": [
+    "nato/magin1.wav",
+    "nato/magin2.wav",
+    "nato/magin3.wav",
+    "nato/magin4.wav"
+  ],
+  "bolt_back_m14": [
+    "nato/boltback1.wav",
+    "nato/boltback2.wav",
+    "nato/boltback3.wav",
+    "nato/boltback4.wav"
+  ],
+  "bolt_fwd_m14": [
+    "nato/boltfwd1.wav",
+    "nato/boltfwd2.wav",
+    "nato/boltfwd3.wav",
+    "nato/boltfwd4.wav"
+  ],
+  "chamber_m14": [
+    "nato/cover1.wav",
+    "nato/cover2.wav",
+    "nato/cover3.wav"
+  ],
+  "mag_out_mp5": [
+    "nato/magout1.wav",
+    "nato/magout2.wav",
+    "nato/magout3.wav"
+  ],
+  "mag_in_mp5": [
+    "nato/magin1.wav",
+    "nato/magin2.wav",
+    "nato/magin3.wav",
+    "nato/magin4.wav"
+  ],
+  "bolt_back_mp5": [
+    "nato/boltback1.wav",
+    "nato/boltback2.wav",
+    "nato/boltback3.wav",
+    "nato/boltback4.wav"
+  ],
+  "bolt_fwd_mp5": [
+    "nato/boltfwd1.wav",
+    "nato/boltfwd2.wav",
+    "nato/boltfwd3.wav",
+    "nato/boltfwd4.wav"
+  ],
+  "chamber_mp5": [
+    "nato/cover1.wav",
+    "nato/cover2.wav",
+    "nato/cover3.wav"
+  ],
+  "mag_out_glock17": [
+    "nato/magout1.wav",
+    "nato/magout2.wav",
+    "nato/magout3.wav"
+  ],
+  "mag_in_glock17": [
+    "nato/magin1.wav",
+    "nato/magin2.wav",
+    "nato/magin3.wav",
+    "nato/magin4.wav"
+  ],
+  "bolt_back_glock17": [
+    "nato/boltback1.wav",
+    "nato/boltback2.wav",
+    "nato/boltback3.wav",
+    "nato/boltback4.wav"
+  ],
+  "bolt_fwd_glock17": [
+    "nato/boltfwd1.wav",
+    "nato/boltfwd2.wav",
+    "nato/boltfwd3.wav",
+    "nato/boltfwd4.wav"
+  ],
+  "chamber_glock17": [
+    "nato/cover1.wav",
+    "nato/cover2.wav",
+    "nato/cover3.wav"
+  ],
+  "mag_out_m1911": [
+    "nato/magout1.wav",
+    "nato/magout2.wav",
+    "nato/magout3.wav"
+  ],
+  "mag_in_m1911": [
+    "nato/magin1.wav",
+    "nato/magin2.wav",
+    "nato/magin3.wav",
+    "nato/magin4.wav"
+  ],
+  "bolt_back_m1911": [
+    "nato/boltback1.wav",
+    "nato/boltback2.wav",
+    "nato/boltback3.wav",
+    "nato/boltback4.wav"
+  ],
+  "bolt_fwd_m1911": [
+    "nato/boltfwd1.wav",
+    "nato/boltfwd2.wav",
+    "nato/boltfwd3.wav",
+    "nato/boltfwd4.wav"
+  ],
+  "chamber_m1911": [
+    "nato/cover1.wav",
+    "nato/cover2.wav",
+    "nato/cover3.wav"
   ]
 }
