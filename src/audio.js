@@ -353,7 +353,10 @@ const ringing = {};
 const SHOT_GAIN = 0.43; // (level with the synthesized rifles)
 // (recordings that came out quieter than they should: the rifles level with
 // the AK, the M14 and the shotgun a little louder, pistols and the MP5 softer)
-const SHOT_TRIM = { shot_sks: 1.75, shot_m4a1: 1.2, shot_m249: 1.45, shot_m14: 1.95, shot_m870: 1.85, shot_mp5: 1.4, shot_glock17: 1.55, shot_m1911: 1.35 };
+const SHOT_TRIM = { shot_sks: 1.75, shot_m4a1: 1.2, shot_m249: 1.45, shot_m14: 1.95, shot_m870: 1.85, shot_mp5: 1.4, shot_glock17: 1.55, shot_m1911: 1.35,
+  // suppressed: rifles ~11 dB under their open shot (the crack and the action
+  // are still there), pistol calibres ~13 dB under
+  shot_ak74_supp: 0.72, shot_sks_supp: 0.95, shot_m4a1_supp: 0.9, shot_m14_supp: 1.12, shot_mp5_supp: 0.81, shot_glock17_supp: 0.75, shot_m1911_supp: 0.84 };
 function recordedShot(name, k, t, vol, pan, suppressed, rapid, nth, crowded) {
   const far = 1 - vol, muffled = env === 'in' && far > 0.15;
   const bus = ctx.createGain(); bus.gain.value = vol * SHOT_GAIN * (SHOT_TRIM[name] ?? 1);

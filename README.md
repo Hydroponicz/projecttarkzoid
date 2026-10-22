@@ -507,6 +507,8 @@ A recorded gunshot is only needed once, close up: the game makes the distant ver
 - [AR-15 rifle shot](https://freesound.org/s/427596/) by michorvath (Freesound)
 - [M4A1 reload](https://freesound.org/s/141572/) by yzhamua (Freesound)
 
+**Suppressed shots** for every gun with a recorded shot that takes a suppressor (AK-74, SKS, M4A1, M14, MP5, Glock 17, M1911) are made from its own recording: the blast cut down and its tail cut short, the supersonic crack kept for the rifles (gone for the pistol calibres), and the gun's own bolt slamming home mixed in just after, since that's most of what you hear through a can. Rifles come out about 12 dB under the open shot, pistol calibres about 14 dB under. They don't echo off the town. (The PM keeps its synthesized one.)
+
 **Spent brass** is recorded too (`public/sounds/casings/`): drops of pistol, rifle and full-size rifle cases, picked by the gun's round. They're kept quiet and sparse: one at a time, off to the right where the port throws them, and in a burst most are left out and each new one cuts the last short. Shotgun hulls are still synthesized. Cut from:
 - [Bouncing shell casings, various sizes](https://freesound.org/s/318964/) by gryffdavid (Freesound)
 

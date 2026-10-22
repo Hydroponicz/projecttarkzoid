@@ -263,5 +263,26 @@
     "casings/large3.wav",
     "casings/large4.wav",
     "casings/large5.wav"
+  ],
+  "shot_ak74_supp": [
+    "ak/shot_supp.wav"
+  ],
+  "shot_sks_supp": [
+    "sks/shot_supp.wav"
+  ],
+  "shot_m4a1_supp": [
+    "nato/shot_m4a1_supp.wav"
+  ],
+  "shot_m14_supp": [
+    "nato/shot_m14_supp.wav"
+  ],
+  "shot_mp5_supp": [
+    "nato/shot_mp5_supp.wav"
+  ],
+  "shot_glock17_supp": [
+    "nato/shot_glock17_supp.wav"
+  ],
+  "shot_m1911_supp": [
+    "nato/shot_m1911_supp.wav"
   ]
 }
