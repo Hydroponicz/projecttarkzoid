@@ -1696,8 +1696,10 @@ export function buildWorld(scene, seed) {
 
   // Doors: every panel in one instanced mesh and every knob in another, two
   // draw calls for the whole town. Each door's pivot still swings (and
-  // carries bullet holes); sync() copies it into the instances.
+  // carries bullet holes); sync() keeps its place, and before each view is
+  // drawn only the doors that view can see go into the instances (cullDoors).
   const liveDoors = doors.filter((d) => !d.retired);
+  const leafM = new Float32Array(Math.max(1, liveDoors.length) * 16), knobM = new Float32Array(Math.max(1, liveDoors.length) * 16), doorCol = new Float32Array(Math.max(1, liveDoors.length) * 3);
   const doorIM = new THREE.InstancedMesh(doorLeafGeometry(), new THREE.MeshStandardMaterial({ map: WT.planks, roughness: 0.75 }), Math.max(1, liveDoors.length));
   const knobIM = new THREE.InstancedMesh(doorHandleGeometry(), new THREE.MeshStandardMaterial({ color: 0xb8a060, metalness: 0.75, roughness: 0.35 }), Math.max(1, liveDoors.length));
   doorIM.castShadow = doorIM.receiveShadow = true;
@@ -1707,21 +1709,39 @@ export function buildWorld(scene, seed) {
     d.sync = () => {
       const pv = d.mesh;
       pv.updateMatrix();
-      if (d.broken) { doorIM.setMatrixAt(i, _dm.makeScale(0, 0, 0)); knobIM.setMatrixAt(i, _dm); }
-      else {
-        doorIM.setMatrixAt(i, _dm.multiplyMatrices(pv.matrix, _dl.makeScale(w - 0.04, 1, 1).setPosition(w / 2, 1.08, 0)));
-        knobIM.setMatrixAt(i, _dm.multiplyMatrices(pv.matrix, _dl.makeTranslation(w - 0.13, 1.0, 0)));
-      }
-      doorIM.instanceMatrix.needsUpdate = knobIM.instanceMatrix.needsUpdate = true;
+      _dm.multiplyMatrices(pv.matrix, _dl.makeScale(w - 0.04, 1, 1).setPosition(w / 2, 1.08, 0)).toArray(leafM, i * 16);
+      _dm.multiplyMatrices(pv.matrix, _dl.makeTranslation(w - 0.13, 1.0, 0)).toArray(knobM, i * 16);
     };
     // beaten doors darken toward splintered wood
-    d.tint = (c) => { doorIM.setColorAt(i, c); doorIM.instanceColor.needsUpdate = true; };
+    d.tint = (c) => { doorCol[i * 3] = c.r; doorCol[i * 3 + 1] = c.g; doorCol[i * 3 + 2] = c.b; };
     d.tint(new THREE.Color(w < 1.6 ? 0x9a7048 : 0x7a4e2c));
     d.sync();
   });
+  doorIM.setColorAt(0, new THREE.Color());
   doorIM.userData.dynamic = knobIM.userData.dynamic = true;
-  doorIM.frustumCulled = knobIM.frustumCulled = false; // (spread over the whole town)
+  doorIM.frustumCulled = knobIM.frustumCulled = false; // (spread over the whole town: culled door by door instead)
   group.add(doorIM, knobIM);
+  const _fr = new THREE.Frustum(), _pm = new THREE.Matrix4(), _sp = new THREE.Sphere();
+  const cullDoors = (cam) => {
+    _fr.setFromProjectionMatrix(_pm.multiplyMatrices(cam.projectionMatrix, cam.matrixWorldInverse));
+    const narrow = cam.fov < 40, margin = narrow ? 0.3 : 2.5; // (a margin in the main view, for shadows cast in from just outside it)
+    const zoom = cam.isPerspectiveCamera ? Math.tan((cam.fov / 2) * Math.PI / 180) / Math.tan(37.5 * Math.PI / 180) : 1;
+    const cx = cam.position.x, cz = cam.position.z, far2 = (cam.far || 400) ** 2, knob2 = (45 / zoom) ** 2;
+    const L = doorIM.instanceMatrix.array, K = knobIM.instanceMatrix.array, C = doorIM.instanceColor.array;
+    let n = 0, m = 0;
+    for (let i = 0; i < liveDoors.length; i++) {
+      const d = liveDoors[i];
+      if (d.broken) continue;
+      const dx = d.x - cx, dz = d.z - cz, d2 = dx * dx + dz * dz;
+      if (d2 > far2) continue;
+      _sp.center.set(d.x, (d.base || 0) + 1.1, d.z); _sp.radius = d.w + margin;
+      if (!_fr.intersectsSphere(_sp)) continue;
+      L.set(leafM.subarray(i * 16, i * 16 + 16), n * 16); C.set(doorCol.subarray(i * 3, i * 3 + 3), n * 3); n++;
+      if (d2 < knob2) K.set(knobM.subarray(i * 16, i * 16 + 16), (m++) * 16);
+    }
+    doorIM.count = n; knobIM.count = m;
+    doorIM.instanceMatrix.needsUpdate = knobIM.instanceMatrix.needsUpdate = doorIM.instanceColor.needsUpdate = true;
+  };
 
   const lod = [];
   for (const o of group.children) {
@@ -1750,7 +1770,7 @@ export function buildWorld(scene, seed) {
     group, hash, containers, generatedContainers, buildings, houses, roads, trees, doors, beds, windows, zombieSpawns, landmarks, vehicleSpawns, pumps, levels, slots, layout,
     dirtRoads: country.dirtRoads, features: country.features, gardens: country.gardens, forage: country.forage, waterSources: country.water,
     setFruit: forest.setFruit, setBerries: country.setBerries, foliage: forest.foliage, size: HALF * 2 + 80,
-    addBox, addContainer: (type, x, z) => addContainer(type, x, z, 0, {}), felled,
+    addBox, addContainer: (type, x, z) => addContainer(type, x, z, 0, {}), felled, cullDoors,
     // Cut down a tree: hide its instances and remove its collider.
     fellTree(i) {
       if (felled.has(i)) return;

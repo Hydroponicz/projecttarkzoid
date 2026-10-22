@@ -284,6 +284,7 @@ function forearm(L) {
     if (!L) d += 0.0025 * Math.max(0, 1 - Math.abs(vnoise(s * 3, z * 18, c * 3) - 0.5) * 30);
     return { rx: r, rr: r * 0.85, d, reg, tint: skinTint(s * r + 2, z, c * r) };
   });
+  if (L === 2) return arm; // (far off: no hand to speak of)
   const parts = [arm];
   // the hand: a flattened palm, knuckles
   parts.push(lathe('z', HAND - 0.01, HAND + 0.075, lv(L, 6, 3, 2), lv(L, 12, 8, 5), (v) => {
@@ -364,7 +365,7 @@ function patch(mat, instanced) {
   zCol = r == 0 ? sk : r == 1 ? tp : r == 2 ? bt : r == 3 ? vec3(0.035, 0.012, 0.01) : r == 4 ? vec3(0.62, 0.55, 0.38)
     : r == 5 ? vec3(0.34, 0.05, 0.04) : r == 6 ? sk * 0.22 + vec3(0.03, 0.02, 0.01) : r == 7 ? vec3(0.085, 0.075, 0.065) : vec3(0.06, 0.05, 0.04);`);
     sh.fragmentShader = 'varying vec3 zCol; varying float zReg; varying vec3 zOP;\n' + `
-float zh(vec3 p) { return fract(sin(dot(p, vec3(127.1, 311.7, 74.7))) * 43758.5453); }
+float zh(vec3 p) { p = fract(p * 0.1031); p += dot(p, p.zyx + 31.32); return fract((p.x + p.y) * p.z); } // (no sin: cheaper)
 float zn(vec3 p) { vec3 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
   return mix(mix(mix(zh(i), zh(i + vec3(1,0,0)), f.x), mix(zh(i + vec3(0,1,0)), zh(i + vec3(1,1,0)), f.x), f.y),
              mix(mix(zh(i + vec3(0,0,1)), zh(i + vec3(1,0,1)), f.x), mix(zh(i + vec3(0,1,1)), zh(i + vec3(1,1,1)), f.x), f.y), f.z); }
@@ -372,16 +373,19 @@ float zn(vec3 p) { vec3 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
       .replace('#include <color_fragment>', `#include <color_fragment>
   diffuseColor.rgb *= zCol;
   // fine mottling of the skin, grime ground into cloth
-  float zm = zn(zOP * 60.0) * 0.5 + zn(zOP * 150.0) * 0.5;
+  // (the finer octave only close up, where it shows)
+  float zclose = clamp(1.6 - length(fwidth(zOP)) * 300.0, 0.0, 1.0);
+  float zm = zn(zOP * 60.0);
+  if (zclose > 0.0) zm = mix(zm, zm * 0.5 + zn(zOP * 150.0) * 0.5, zclose);
   diffuseColor.rgb *= 0.86 + 0.28 * zm;`)
       .replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>
   // wet: blood and raw flesh, the mouth; dry: skin and cloth
   roughnessFactor = (zReg > 2.5 && zReg < 5.5) ? 0.32 + 0.2 * zm : zReg > 0.5 && zReg < 2.5 ? 0.97 : 0.78 - 0.18 * zm;`)
       .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
-  {
-    // fine relief: pores and wrinkles in the skin, the weave of the cloth
+  float fade = clamp(1.5 - length(fwidth(zOP)) * 900.0, 0.0, 1.0); // (gone before it would shimmer)
+  if (fade > 0.0) {
+    // fine relief: pores and wrinkles in the skin, the weave of the cloth (close up only)
     float k = (zReg > 0.5 && zReg < 2.5) ? 1.0 : 0.0;
-    float fade = clamp(1.5 - length(fwidth(zOP)) * 900.0, 0.0, 1.0); // (gone before it would shimmer)
     float hgt = mix(zn(zOP * 140.0) * 0.6 + zn(zOP * 340.0) * 0.4, abs(sin(zOP.y * 700.0)) * 0.5 + abs(sin((zOP.x + zOP.z) * 700.0)) * 0.5, k) * 0.0009 * fade;
     vec3 sx = dFdx(-vViewPosition), sy = dFdy(-vViewPosition);
     vec3 r1 = cross(sy, normal), r2 = cross(normal, sx);
@@ -413,7 +417,7 @@ export function zombieParts() {
 }
 // Eyes: where they sit in the head (left, right), and their glint
 export const EYE_POS = [[-0.043, 0.044, 0.084], [0.043, 0.044, 0.084]];
-export const eyeGeo = new THREE.SphereGeometry(0.012, 8, 6);
+export const eyeGeo = new THREE.OctahedronGeometry(0.0125, 0); // (a glint: eight triangles are plenty)
 
 // The parts laid along +y and centred, as a body on the ground (the ragdoll)
 // draws its limbs: upper arm, forearm, thigh, shin; and the torso, head

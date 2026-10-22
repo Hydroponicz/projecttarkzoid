@@ -74,6 +74,8 @@ const helmetGeo = new THREE.SphereGeometry(0.128, 14, 7, 0, Math.PI * 2, 0, Math
 const vestGeo = new THREE.BoxGeometry(0.52, 0.42, 0.32);
 const LOD_NEAR = 24, LOD_FAR = 60; // (metres: the full model this close; the lightest past here)
 const BODY = ['torso', 'head', 'uarm', 'farm', 'thigh', 'shin'];
+const _frustum = new THREE.Frustum(), _pv = new THREE.Matrix4(), _sph = new THREE.Sphere();
+const TAN_VIEW = Math.tan((75 / 2) * Math.PI / 180); // (the usual field of view: detail is judged against it)
 class Crowd {
   constructor(scene) {
     this.scene = scene;
@@ -113,7 +115,14 @@ class Crowd {
     if (n > this.cap) this.grow(Math.ceil(n / 256) * 256);
     const M = this.meshes, c = {};
     for (const k in M) c[k] = 0;
+    // Only what this camera can see: the main view keeps a margin so zombies
+    // just out of sight still cast their shadows in; a scope's narrow view
+    // (or the thermal one) draws only what's in it. Detail by how big a
+    // zombie looks, so one far off through a scope gets the full model
     const cx = cam?.position.x ?? 0, cz = cam?.position.z ?? 0, far2 = this.far * this.far;
+    const narrow = !!cam && cam.fov < 40, margin = narrow ? 0.4 : 3;
+    const zoom = cam?.isPerspectiveCamera ? Math.tan((cam.fov / 2) * Math.PI / 180) / TAN_VIEW : 1, zoom2 = zoom * zoom;
+    if (cam) _frustum.setFromProjectionMatrix(_pv.multiplyMatrices(cam.projectionMatrix, cam.matrixWorldInverse));
     // (a horde on top of you: the full model for the nearest forty or so, not all of them)
     this.nearNow = Math.min(this.near, this.nearNow ?? this.near);
     const near2 = this.nearNow * this.nearNow;
@@ -126,7 +135,8 @@ class Crowd {
     };
     for (const zb of list) {
       if (!zb.mesh.visible) continue;
-      const p = zb.parts, d2 = (zb.pos.x - cx) ** 2 + (zb.pos.z - cz) ** 2, L = d2 < near2 ? 0 : d2 < far2 ? 1 : 2;
+      if (cam) { _sph.center.set(zb.pos.x, zb.pos.y + 0.9, zb.pos.z); _sph.radius = 1.1 * zb.def.scale + margin; if (!_frustum.intersectsSphere(_sph)) continue; }
+      const p = zb.parts, d2 = ((zb.pos.x - cx) ** 2 + (zb.pos.z - cz) ** 2) * zoom2, L = d2 < near2 ? 0 : d2 < far2 ? 1 : 2;
       if (!L) close++;
       sk = p.head.material.color; tp = p.torso.material.color; bt = p.legL.material.color;
       put('torso' + L, p.torso); put('head' + L, p.head);
@@ -138,7 +148,7 @@ class Crowd {
       put('eye', p.eyes[0]); put('eye', p.eyes[1]);
       if (p.helmet) { put('helmet', p.helmet); put('vest', p.vest); }
     }
-    this.nearNow = close > 40 ? Math.max(6, this.nearNow * 0.9) : Math.min(this.near, this.nearNow * 1.02 + 0.05);
+    if (!narrow) this.nearNow = close > 40 ? Math.max(6, this.nearNow * 0.9) : Math.min(this.near, this.nearNow * 1.02 + 0.05);
     for (const k in M) {
       const im = M[k];
       im.count = c[k];
@@ -156,7 +166,7 @@ export class Zombies {
     this.list = [];
     this.crowd = new Crowd(scene);
     // (posed every time the scene is drawn, after its matrices are updated)
-    this.drawHook = (r, sc, cam) => this.crowd.draw(this.list, cam);
+    this.drawHook = (r, sc, cam) => { this.crowd.draw(this.list, cam); this.world.cullDoors?.(cam); }; // (and the town's doors, for this view)
     scene.onBeforeRender = this.drawHook;
     this.buildNav();
     this.field = new Uint16Array((FIELD_R * 2 + 1) ** 2);
