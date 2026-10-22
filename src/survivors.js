@@ -16,7 +16,7 @@ import { lookMats, JOINT } from './ragdoll.js';
 import { Factions } from './factions.js';
 const smooth = (t) => t * t * (3 - 2 * t);
 
-const MAX_SURVIVORS = 18;
+const MAX_SURVIVORS = 34;
 const DISP_LABEL = { friendly: 'Friendly', neutral: 'Wary', hostile: 'Hostile' };
 
 // How the AI uses each weapon (simplified ballistics; real ammo is tracked).
@@ -1036,6 +1036,21 @@ export class Survivors {
     return s;
   }
 
+  // An open spot on the street between rMin and rMax metres from p, out of
+  // the player's sight (or null)
+  spotAround(p, rMin, rMax) {
+    const Z = this.game.zombies, W = this.world;
+    for (let k = 0; k < 20; k++) {
+      const a = Math.random() * Math.PI * 2, d = rMin + Math.random() * (rMax - rMin);
+      const x = p.x + Math.sin(a) * d, z = p.z + Math.cos(a) * d;
+      if (!Z.cellOpen(x, z) || !Z.cellOpen(x + 0.6, z) || !Z.cellOpen(x, z + 0.6) || W.buildingAt?.(x, z)) continue;
+      if (this.game.safehouse && x > this.game.safehouse.x0 && x < this.game.safehouse.x1 && z > this.game.safehouse.z0 && z < this.game.safehouse.z1) continue;
+      if (hasLOS(W.hash, p.x, p.z, x, z)) continue;
+      return { x, z };
+    }
+    return null;
+  }
+
   // A new town's survivors: gangs in their hideouts, bands in their houses, loners
   populate() { this.factions.populate(); }
 
@@ -1075,10 +1090,16 @@ export class Survivors {
       if (t.t <= 0) { this.scene.remove(t.line); t.line.geometry.dispose(); this.tracers.splice(i, 1); }
     }
     // New survivors drift into town over time.
+    // (somewhere within a couple of streets of you, out of sight, so there's
+    // always somebody about)
     this.spawnTimer -= dt;
     if (this.spawnTimer <= 0) {
-      this.spawnTimer = 180 + Math.random() * 180;
-      if (this.list.filter((s) => !s.trader).length < MAX_SURVIVORS) this.spawn();
+      this.spawnTimer = 70 + Math.random() * 70;
+      if (this.list.filter((s) => !s.trader && !s.dead).length < MAX_SURVIVORS) {
+        const at = this.spotAround(this.game.player.pos, 55, 140);
+        const r = Math.random();
+        this.spawn({ ...(at || {}), disp: r < 0.6 ? 'neutral' : r < 0.82 ? 'friendly' : 'hostile' });
+      }
     }
     this.drawTags();
   }

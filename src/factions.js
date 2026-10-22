@@ -44,24 +44,25 @@ export class Factions {
   // ---------- setting up a new town ----------
   populate() {
     const M = this.mgr, g = this.game;
-    // two gangs, three or four strong, in their hideouts
-    for (let k = 0; k < 2; k++) {
+    // three gangs, three to five strong, in their hideouts
+    for (let k = 0; k < 3; k++) {
       const G = this.newGroup('gang', 'hostile');
       if (!this.claimBase(G)) { this.groups.splice(this.groups.indexOf(G), 1); continue; }
-      const n = 3 + Math.floor(Math.random() * 2);
+      const n = 3 + Math.floor(Math.random() * 3);
       for (let i = 0; i < n; i++) { const at = this.spotIn(G.b); const s = M.spawn({ x: at.x, z: at.z, disp: 'hostile' }); if (s) this.join(s, G); }
       // something in the stash already
       for (const [key, o] of [['ammo_545', { count: 60 }], ['bandage', {}], [pick(['pm', 'sks', 'mp133', 'ak74']), { loaded: 0 }]]) addItem(G.stash.grid, makeItem(key, o));
     }
-    // two friendly bands in their houses
-    for (let k = 0; k < 2; k++) {
+    // three friendly bands in their houses
+    for (let k = 0; k < 3; k++) {
       const G = this.newGroup('band', 'friendly');
       if (!this.claimBase(G)) { this.groups.splice(this.groups.indexOf(G), 1); continue; }
       const n = 2 + Math.floor(Math.random() * 2);
       for (let i = 0; i < n; i++) { const at = this.spotIn(G.b); const s = M.spawn({ x: at.x, z: at.z, disp: 'friendly' }); if (s) this.join(s, G); }
     }
-    // and some on their own: wanderers, a lone bandit or two, a straggler
-    for (const disp of ['neutral', 'neutral', 'neutral', 'hostile', 'friendly']) M.spawn({ disp });
+    // and plenty on their own: wanderers and scavengers, a few lone bandits,
+    // stragglers looking for somewhere safe
+    for (const disp of ['neutral', 'neutral', 'neutral', 'neutral', 'neutral', 'neutral', 'neutral', 'hostile', 'hostile', 'hostile', 'friendly', 'friendly']) M.spawn({ disp });
     void g;
   }
 
