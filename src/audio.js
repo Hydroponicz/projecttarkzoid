@@ -273,7 +273,7 @@ const CALIBRE = { pm: 'pistol9', glock17: 'pistol9', m1911: 'pistol45', mp5: 'sm
 
 // vol < 1 for distant shots (other survivors): quieter, duller, more reverb
 const lastShot = {}, shotN = {};
-let lastCasing = -1, lastImpact = -1;
+let lastCasing = -1, lastImpact = -1, lastBrass = null;
 let crack = null;
 function crackBuf() {
   if (crack?.sampleRate === ctx.sampleRate) return crack;
@@ -584,21 +584,31 @@ export const sfx = {
   },
   shell() { if (!ctx) return; scrape(0, 700, 1100, 0.05, 0.12); tick(0.05, 1600, 0.3); },
   round() { this.click(3200, 0.08); },
-  // Spent brass hitting the ground: a few small, dull tinks as it bounces and
-  // rolls (a shotgun hull: hollow plastic taps). Noise through a resonance,
-  // not a tone, so it reads as a bit of metal, not a chime.
-  casing(shell = false) {
+  // Spent brass hitting the ground. Recorded drops (pistol, rifle and
+  // full-size rifle brass) where there are any: one at a time, quiet, off to
+  // the right where the port throws them; in a burst a new one cuts the last
+  // short and most are left out, so it's a scatter of brass, not a chime.
+  // Otherwise a few small, dull tinks; shotgun hulls give hollow plastic taps.
+  casing(shell = false, size = 'rifle') {
     if (!ctx) return;
+    const gap = now() - lastCasing;
+    if (!shell && samples[`casing_${size}`]?.length) {
+      if (busy() > 90 || (gap < 0.3 && Math.random() < 0.65)) return;
+      lastCasing = now();
+      if (lastBrass && gap < 0.4) { lastBrass.gain.setTargetAtTime(0, now(), 0.04); }
+      lastBrass = playSample(`casing_${size}`, 0.09 + Math.random() * 0.05, 0.15 + Math.random() * 0.3, 0.12, { rate: 0.94 + Math.random() * 0.12 }) || null;
+      return;
+    }
     // in a stream of brass (automatic fire) each one gets a single tinkle:
     // the bounces of the last are still ringing, and they'd flood the mix
-    const gap = now() - lastCasing; lastCasing = now();
+    lastCasing = now();
     if (gap < 0.15 && (busy() > 90 || Math.random() < 0.5)) return;
     let t = 0, v = 1;
     const n = gap < 0.15 ? 1 : 2 + (Math.random() < 0.6 ? 1 : 0) + (Math.random() < 0.3 ? 1 : 0), pan = (Math.random() - 0.5) * 0.6;
     const f = 4200 + Math.random() * 2600;
     for (let i = 0; i < n; i++) {
       if (shell) { tick(t, 700 + Math.random() * 300, 0.05 * v, 2.5, pan, 0.012); tick(t, 1900 + Math.random() * 500, 0.02 * v, 3, pan, 0.006); }
-      else { tick(t, f * (0.97 + Math.random() * 0.06), 0.07 * v, 18, pan, 0.016); tick(t, 1500 + Math.random() * 600, 0.02 * v, 2, pan, 0.004); }
+      else { tick(t, f * (0.97 + Math.random() * 0.06), 0.05 * v, 4, pan, 0.006); tick(t, 1500 + Math.random() * 600, 0.02 * v, 2, pan, 0.004); }
       t += Math.max(0.03, 0.09 + Math.random() * 0.08 - i * 0.025); v *= 0.45 + Math.random() * 0.15;
     }
     // (brass) a last short roll on the ground

@@ -11,6 +11,8 @@ import { sfx } from './audio.js';
 import { segBox } from './collision.js';
 import { MAT, B, RB, C, P, BUILDERS, buildMag, shellModel, metricUV } from './gunmodels.js';
 import './natoguns.js'; // (registers the NATO weapons and magazines)
+// Which brass each round leaves on the ground (for its sound)
+const CASING_SIZE = { ammo_9x18: 'small', ammo_9x19: 'small', ammo_45: 'small', ammo_545: 'rifle', ammo_556: 'rifle', ammo_762: 'rifle', ammo_762x51: 'large' };
 
 const ZOMBIE_HEAT = 0.45; // the dead walking: faint but there on a thermal sight
 const BODY_COOL = 20;     // seconds for a body to cool to nothing
@@ -1379,7 +1381,7 @@ export class GunController {
     parts.eject.getWorldPosition(pos);
     const q = this.camera.getWorldQuaternion(new THREE.Quaternion());
     const vel = new THREE.Vector3(1.6 + Math.random(), 1.2 + Math.random() * 0.8, 0.3 + Math.random() * 0.4).applyQuaternion(q);
-    this.p.game.fx.casing(pos, vel, shell);
+    this.p.game.fx.casing(pos, vel, shell, CASING_SIZE[ITEMS[this.w.key]?.ammo] || 'rifle');
   }
 
   // ---------- PIP scope rendering (called before the main render) ----------

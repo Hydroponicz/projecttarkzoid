@@ -22,7 +22,7 @@ const GROUPS = [
     ['impact', 'Bullets hitting walls', () => sfx.impact(1)],
   ]],
   ['Gun handling', [
-    ['casing', 'Brass and shells hitting the ground', () => sfx.casing(Math.random() < 0.3)],
+    ['casing', 'Brass and shells hitting the ground', () => sfx.casing(Math.random() < 0.25, ['small', 'rifle', 'large'][Math.floor(Math.random() * 3)])],
     ['magOut', 'Magazine out', () => sfx.magOut('ak74')],
     ['magIn', 'Magazine in', () => sfx.magIn('ak74')],
     ['bolt', 'Bolt and slide', () => sfx.bolt('ak74', 0.16)],

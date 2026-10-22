@@ -479,7 +479,7 @@ Everything is synthesized live with WebAudio. Nothing is a looped recording, so 
 - **Gunshots** are built the way a real shot is heard: the supersonic crack of the bullet (rifles), the muzzle blast, the low thump of the gas, the action cycling, and the echo off the town. Every calibre has its own profile: a 9 mm pops, a .45 thumps, 5.56 cracks hard, 7.62×51 booms, and a 12 gauge roars. Indoors the shot slaps off the walls in a short room reverb; outdoors it rolls away in a long tail. Suppressed shots keep the action and a dull thud. Other people's gunfire is panned, duller and further away the further off it is.
 - **Zombies** have voices. A formant synth (throat, vowels and rasp) gives each zombie a pitch and size of its own: walkers moan, runners are higher and raspier, brutes and soldiers are deep. They groan while they wander, growl on the chase, snarl as they swing, cry out when hit and give a death rattle. Every voice is panned to where the zombie is, quieter with distance and muffled from another floor.
 - **Real recordings** for the AK-74 and SKS (their shots, magazines, bolts, selector and dry fire) and the NATO guns (an AR-15 shot shaped for each, and the M4A1's magazine and charging handle). Survivors' gunfire carries a few hundred metres: a far-off firefight is a dull, late boom rolling off the buildings.
-- **Mechanics:** magazines clicking out and seating, bolts and slides, the shotgun pump, dry fire, footsteps, and bullets chipping walls near you. Spent brass lands with a few quiet, dull tinks as it bounces and rolls; shotgun hulls give hollow plastic taps.
+- **Mechanics:** magazines clicking out and seating, bolts and slides, the shotgun pump, dry fire, footsteps, and bullets chipping walls near you. Spent brass is recorded, pistol, rifle or full-size rifle cases to suit the gun, kept quiet and sparse; shotgun hulls give hollow plastic taps.
 - **Dying zombies** let out a falling moan, the throat fills with a few wet gurgles, and the last air goes out of them.
 
 **Volume for every sound.** Open **Sound** from the pause screen or the title menu. Every sound in the game has its own slider (0–200%), grouped as gunshots (one per calibre), gun handling, zombies (groaning, growling, snarling, hurt, dying), combat, you, the world and vehicles, plus a master volume. Each has a ▶ button to hear it. Settings are saved in your browser; **Reset all** puts them back to 100%.
@@ -506,6 +506,9 @@ A recorded gunshot is only needed once, close up: the game makes the distant ver
 **The NATO guns** (M4A1, M249, M14, MP5, Glock 17, M1911, Remington 870) use a recorded AR-15 shot for now (`public/sounds/nato/`), shaped per gun: as recorded for the M4A1, heavier for the M249, lower and louder for the M14's 7.62×51, higher and lighter for the 9 mm MP5 and Glock, duller for the .45, and deep for the shotgun. All but the shotgun use the M4A1's magazine out, magazine in and charging handle, and its dust cover snapping shut for the chamber check. The shotgun keeps its synthesized pump. Cut from:
 - [AR-15 rifle shot](https://freesound.org/s/427596/) by michorvath (Freesound)
 - [M4A1 reload](https://freesound.org/s/141572/) by yzhamua (Freesound)
+
+**Spent brass** is recorded too (`public/sounds/casings/`): drops of pistol, rifle and full-size rifle cases, picked by the gun's round. They're kept quiet and sparse: one at a time, off to the right where the port throws them, and in a burst most are left out and each new one cuts the last short. Shotgun hulls are still synthesized. Cut from:
+- [Bouncing shell casings, various sizes](https://freesound.org/s/318964/) by gryffdavid (Freesound)
 
 ## Dev console
 

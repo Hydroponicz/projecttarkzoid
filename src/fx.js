@@ -160,12 +160,12 @@ export class FX {
   dropTrace(tr) { this.scene.remove(tr.line, tr.dot); tr.line.geometry.dispose(); tr.line.material.dispose(); tr.dot.material.dispose(); }
 
   // Ejected brass / shotgun shells that tumble and bounce on the ground.
-  casing(pos, vel, shell) {
+  casing(pos, vel, shell, size) {
     const m = new THREE.Mesh(shell ? shellGeo : casingGeo, shell ? shellMat : brassMat);
     m.position.copy(pos);
     m.castShadow = true;
     this.scene.add(m);
-    this.casings.push({ m, v: vel, spin: new THREE.Vector3(Math.random() * 30, Math.random() * 30, Math.random() * 30), life: 5, bounced: false, shell: !!shell, floor: this.floorUnder(pos.x, pos.z, pos.y) });
+    this.casings.push({ m, v: vel, spin: new THREE.Vector3(Math.random() * 30, Math.random() * 30, Math.random() * 30), life: 5, bounced: false, shell: !!shell, size, floor: this.floorUnder(pos.x, pos.z, pos.y) });
     if (this.casings.length > 60) this.scene.remove(this.casings.shift().m);
   }
 
@@ -248,7 +248,7 @@ export class FX {
       c.m.rotation.x += c.spin.x * dt; c.m.rotation.y += c.spin.y * dt; c.m.rotation.z += c.spin.z * dt;
       if (c.m.position.y < c.floor + 0.01) {
         c.m.position.y = c.floor + 0.01;
-        if (!c.bounced) { sfx.casing(c.shell); c.bounced = true; }
+        if (!c.bounced) { sfx.casing(c.shell, c.size); c.bounced = true; }
         c.v.y = -c.v.y * 0.35; c.v.x *= 0.5; c.v.z *= 0.5; c.spin.multiplyScalar(0.5);
         if (Math.abs(c.v.y) < 0.3) { c.rest = true; c.m.rotation.set(0, c.m.rotation.y, 0); }
       }

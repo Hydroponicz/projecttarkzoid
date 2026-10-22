@@ -237,5 +237,31 @@
     "nato/cover1.wav",
     "nato/cover2.wav",
     "nato/cover3.wav"
+  ],
+  "casing_small": [
+    "casings/small1.wav",
+    "casings/small2.wav",
+    "casings/small3.wav",
+    "casings/small4.wav",
+    "casings/small5.wav",
+    "casings/small6.wav",
+    "casings/small7.wav",
+    "casings/small8.wav"
+  ],
+  "casing_rifle": [
+    "casings/rifle1.wav",
+    "casings/rifle2.wav",
+    "casings/rifle3.wav",
+    "casings/rifle4.wav",
+    "casings/rifle5.wav",
+    "casings/rifle6.wav",
+    "casings/rifle7.wav"
+  ],
+  "casing_large": [
+    "casings/large1.wav",
+    "casings/large2.wav",
+    "casings/large3.wav",
+    "casings/large4.wav",
+    "casings/large5.wav"
   ]
 }
